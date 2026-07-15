@@ -1,0 +1,6 @@
+{
+  "appId": "com.momentum.app",
+  "appName": "Momentum",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
