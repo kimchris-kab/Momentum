@@ -183,6 +183,38 @@ export const BUDGET_CATS = [
   { id: "savings", label: "Savings", color: C.green,  hint: "Saved, invested, or debt paydown" },
 ];
 
+// Fine-grained categories for the ledger. Each expense category rolls up into one of the
+// three budget buckets above, so the 50/30/20 maths keeps working while records stay specific.
+export const TX_CATEGORIES = [
+  { id: "groceries",     label: "Groceries",     type: "expense", bucket: "needs",   color: C.teal },
+  { id: "rent",          label: "Rent / housing", type: "expense", bucket: "needs",   color: C.teal },
+  { id: "utilities",     label: "Utilities",     type: "expense", bucket: "needs",   color: C.teal },
+  { id: "transport",     label: "Transport",     type: "expense", bucket: "needs",   color: C.teal },
+  { id: "health",        label: "Health",        type: "expense", bucket: "needs",   color: C.teal },
+  { id: "insurance",     label: "Insurance",     type: "expense", bucket: "needs",   color: C.teal },
+  { id: "dining",        label: "Eating out",    type: "expense", bucket: "wants",   color: C.orange },
+  { id: "shopping",      label: "Shopping",      type: "expense", bucket: "wants",   color: C.orange },
+  { id: "entertainment", label: "Entertainment", type: "expense", bucket: "wants",   color: C.orange },
+  { id: "travel",        label: "Travel",        type: "expense", bucket: "wants",   color: C.orange },
+  { id: "subscriptions", label: "Subscriptions", type: "expense", bucket: "wants",   color: C.orange },
+  { id: "saving",        label: "Saving",        type: "expense", bucket: "savings", color: C.green },
+  { id: "investing",     label: "Investing",     type: "expense", bucket: "savings", color: C.green },
+  { id: "debt",          label: "Debt paydown",  type: "expense", bucket: "savings", color: C.green },
+  { id: "other_expense", label: "Other",         type: "expense", bucket: "wants",   color: C.muted },
+  { id: "salary",        label: "Salary",        type: "income",  bucket: null,      color: C.gold },
+  { id: "freelance",     label: "Freelance",     type: "income",  bucket: null,      color: C.gold },
+  { id: "bonus",         label: "Bonus",         type: "income",  bucket: null,      color: C.gold },
+  { id: "refund",        label: "Refund",        type: "income",  bucket: null,      color: C.gold },
+  { id: "gift",          label: "Gift",          type: "income",  bucket: null,      color: C.gold },
+  { id: "other_income",  label: "Other",         type: "income",  bucket: null,      color: C.gold },
+];
+export const TX_CAT_BY_ID = Object.fromEntries(TX_CATEGORIES.map((c) => [c.id, c]));
+
+export const RECUR_FREQ = [
+  { id: "monthly", label: "Monthly" },
+  { id: "weekly", label: "Weekly" },
+];
+
 export const JOURNAL_MOODS = [
   { id: "grateful",  label: "Grateful",  emoji: "🙏" },
   { id: "proud",     label: "Proud",     emoji: "💪" },

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, X } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 
@@ -262,8 +262,18 @@ function SparkleGlyph({ s }) {
 
 export function useToast() {
   const [toast, setToast] = useState(null);
-  const show = (message, actionLabel, onAction) => setToast({ message, actionLabel, onAction });
-  const dismiss = () => setToast(null);
-  const act = () => { toast?.onAction?.(); setToast(null); };
+  const ref = useRef(null);
+  useEffect(() => { ref.current = toast; }, [toast]);
+
+  // These must keep a stable identity: Toast restarts its dismiss timer whenever
+  // onDismiss changes, so fresh closures each render would keep the toast up forever.
+  const show = useCallback((message, actionLabel, onAction) =>
+    setToast({ message, actionLabel, onAction }), []);
+  const dismiss = useCallback(() => setToast(null), []);
+  const act = useCallback(() => {
+    ref.current?.onAction?.();
+    setToast(null);
+  }, []);
+
   return { toast, show, dismiss, act };
 }

@@ -16,7 +16,9 @@ export const emptyState = () => ({
   moneyPrinciples: {},
   moneyIdeas: {},
   netWorth: { assets: "", liabilities: "" },
+  netWorthLog: [],
   transactions: [],
+  recurring: [],
   monthlyIncome: "",
   budgetSplit: { needs: 50, wants: 30, savings: 20 },
   mantraIdxByDate: {},
@@ -39,7 +41,11 @@ function migrateV1(d) {
   state.moneyPrinciples = d.moneyPrinciples || {};
   state.moneyIdeas = d.moneyIdeas || {};
   state.netWorth = d.netWorth || { assets: "", liabilities: "" };
+  state.netWorthLog = d.netWorthLog || [];
+  // v1 transactions carried only a budget bucket in `category`; keep it and let the finer
+  // `catId` stay empty until the entry is edited, so old records still total correctly.
   state.transactions = d.transactions || [];
+  state.recurring = d.recurring || [];
   state.monthlyIncome = d.monthlyIncome || "";
   state.budgetSplit = d.budgetSplit || { needs: 50, wants: 30, savings: 20 };
 

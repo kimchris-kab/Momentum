@@ -7,6 +7,7 @@ import {
   computeStreak, heatmapDays, newTask, reorderTasks, toggleDoneReducer, voteTally,
 } from "./lib/tasks.js";
 import { emptyState, loadState, serializeState } from "./lib/migrate.js";
+import { postDueRecurring } from "./lib/money.js";
 import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx";
 import TaskSheet from "./components/TaskSheet.jsx";
 import TodayView from "./views/TodayView.jsx";
@@ -67,6 +68,17 @@ export default function Momentum() {
     })();
   }, [state, loaded]);
 
+  // Rent, salary and subscriptions post themselves for every occurrence that came due
+  // while the app was closed, so the ledger is complete without anyone remembering.
+  useEffect(() => {
+    if (!loaded) return;
+    setState((s) => {
+      const posted = postDueRecurring(s.recurring, s.transactions);
+      if (!posted) return s;
+      return { ...s, recurring: posted.recurring, transactions: posted.transactions };
+    });
+  }, [loaded]);
+
   const patch = useCallback((p) => setState((s) => ({ ...s, ...p })), []);
 
   // ---- Task actions ----
@@ -102,6 +114,49 @@ export default function Momentum() {
   const moveTask = useCallback((id, siblings, dir) => setState((s) => ({
     ...s, tasks: reorderTasks(s.tasks, id, siblings, dir),
   })), []);
+
+  // ---- Money records ----
+  const saveTx = useCallback((tx) => setState((s) => {
+    if (!tx.id) return { ...s, transactions: [...s.transactions, { ...tx, id: Date.now(), createdAt: Date.now() }] };
+    return { ...s, transactions: s.transactions.map((t) => (t.id === tx.id ? { ...t, ...tx } : t)) };
+  }), []);
+
+  const deleteTx = useCallback((id) => setState((s) => {
+    const victim = s.transactions.find((t) => t.id === id);
+    if (victim) {
+      show("Entry deleted", "Undo", () =>
+        setState((cur) => ({ ...cur, transactions: [...cur.transactions, victim] })));
+    }
+    return { ...s, transactions: s.transactions.filter((t) => t.id !== id) };
+  }), [show]);
+
+  const saveRule = useCallback((rule) => setState((s) => {
+    if (!rule.id) {
+      const created = { ...rule, id: Date.now(), createdAt: Date.now() };
+      const posted = postDueRecurring([created], s.transactions);
+      return posted
+        ? { ...s, recurring: [...s.recurring, ...posted.recurring], transactions: posted.transactions }
+        : { ...s, recurring: [...s.recurring, created] };
+    }
+    return { ...s, recurring: s.recurring.map((r) => (r.id === rule.id ? { ...r, ...rule } : r)) };
+  }), []);
+
+  const deleteRule = useCallback((id) => setState((s) => ({
+    ...s, recurring: s.recurring.filter((r) => r.id !== id),
+  })), []);
+
+  // Snapshots are keyed by day, so saving twice in one day corrects rather than duplicates
+  const saveNetWorthSnapshot = useCallback(() => setState((s) => {
+    const entry = {
+      id: Date.now(),
+      date: todayStr(),
+      assets: parseFloat(s.netWorth.assets) || 0,
+      liabilities: parseFloat(s.netWorth.liabilities) || 0,
+    };
+    const rest = (s.netWorthLog || []).filter((e) => e.date !== entry.date);
+    show("Net worth snapshot saved");
+    return { ...s, netWorthLog: [...rest, entry] };
+  }), [show]);
 
   // ---- Lists ----
   const addList = useCallback((name, color) => setState((s) => ({
@@ -231,6 +286,9 @@ export default function Momentum() {
                   strategies: state.strategies.map((x) => (x.id === id ? { ...x, ...p } : x)),
                 })}
                 onRemoveStrategy={(id) => patch({ strategies: state.strategies.filter((x) => x.id !== id) })}
+                onSaveTx={saveTx} onDeleteTx={deleteTx}
+                onSaveRule={saveRule} onDeleteRule={deleteRule}
+                onSaveNetWorth={saveNetWorthSnapshot}
               />
             )}
             {view === "insights" && (
