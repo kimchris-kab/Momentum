@@ -1,0 +1,283 @@
+import React, { useState } from "react";
+import {
+  CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus, Repeat,
+  Trash2, X, Zap,
+} from "lucide-react";
+import { C, F, R, alpha, styles } from "../theme.js";
+import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
+import { addDays, todayStr } from "../lib/date.js";
+import { dailyRule, monthlyRule, weeklyRule } from "../lib/tasks.js";
+import { Checkbox, IconButton, Pill, SegmentedControl, Sheet } from "./ui.jsx";
+
+const REPEAT_MODES = [
+  { id: "none", label: "Never" },
+  { id: "daily", label: "Daily" },
+  { id: "weekly", label: "Weekly" },
+  { id: "monthly", label: "Monthly" },
+];
+
+const repeatModeOf = (rec) => (!rec ? "none" : rec.freq);
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <p style={{ color: C.muted, fontSize: 10.5, margin: "0 0 6px", letterSpacing: 0.4, textTransform: "uppercase" }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+export default function TaskSheet({ open, task, lists, onClose, onChange, onDelete }) {
+  const [subText, setSubText] = useState("");
+  const [advanced, setAdvanced] = useState(false);
+  if (!open || !task) return null;
+
+  const set = (patch) => onChange(task.id, patch);
+  const repeatMode = repeatModeOf(task.recurrence);
+
+  const setRepeat = (mode) => {
+    // dropping a repeat shouldn't strand the task in "No date" — put it back on today
+    if (mode === "none") return set({ recurrence: null, dueDate: task.dueDate || todayStr() });
+    if (mode === "daily") return set({ recurrence: dailyRule(1), dueDate: null });
+    if (mode === "monthly") {
+      const day = task.dueDate ? Number(task.dueDate.slice(8, 10)) : new Date().getDate();
+      return set({ recurrence: monthlyRule(day), dueDate: null });
+    }
+    const wk = task.recurrence?.weekdays?.length
+      ? task.recurrence.weekdays
+      : [WEEKDAYS[(new Date().getDay() + 6) % 7].key];
+    set({ recurrence: weeklyRule(wk), dueDate: null });
+  };
+
+  const toggleWeekday = (key) => {
+    const cur = task.recurrence?.weekdays || [];
+    const next = cur.includes(key) ? cur.filter((d) => d !== key) : [...cur, key];
+    set({ recurrence: { ...weeklyRule(next), ...task.recurrence, freq: "weekly", weekdays: next } });
+  };
+
+  const addSub = () => {
+    if (!subText.trim()) return;
+    set({ subtasks: [...(task.subtasks || []), { id: `s-${Date.now()}`, text: subText.trim(), done: false }] });
+    setSubText("");
+  };
+  const toggleSub = (sid) => set({
+    subtasks: (task.subtasks || []).map((s) => s.id === sid ? { ...s, done: !s.done } : s),
+  });
+  const removeSub = (sid) => set({ subtasks: (task.subtasks || []).filter((s) => s.id !== sid) });
+
+  const quickDates = [
+    { label: "Today", value: todayStr() },
+    { label: "Tomorrow", value: addDays(todayStr(), 1) },
+    { label: "Next week", value: addDays(todayStr(), 7) },
+    { label: "None", value: null },
+  ];
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Edit task">
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <input
+          value={task.text}
+          onChange={(e) => set({ text: e.target.value })}
+          placeholder="Task name"
+          style={{ ...styles.input, fontSize: 16, fontFamily: F.display, padding: "14px 15px" }}
+        />
+
+        <textarea
+          value={task.notes || ""}
+          onChange={(e) => set({ notes: e.target.value })}
+          rows={2}
+          placeholder="Add details…"
+          style={{ ...styles.input, resize: "none", fontSize: 13, lineHeight: 1.55 }}
+        />
+
+        <Field label="Type">
+          <SegmentedControl
+            value={task.kind}
+            onChange={(kind) => set({ kind })}
+            options={[
+              { id: "todo", label: "Task" },
+              { id: "build", label: "Habit to build" },
+              { id: "break", label: "Habit to avoid" },
+            ]}
+          />
+        </Field>
+
+        {!task.recurrence && (
+          <Field label="Due">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {quickDates.map((q) => (
+                <Pill key={q.label} on={task.dueDate === q.value} onClick={() => set({ dueDate: q.value })}>
+                  {q.label}
+                </Pill>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={styles.fieldShell}>
+                <CalendarClock size={13} color={C.muted} />
+                <input type="date" value={task.dueDate || ""}
+                  onChange={(e) => set({ dueDate: e.target.value || null })} style={styles.bareInput} />
+              </div>
+              <div style={styles.fieldShell}>
+                <Clock size={13} color={C.muted} />
+                <input type="time" value={task.time || ""}
+                  onChange={(e) => set({ time: e.target.value || null })} style={styles.bareInput} />
+              </div>
+            </div>
+          </Field>
+        )}
+
+        <Field label="Repeat">
+          <SegmentedControl options={REPEAT_MODES} value={repeatMode} onChange={setRepeat} />
+          {repeatMode === "weekly" && (
+            <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
+              {WEEKDAYS.map((d) => {
+                const on = (task.recurrence?.weekdays || []).includes(d.key);
+                return (
+                  <button key={d.key} onClick={() => toggleWeekday(d.key)} style={{
+                    flex: 1, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
+                    fontFamily: F.body,
+                    border: `1px solid ${on ? C.gold : C.border}`,
+                    background: on ? C.goldSoft : "transparent",
+                    color: on ? C.gold : C.muted,
+                  }}>
+                    {d.letter}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {repeatMode === "daily" && (
+            <div style={{ ...styles.fieldShell, marginTop: 10, width: "fit-content" }}>
+              <Repeat size={13} color={C.muted} />
+              <span style={{ color: C.muted, fontSize: 12.5 }}>Every</span>
+              <input type="number" min={1} max={30} value={task.recurrence?.interval || 1}
+                onChange={(e) => set({ recurrence: dailyRule(Math.max(1, Number(e.target.value) || 1)) })}
+                style={{ ...styles.bareInput, width: 42 }} />
+              <span style={{ color: C.muted, fontSize: 12.5 }}>day(s)</span>
+            </div>
+          )}
+          {repeatMode === "monthly" && (
+            <div style={{ ...styles.fieldShell, marginTop: 10, width: "fit-content" }}>
+              <CalendarClock size={13} color={C.muted} />
+              <span style={{ color: C.muted, fontSize: 12.5 }}>Day</span>
+              <input type="number" min={1} max={31} value={task.recurrence?.monthDay || 1}
+                onChange={(e) => set({ recurrence: monthlyRule(Math.min(31, Math.max(1, Number(e.target.value) || 1))) })}
+                style={{ ...styles.bareInput, width: 42 }} />
+            </div>
+          )}
+          {task.recurrence && (
+            <div style={{ ...styles.fieldShell, marginTop: 10, width: "fit-content" }}>
+              <Clock size={13} color={C.muted} />
+              <input type="time" value={task.time || ""}
+                onChange={(e) => set({ time: e.target.value || null })} style={styles.bareInput} />
+            </div>
+          )}
+        </Field>
+
+        <Field label="List">
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {lists.map((l) => (
+              <Pill key={l.id} on={task.listId === l.id} color={l.color} onClick={() => set({ listId: l.id })}>
+                {l.name}
+              </Pill>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Priority">
+          <div style={{ display: "flex", gap: 6 }}>
+            {Object.entries(PRIORITY).map(([k, v]) => (
+              <Pill key={k} on={task.priority === k} color={v.color} onClick={() => set({ priority: k })}>
+                <span style={{
+                  display: "inline-block", width: 6, height: 6, borderRadius: 3,
+                  background: v.color, marginRight: 5,
+                }} />
+                {v.label}
+              </Pill>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Identity this builds">
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {PILLARS.map((p) => (
+              <Pill key={p.id} on={task.pillarId === p.id} color={p.color}
+                onClick={() => set({ pillarId: task.pillarId === p.id ? null : p.id })}>
+                <p.Icon size={11} style={{ verticalAlign: -2, marginRight: 4 }} />{p.name}
+              </Pill>
+            ))}
+          </div>
+        </Field>
+
+        <Field label={`Subtasks${(task.subtasks || []).length ? ` · ${task.subtasks.filter((s) => s.done).length}/${task.subtasks.length}` : ""}`}>
+          <div>
+            {(task.subtasks || []).map((s) => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
+                <Checkbox checked={s.done} onClick={() => toggleSub(s.id)} size={17} />
+                <span style={{
+                  flex: 1, color: s.done ? C.faint : C.text, fontSize: 13,
+                  textDecoration: s.done ? "line-through" : "none",
+                }}>{s.text}</span>
+                <button onClick={() => removeSub(s.id)} style={{
+                  background: "none", border: "none", cursor: "pointer", color: C.faint, padding: 2,
+                }}><X size={12} /></button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <input value={subText} onChange={(e) => setSubText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addSub()}
+                placeholder="Add a subtask…"
+                style={{ ...styles.input, flex: 1, fontSize: 12.5, padding: "9px 12px" }} />
+              <IconButton onClick={addSub} title="Add subtask"><Plus size={15} /></IconButton>
+            </div>
+          </div>
+        </Field>
+
+        <button onClick={() => setAdvanced((a) => !a)} style={styles.linkBtn}>
+          {advanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          Advanced — implementation intention, stacking, bundling
+        </button>
+
+        {advanced && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={styles.fieldShell}>
+              <MapPin size={13} color={C.muted} />
+              <input value={task.location || ""} onChange={(e) => set({ location: e.target.value || null })}
+                placeholder="Where will you do it?" style={{ ...styles.bareInput, flex: 1 }} />
+            </div>
+            <div style={styles.fieldShell}>
+              <Link2 size={13} color={C.muted} />
+              <input value={task.stackAfter || ""} onChange={(e) => set({ stackAfter: e.target.value || null })}
+                placeholder="Stack after… (e.g. brushing teeth)" style={{ ...styles.bareInput, flex: 1 }} />
+            </div>
+            <div style={styles.fieldShell}>
+              <Gift size={13} color={C.muted} />
+              <input value={task.bundle || ""} onChange={(e) => set({ bundle: e.target.value || null })}
+                placeholder="Bundle with something you enjoy" style={{ ...styles.bareInput, flex: 1 }} />
+            </div>
+            <div style={styles.fieldShell}>
+              <Zap size={13} color={C.muted} />
+              <input value={task.twoMin || ""} onChange={(e) => set({ twoMin: e.target.value || null })}
+                placeholder="2-minute version for hard days" style={{ ...styles.bareInput, flex: 1 }} />
+            </div>
+            {task.kind === "break" && (
+              <div style={styles.fieldShell}>
+                <Zap size={13} color={C.red} />
+                <input value={task.trigger || ""} onChange={(e) => set({ trigger: e.target.value || null })}
+                  placeholder="What usually triggers it?" style={{ ...styles.bareInput, flex: 1 }} />
+              </div>
+            )}
+          </div>
+        )}
+
+        <button onClick={() => { onDelete(task.id); onClose(); }} style={{
+          ...styles.ghostCta, height: 44, color: C.red, borderColor: alpha(C.red, 0.35), marginTop: 4,
+        }}>
+          <Trash2 size={14} /> Delete task
+        </button>
+      </div>
+    </Sheet>
+  );
+}

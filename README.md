@@ -61,10 +61,19 @@ key and run `./gradlew bundleRelease`.
 
 ## Project layout
 
-- `src/Momentum.jsx` — the app itself: the original habit/identity tracker, a
-  decorative absolutely-positioned 3D motion/sparkle layer, and a Google
-  Tasks-style ad-hoc task list (due dates, subtasks, notes, starring,
-  overdue/completed grouping) reachable from the list icon on "Today's plan"
+- `src/Momentum.jsx` — app shell: state, storage, routing, nav, FAB, undo toast
+- `src/theme.js` — design tokens (palette, type, radii), shared style objects,
+  and the CSS keyframes for the 3D motion/sparkle layer
+- `src/data/constants.js` — domain data: pillars, mantras, money playbook, moods
+- `src/lib/date.js` — date helpers and relative-date labels
+- `src/lib/tasks.js` — the task engine: one model for todos, habits-to-build and
+  habits-to-avoid, with recurrence rules, per-day completion, streaks, heatmap,
+  identity votes, grouping, sorting, search and manual reordering
+- `src/lib/migrate.js` — schema v1 → v2 migration (old weekday routine templates
+  collapse into recurring tasks; completions replay into the day log)
+- `src/components/` — UI primitives (Card, Sheet, SegmentedControl, ProgressRing,
+  Toast…), the task row, and the full task editor sheet
+- `src/views/` — Today, Tasks, Habits, Identity, Check-in, Journal, Money, Insights
 - `src/storageShim.js` — polyfills the `window.storage.get/set` API the app
   uses for persistence, backed by `localStorage`, so it works outside its
   original host environment
