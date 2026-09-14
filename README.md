@@ -61,8 +61,10 @@ key and run `./gradlew bundleRelease`.
 
 ## Project layout
 
-- `src/Momentum.jsx` — the app itself (untouched app logic + a decorative,
-  absolutely-positioned 3D motion/sparkle layer)
+- `src/Momentum.jsx` — the app itself: the original habit/identity tracker, a
+  decorative absolutely-positioned 3D motion/sparkle layer, and a Google
+  Tasks-style ad-hoc task list (due dates, subtasks, notes, starring,
+  overdue/completed grouping) reachable from the list icon on "Today's plan"
 - `src/storageShim.js` — polyfills the `window.storage.get/set` API the app
   uses for persistence, backed by `localStorage`, so it works outside its
   original host environment

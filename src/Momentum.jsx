@@ -8,7 +8,7 @@ import {
   Compass, PenLine, BookOpen, Wallet, TrendingUp, ListChecks, CalendarDays,
   Plus, Check, Trash2, ChevronLeft, ChevronDown, ChevronUp, RefreshCw, Crown, X, Clock,
   Ban, Fingerprint, Link2, MapPin, Zap, AlertTriangle, PartyPopper, Gift,
-  Gamepad2, HelpCircle, AlertCircle, Anchor, Star,
+  Gamepad2, HelpCircle, AlertCircle, Anchor, Star, ListTodo, StickyNote, CalendarClock,
 } from "lucide-react";
 
 // ---- The seven areas you track ----
@@ -246,10 +246,12 @@ const intentionSentence = (t) => {
   return null;
 };
 
-// Merge a weekday's build-routine template into a day's task list, preserving custom tasks + completion
+// Merge a weekday's build-routine template into a day's task list, preserving completion.
+// Ad-hoc "custom" tasks live in their own top-level list (see customTasks state) so they can
+// carry a due date independent of the day they were created on, the way Google Tasks works.
 function planTasks(date, routines, existingTasks) {
   const wk = weekdayKey(date);
-  const routineTasks = (routines[wk] || []).map((rt) => {
+  return (routines[wk] || []).map((rt) => {
     const match = existingTasks.find((t) => t.source === "routine" && t.routineId === rt.id);
     return {
       id: match ? match.id : `r-${rt.id}`, text: rt.text, done: match ? match.done : false,
@@ -258,8 +260,40 @@ function planTasks(date, routines, existingTasks) {
       twoMin: rt.twoMin || null, pillarId: rt.pillarId || null,
     };
   });
-  const customTasks = existingTasks.filter((t) => t.source === "custom");
-  return [...routineTasks, ...customTasks];
+}
+
+// ---- Ad-hoc tasks (the Google-Tasks-like list): due dates, subtasks, notes, starring ----
+const relativeDateLabel = (dateStr) => {
+  if (!dateStr) return null;
+  const today = todayStr();
+  const tomorrow = dstr(new Date(Date.now() + 86400000));
+  const yesterday = dstr(new Date(Date.now() - 86400000));
+  if (dateStr === today) return "Today";
+  if (dateStr === tomorrow) return "Tomorrow";
+  if (dateStr === yesterday) return "Yesterday";
+  return prettyDate(dateStr);
+};
+const subtaskProgress = (task) => {
+  const list = task.subtasks || [];
+  return { done: list.filter((s) => s.done).length, total: list.length };
+};
+function groupCustomTasks(customTasks) {
+  const today = todayStr();
+  const tomorrow = dstr(new Date(Date.now() + 86400000));
+  const groups = { overdue: [], today: [], tomorrow: [], upcoming: [], noDate: [], completed: [] };
+  customTasks.forEach((t) => {
+    if (t.done) { groups.completed.push(t); return; }
+    if (!t.dueDate) { groups.noDate.push(t); return; }
+    if (t.dueDate < today) groups.overdue.push(t);
+    else if (t.dueDate === today) groups.today.push(t);
+    else if (t.dueDate === tomorrow) groups.tomorrow.push(t);
+    else groups.upcoming.push(t);
+  });
+  const byDate = (a, b) => a.dueDate.localeCompare(b.dueDate);
+  groups.overdue.sort(byDate);
+  groups.upcoming.sort(byDate);
+  groups.completed.sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  return groups;
 }
 
 // Merge a weekday's break-habit template into a day's avoid-list
@@ -475,6 +509,7 @@ export default function Momentum() {
   const [transactions, setTransactions] = useState([]);
   const [monthlyIncome, setMonthlyIncome] = useState("");
   const [budgetSplit, setBudgetSplit] = useState({ needs: 50, wants: 30, savings: 20 });
+  const [customTasks, setCustomTasks] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -504,7 +539,6 @@ export default function Momentum() {
           setGoals(d.goals || []);
           setStrategies(d.strategies || []);
           setRoutines(d.routines || {});
-          setDayPlans(d.dayPlans || {});
           setBreakRoutines(d.breakRoutines || {});
           setBreakPlans(d.breakPlans || {});
           setIdentities(d.identities || {});
@@ -516,6 +550,32 @@ export default function Momentum() {
           setTransactions(d.transactions || []);
           setMonthlyIncome(d.monthlyIncome || "");
           setBudgetSplit(d.budgetSplit || { needs: 50, wants: 30, savings: 20 });
+
+          // One-time migration: older saves kept ad-hoc tasks nested inside each day's plan
+          // with no due date of their own. Lift them into the top-level customTasks list (each
+          // keeping the day it was created on as its due date) and strip them out of dayPlans.
+          let migratedCustom = d.customTasks;
+          const rawDayPlans = d.dayPlans || {};
+          if (!migratedCustom) {
+            migratedCustom = [];
+            Object.entries(rawDayPlans).forEach(([date, dp]) => {
+              (dp.tasks || []).forEach((t) => {
+                if (t.source === "custom") {
+                  migratedCustom.push({
+                    id: t.id, text: t.text, done: t.done, doneAt: t.done ? Date.now() : null,
+                    dueDate: date, time: null, notes: "", starred: false, subtasks: [],
+                    priority: t.priority || "med", createdAt: Date.now(),
+                  });
+                }
+              });
+            });
+          }
+          setCustomTasks(migratedCustom);
+          const cleanedDayPlans = {};
+          Object.entries(rawDayPlans).forEach(([date, dp]) => {
+            cleanedDayPlans[date] = { ...dp, tasks: (dp.tasks || []).filter((t) => t.source !== "custom") };
+          });
+          setDayPlans(cleanedDayPlans);
         }
       } catch (e) { /* first run */ }
       setLoaded(true);
@@ -528,12 +588,12 @@ export default function Momentum() {
       try {
         await window.storage.set("momentum:data", JSON.stringify({
           checkins, goals, strategies, routines, dayPlans, breakRoutines, breakPlans, identities, habitAudit,
-          journalEntries, moneyPrinciples, moneyIdeas, netWorth, transactions, monthlyIncome, budgetSplit,
+          journalEntries, moneyPrinciples, moneyIdeas, netWorth, transactions, monthlyIncome, budgetSplit, customTasks,
         }), false);
       } catch (e) { console.error("Could not save", e); }
     })();
   }, [checkins, goals, strategies, routines, dayPlans, breakRoutines, breakPlans, identities, habitAudit,
-      journalEntries, moneyPrinciples, moneyIdeas, netWorth, transactions, monthlyIncome, budgetSplit, loaded]);
+      journalEntries, moneyPrinciples, moneyIdeas, netWorth, transactions, monthlyIncome, budgetSplit, customTasks, loaded]);
 
   const sorted = useMemo(() => [...checkins].sort((a, b) => a.date.localeCompare(b.date)), [checkins]);
   const checkedInToday = checkins.some((c) => c.date === todayStr());
@@ -626,6 +686,12 @@ export default function Momentum() {
     });
   };
 
+  const addCustomTask = (task) => setCustomTasks((prev) => [...prev, task]);
+  const toggleCustomTask = (id) => setCustomTasks((prev) => prev.map((t) =>
+    t.id === id ? { ...t, done: !t.done, doneAt: !t.done ? Date.now() : null } : t));
+  const updateCustomTask = (id, patch) => setCustomTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t));
+  const removeCustomTask = (id) => setCustomTasks((prev) => prev.filter((t) => t.id !== id));
+
   if (!loaded) {
     return <div style={{ ...styles.app, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <span style={{ color: C.muted }}>Loading your map…</span></div>;
@@ -645,12 +711,17 @@ export default function Momentum() {
                 onMakePlan={makePlan} onUpdateTasks={updateTodayTasks} onUpdateBreakTasks={updateBreakTasks}
                 onCheckin={() => setView("checkin")} onOpenRoutine={() => setView("routine")}
                 onOpenBreak={() => setView("break")} onOpenIdentity={() => setView("identity")}
+                onOpenTasks={() => setView("tasks")}
                 yesterdayMissed={yesterdayMissed} tally={tally} heatmap={heatmap} routines={routines}
                 dayPlans={dayPlans} needsRest={needsRest}
+                customTasks={customTasks} onAddCustomTask={addCustomTask} onToggleCustomTask={toggleCustomTask}
+                onUpdateCustomTask={updateCustomTask} onRemoveCustomTask={removeCustomTask}
               />
             )}
             {view === "checkin" && <CheckinView existing={checkins.find((c) => c.date === todayStr())}
               onSave={saveCheckin} onBack={() => setView("home")} />}
+            {view === "tasks" && <AllTasksView customTasks={customTasks} onAdd={addCustomTask} onToggle={toggleCustomTask}
+              onUpdate={updateCustomTask} onRemove={removeCustomTask} onBack={() => setView("home")} />}
             {view === "routine" && <RoutineView routines={routines} setRoutines={setRoutines} onBack={() => setView("home")} />}
             {view === "break" && <BreakHabitsView breakRoutines={breakRoutines} setBreakRoutines={setBreakRoutines} onBack={() => setView("home")} />}
             {view === "identity" && <IdentityView identities={identities} setIdentities={setIdentities}
@@ -710,8 +781,9 @@ function summarize(entries) {
 // ---------------- HOME / THE MAP ----------------
 function HomeView({
   averages, overall, streak, breakStreak, checkedInToday, count, todayPlan, todayBreak,
-  onMakePlan, onUpdateTasks, onUpdateBreakTasks, onCheckin, onOpenRoutine, onOpenBreak, onOpenIdentity,
+  onMakePlan, onUpdateTasks, onUpdateBreakTasks, onCheckin, onOpenRoutine, onOpenBreak, onOpenIdentity, onOpenTasks,
   yesterdayMissed, tally, heatmap, routines, dayPlans, needsRest,
+  customTasks, onAddCustomTask, onToggleCustomTask, onUpdateCustomTask, onRemoveCustomTask,
 }) {
   const radarData = PILLARS.map((p) => ({ pillar: p.name.split("-")[0], value: +averages[p.id].toFixed(2) }));
   const hour = new Date().getHours();
@@ -722,15 +794,21 @@ function HomeView({
   const [filter, setFilter] = useState("all");
   const [text, setText] = useState("");
   const [prio, setPrio] = useState("med");
+  const [expandedId, setExpandedId] = useState(null);
+  const [showCompleted, setShowCompleted] = useState(false);
 
-  const shown = tasks
+  const todaysCustom = customTasks.filter((t) => t.dueDate === todayStr());
+  const combined = [...tasks, ...todaysCustom.map((t) => ({ ...t, source: "custom" }))];
+  const shown = combined
     .filter((t) => filter === "all" ? true : t.source === filter)
     .sort((a, b) => (a.time && b.time) ? a.time.localeCompare(b.time) : a.time ? -1 : b.time ? 1 : 0);
-  const doneCount = tasks.filter((t) => t.done).length;
-  const pct = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
-  const routineTasks = tasks.filter((t) => t.source === "routine");
+  const shownActive = shown.filter((t) => !t.done);
+  const shownCompleted = shown.filter((t) => t.done);
+  const doneCount = combined.filter((t) => t.done).length;
+  const pct = combined.length ? Math.round((doneCount / combined.length) * 100) : 0;
+  const routineTasks = tasks;
   const routineDone = routineTasks.filter((t) => t.done).length;
-  const fullyDone = tasks.length > 0 && pct === 100;
+  const fullyDone = combined.length > 0 && pct === 100;
 
   const breakTasks = todayBreak?.tasks || [];
   const breakDone = breakTasks.filter((t) => t.done).length;
@@ -740,13 +818,23 @@ function HomeView({
 
   const addTask = () => {
     if (!text.trim()) return;
-    onUpdateTasks((prev) => [...prev, { id: `c-${Date.now()}`, text: text.trim(), done: false, source: "custom", priority: prio }]);
+    onAddCustomTask({
+      id: `c-${Date.now()}`, text: text.trim(), done: false, doneAt: null, dueDate: todayStr(), time: null,
+      notes: "", starred: false, subtasks: [], priority: prio, createdAt: Date.now(),
+    });
     setText("");
   };
   const toggleTask = (id) => onUpdateTasks((prev) => prev.map((t) => t.id === id ? { ...t, done: !t.done } : t));
   const removeTask = (id) => onUpdateTasks((prev) => prev.filter((t) => t.id !== id));
   const toggleBreak = (id) => onUpdateBreakTasks((prev) => prev.map((t) => t.id === id ? { ...t, done: !t.done } : t));
   const rerollMantra = () => onMakePlan();
+  const renderTaskRow = (t) => t.source === "custom" ? (
+    <CustomTaskRow key={t.id} task={t} expanded={expandedId === t.id}
+      onToggleExpand={() => setExpandedId((e) => e === t.id ? null : t.id)}
+      onToggle={() => onToggleCustomTask(t.id)} onUpdate={onUpdateCustomTask} onRemove={() => onRemoveCustomTask(t.id)} />
+  ) : (
+    <RoutineTaskRow key={t.id} t={t} dayPlans={dayPlans} onToggle={() => toggleTask(t.id)} onRemove={() => removeTask(t.id)} />
+  );
 
   const weeks = [];
   for (let i = 0; i < heatmap.length; i += 7) weeks.push(heatmap.slice(i, i + 7));
@@ -837,6 +925,7 @@ function HomeView({
           <button onClick={onOpenIdentity} style={styles.iconBtn} title="Identity"><Fingerprint size={15} /></button>
           <button onClick={onOpenBreak} style={styles.iconBtn} title="Habits to break"><Ban size={15} /></button>
           <button onClick={onOpenRoutine} style={styles.iconBtn} title="Routine"><CalendarDays size={15} /></button>
+          <button onClick={onOpenTasks} style={styles.iconBtn} title="All tasks"><ListTodo size={15} /></button>
         </div>
       </div>
 
@@ -846,10 +935,10 @@ function HomeView({
             <PartyPopper size={15} color={C.gold} /> Full day complete — nice work.
           </div>
         )}
-        {tasks.length > 0 && (
+        {combined.length > 0 && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <span style={{ color: C.muted, fontSize: 11.5 }}>{doneCount} of {tasks.length} done</span>
+              <span style={{ color: C.muted, fontSize: 11.5 }}>{doneCount} of {combined.length} done</span>
               <span style={{ color: C.gold, fontSize: 12, fontWeight: 600 }}>{pct}%</span>
             </div>
             <div style={{ ...styles.track, height: 6, marginBottom: 14 }}>
@@ -865,45 +954,28 @@ function HomeView({
           </>
         )}
 
-        {shown.length === 0 && tasks.length === 0 && (
+        {shown.length === 0 && combined.length === 0 && (
           <p style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "10px 4px 16px", lineHeight: 1.55 }}>
             Your routine loads here on its own each day. Nothing set for today yet — add a task below, or set a routine.
           </p>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {shown.map((t) => {
-            const overdue = isOverdue(t, todayStr());
-            const wStreak = t.source === "routine" ? weeklyHabitStreak(t.routineId, weekdayKey(todayStr()), dayPlans) : 0;
-            return (
-              <div key={t.id} style={{ ...styles.taskRow, ...(overdue ? styles.taskRowOverdue : {}) }}>
-                <button onClick={() => toggleTask(t.id)} style={{ width: 22, height: 22, borderRadius: 7, flexShrink: 0, cursor: "pointer",
-                  border: `1.6px solid ${t.done ? C.gold : overdue ? C.red : C.faint}`, background: t.done ? C.gold : "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {t.done && <Check size={13} color="#14131f" strokeWidth={3} />}
-                </button>
-                <span style={{ width: 6, height: 6, borderRadius: 3, background: PRIORITY[t.priority || "med"].color, flexShrink: 0 }} />
-                <span style={{ flex: 1, color: t.done ? C.faint : C.text, fontSize: 13.5, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
-                {wStreak > 0 && (
-                  <span style={styles.miniStreak} title="Consecutive weeks completed"><Flame size={9} color={C.gold} /> {wStreak}</span>
-                )}
-                {t.twoMin && !t.done && (
-                  <button onClick={() => toggleTask(t.id)} style={styles.twoMinTag} title={`2-min version: ${t.twoMin}`}>
-                    <Zap size={10} /> 2-min
-                  </button>
-                )}
-                {t.time && (
-                  <span style={{ ...styles.timeTag, ...(overdue ? { color: C.red, background: C.red + "22" } : {}) }}>
-                    <Clock size={10} /> {overdue ? "Overdue" : formatTime12(t.time)}
-                  </span>
-                )}
-                {t.source === "routine" && <span style={styles.routineTag}>Routine</span>}
-                <button onClick={() => removeTask(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.faint, padding: 2, flexShrink: 0 }}>
-                  <X size={14} /></button>
-              </div>
-            );
-          })}
+          {shownActive.map(renderTaskRow)}
         </div>
+
+        {shownCompleted.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <button onClick={() => setShowCompleted((s) => !s)} style={styles.advToggle}>
+              {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />} Completed ({shownCompleted.length})
+            </button>
+            {showCompleted && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                {shownCompleted.map(renderTaskRow)}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
           <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()}
@@ -1008,6 +1080,239 @@ function Stat({ label, value, sub, flame, delay = 0 }) {
         <span style={{ color: C.faint, fontSize: 11 }}>{sub}</span>
       </div>
       <p style={{ color: C.muted, fontSize: 10.5, marginTop: 2, letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</p>
+    </div>
+  );
+}
+
+function RoutineTaskRow({ t, dayPlans, onToggle, onRemove }) {
+  const overdue = isOverdue(t, todayStr());
+  const wStreak = weeklyHabitStreak(t.routineId, weekdayKey(todayStr()), dayPlans);
+  return (
+    <div style={{ ...styles.taskRow, ...(overdue ? styles.taskRowOverdue : {}) }}>
+      <button onClick={onToggle} style={{ width: 22, height: 22, borderRadius: 7, flexShrink: 0, cursor: "pointer",
+        border: `1.6px solid ${t.done ? C.gold : overdue ? C.red : C.faint}`, background: t.done ? C.gold : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {t.done && <Check size={13} color="#14131f" strokeWidth={3} />}
+      </button>
+      <span style={{ width: 6, height: 6, borderRadius: 3, background: PRIORITY[t.priority || "med"].color, flexShrink: 0 }} />
+      <span style={{ flex: 1, color: t.done ? C.faint : C.text, fontSize: 13.5, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
+      {wStreak > 0 && (
+        <span style={styles.miniStreak} title="Consecutive weeks completed"><Flame size={9} color={C.gold} /> {wStreak}</span>
+      )}
+      {t.twoMin && !t.done && (
+        <button onClick={onToggle} style={styles.twoMinTag} title={`2-min version: ${t.twoMin}`}>
+          <Zap size={10} /> 2-min
+        </button>
+      )}
+      {t.time && (
+        <span style={{ ...styles.timeTag, ...(overdue ? { color: C.red, background: C.red + "22" } : {}) }}>
+          <Clock size={10} /> {overdue ? "Overdue" : formatTime12(t.time)}
+        </span>
+      )}
+      <span style={styles.routineTag}>Routine</span>
+      <button onClick={onRemove} style={{ background: "none", border: "none", cursor: "pointer", color: C.faint, padding: 2, flexShrink: 0 }}>
+        <X size={14} /></button>
+    </div>
+  );
+}
+
+// A single ad-hoc "Google Tasks"-style task: due date, time, notes, subtasks, starring — all
+// optional, all editable inline by expanding the row. Used on the Home "Today's plan" card and
+// in the standalone AllTasksView.
+function CustomTaskRow({ task, expanded, onToggleExpand, onToggle, onUpdate, onRemove }) {
+  const [subText, setSubText] = useState("");
+  const overdue = task.dueDate && task.dueDate < todayStr() && !task.done;
+  const { done: subDone, total: subTotal } = subtaskProgress(task);
+  const dateLabel = relativeDateLabel(task.dueDate);
+
+  const addSub = () => {
+    if (!subText.trim()) return;
+    onUpdate(task.id, { subtasks: [...(task.subtasks || []), { id: `s-${Date.now()}`, text: subText.trim(), done: false }] });
+    setSubText("");
+  };
+  const toggleSub = (sid) => onUpdate(task.id, {
+    subtasks: (task.subtasks || []).map((s) => s.id === sid ? { ...s, done: !s.done } : s),
+  });
+  const removeSub = (sid) => onUpdate(task.id, { subtasks: (task.subtasks || []).filter((s) => s.id !== sid) });
+
+  return (
+    <div style={{ ...styles.taskRow, alignItems: "flex-start", ...(overdue ? styles.taskRowOverdue : {}) }}>
+      <button onClick={onToggle} style={{ width: 22, height: 22, borderRadius: 7, flexShrink: 0, cursor: "pointer", marginTop: 1,
+        border: `1.6px solid ${task.done ? C.gold : overdue ? C.red : C.faint}`, background: task.done ? C.gold : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {task.done && <Check size={13} color="#14131f" strokeWidth={3} />}
+      </button>
+      <span style={{ width: 6, height: 6, borderRadius: 3, background: PRIORITY[task.priority || "med"].color, flexShrink: 0, marginTop: 8 }} />
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <button onClick={onToggleExpand} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer",
+          textAlign: "left", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ flex: 1, color: task.done ? C.faint : C.text, fontSize: 13.5, textDecoration: task.done ? "line-through" : "none" }}>
+            {task.text}
+          </span>
+          {expanded ? <ChevronUp size={13} color={C.faint} /> : <ChevronDown size={13} color={C.faint} />}
+        </button>
+
+        {!expanded && (dateLabel || subTotal > 0 || task.notes) && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            {dateLabel && (
+              <span style={{ ...styles.timeTag, ...(overdue ? { color: C.red, background: C.red + "22" } : {}) }}>
+                <CalendarClock size={10} /> {overdue ? `Overdue · ${dateLabel}` : dateLabel}{task.time ? ` · ${formatTime12(task.time)}` : ""}
+              </span>
+            )}
+            {subTotal > 0 && <span style={styles.miniTag}><ListTodo size={9} /> {subDone}/{subTotal}</span>}
+            {task.notes && <span style={styles.miniTag}><StickyNote size={9} /> Note</span>}
+          </div>
+        )}
+
+        {expanded && (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12, padding: "6px 10px" }}>
+                <CalendarClock size={13} color={C.muted} />
+                <input type="date" value={task.dueDate || ""} onChange={(e) => onUpdate(task.id, { dueDate: e.target.value || null })}
+                  style={{ background: "none", border: "none", outline: "none", color: C.text, fontSize: 12.5, fontFamily: "Inter, sans-serif", colorScheme: "dark" }} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12, padding: "6px 10px" }}>
+                <Clock size={13} color={C.muted} />
+                <input type="time" value={task.time || ""} onChange={(e) => onUpdate(task.id, { time: e.target.value || null })}
+                  style={{ background: "none", border: "none", outline: "none", color: C.text, fontSize: 12.5, fontFamily: "Inter, sans-serif", colorScheme: "dark" }} />
+              </div>
+            </div>
+
+            <textarea value={task.notes || ""} onChange={(e) => onUpdate(task.id, { notes: e.target.value })} rows={2}
+              placeholder="Add details…" style={{ ...styles.input, marginTop: 0, resize: "none", fontSize: 12.5, lineHeight: 1.5 }} />
+
+            <div>
+              {(task.subtasks || []).map((s) => (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+                  <button onClick={() => toggleSub(s.id)} style={{ width: 17, height: 17, borderRadius: 5, flexShrink: 0, cursor: "pointer",
+                    border: `1.4px solid ${s.done ? C.gold : C.faint}`, background: s.done ? C.gold : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {s.done && <Check size={10} color="#14131f" strokeWidth={3} />}
+                  </button>
+                  <span style={{ flex: 1, color: s.done ? C.faint : C.text, fontSize: 12.5, textDecoration: s.done ? "line-through" : "none" }}>{s.text}</span>
+                  <button onClick={() => removeSub(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.faint, padding: 2 }}>
+                    <X size={12} /></button>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                <input value={subText} onChange={(e) => setSubText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSub()}
+                  placeholder="Add a subtask…" style={{ ...styles.input, marginTop: 0, flex: 1, fontSize: 12, padding: "8px 12px" }} />
+                <button onClick={addSub} style={{ ...styles.iconBtn, width: 36, height: 36 }}><Plus size={15} /></button>
+              </div>
+            </div>
+
+            <button onClick={onRemove} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none",
+              color: C.red, cursor: "pointer", fontSize: 11.5, padding: 0, alignSelf: "flex-start" }}>
+              <Trash2 size={12} /> Delete task
+            </button>
+          </div>
+        )}
+      </div>
+
+      <button onClick={() => onUpdate(task.id, { starred: !task.starred })}
+        style={{ background: "none", border: "none", cursor: "pointer", padding: 2, flexShrink: 0, marginTop: 1 }}>
+        <Star size={14} color={task.starred ? C.gold : C.faint} fill={task.starred ? C.gold : "none"} />
+      </button>
+    </div>
+  );
+}
+
+// ---------------- ALL TASKS — Google-Tasks-style due-date list for ad-hoc tasks ----------------
+function AllTasksView({ customTasks, onAdd, onToggle, onUpdate, onRemove, onBack }) {
+  const [text, setText] = useState("");
+  const [dueDate, setDueDate] = useState(todayStr());
+  const [prio, setPrio] = useState("med");
+  const [expandedId, setExpandedId] = useState(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const groups = useMemo(() => groupCustomTasks(customTasks), [customTasks]);
+  const totalOpen = groups.overdue.length + groups.today.length + groups.tomorrow.length + groups.upcoming.length + groups.noDate.length;
+
+  const add = () => {
+    if (!text.trim()) return;
+    onAdd({
+      id: `c-${Date.now()}`, text: text.trim(), done: false, doneAt: null, dueDate: dueDate || null, time: null,
+      notes: "", starred: false, subtasks: [], priority: prio, createdAt: Date.now(),
+    });
+    setText("");
+  };
+
+  const row = (t) => (
+    <CustomTaskRow key={t.id} task={t} expanded={expandedId === t.id}
+      onToggleExpand={() => setExpandedId((e) => e === t.id ? null : t.id)}
+      onToggle={() => onToggle(t.id)} onUpdate={onUpdate} onRemove={() => onRemove(t.id)} />
+  );
+
+  const section = (label, list, color) => list.length > 0 && (
+    <div key={label}>
+      <p style={{ ...styles.sectionLabel, color: color || C.muted, marginTop: 22 }}>{label} · {list.length}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{list.map(row)}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "22px 20px 16px" }}>
+      <button onClick={onBack} style={styles.back}><ChevronLeft size={18} /> Map</button>
+      <h1 style={styles.h1}>Tasks</h1>
+      <p style={{ color: C.muted, fontSize: 13, marginTop: -4, marginBottom: 18, lineHeight: 1.5 }}>
+        Everything you'd put in Google Tasks lives here — due dates, subtasks, notes, starring.
+        Give one a due date and it shows up on that day's plan too. Your habit routine stays
+        separate, over on the map.
+      </p>
+
+      <div style={styles.softCard}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder="Add a task…" style={{ ...styles.input, marginTop: 0, flex: 1, fontSize: 13 }} />
+          <button onClick={add} style={styles.addBtn}><Plus size={18} /></button>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12, padding: "6px 10px" }}>
+            <CalendarClock size={13} color={C.muted} />
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+              style={{ background: "none", border: "none", outline: "none", color: C.text, fontSize: 12.5, fontFamily: "Inter, sans-serif", colorScheme: "dark" }} />
+            {dueDate && <button onClick={() => setDueDate("")} style={{ background: "none", border: "none", color: C.faint, cursor: "pointer", padding: 0 }}>
+              <X size={12} /></button>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          {Object.entries(PRIORITY).map(([k, v]) => {
+            const on = prio === k;
+            return <button key={k} onClick={() => setPrio(k)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
+              borderRadius: 12, cursor: "pointer", fontSize: 11, border: `1px solid ${on ? v.color : C.border}`,
+              background: on ? v.color + "22" : "transparent", color: on ? v.color : C.muted }}>
+              <span style={{ width: 6, height: 6, borderRadius: 3, background: v.color }} /> {v.label}
+            </button>;
+          })}
+        </div>
+      </div>
+
+      {totalOpen === 0 && groups.completed.length === 0 && (
+        <p style={{ color: C.muted, fontSize: 13.5, textAlign: "center", padding: "26px 20px", lineHeight: 1.55 }}>
+          Nothing here yet. Add a task above — give it a due date and it'll show up on that day's plan too.
+        </p>
+      )}
+
+      {section("Overdue", groups.overdue, C.red)}
+      {section("Today", groups.today)}
+      {section("Tomorrow", groups.tomorrow)}
+      {section("Upcoming", groups.upcoming)}
+      {section("No date", groups.noDate)}
+
+      {groups.completed.length > 0 && (
+        <div>
+          <button onClick={() => setShowCompleted((s) => !s)} style={{ ...styles.advToggle, marginTop: 22 }}>
+            {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />} Completed ({groups.completed.length})
+          </button>
+          {showCompleted && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+              {groups.completed.map(row)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
