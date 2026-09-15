@@ -22,6 +22,7 @@ export const emptyState = () => ({
   monthlyIncome: "",
   budgetSplit: { needs: 50, wants: 30, savings: 20 },
   mantraIdxByDate: {},
+  journalDraft: null,
   freezes: {},
   milestones: [],
   reviews: [],
@@ -40,7 +41,9 @@ function migrateV1(d) {
   state.strategies = (d.strategies || []).map((s) => ({ notes: "", subtasks: [], starred: false, targetDate: null, ...s }));
   state.identities = d.identities || {};
   state.habitAudit = d.habitAudit || [];
-  state.journalEntries = (d.journalEntries || []).map((e) => ({ moods: [], ...e }));
+  state.journalEntries = (d.journalEntries || []).map((e) => ({
+    moods: [], kind: "free", items: [], prompt: null, pillarId: null, favorite: false, ...e,
+  }));
   state.moneyPrinciples = d.moneyPrinciples || {};
   state.moneyIdeas = d.moneyIdeas || {};
   state.netWorth = d.netWorth || { assets: "", liabilities: "" };

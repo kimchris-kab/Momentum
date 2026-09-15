@@ -249,6 +249,33 @@ export const DAY_PRESETS = [
   { id: "weekly", label: "Once a week", days: ["sun"] },
 ];
 
+// Prompts for the days the blank box wins. Deliberately concrete and a little pointed —
+// "how was your day" produces nothing worth re-reading.
+export const JOURNAL_PROMPTS = [
+  "What's one thing you handled better today than you would have a year ago?",
+  "What drained you today, and was it worth it?",
+  "Who deserves your thanks that you haven't told?",
+  "What are you avoiding, and what's the smallest version of facing it?",
+  "What went right today that you'd otherwise forget by tomorrow?",
+  "Where did you act like the person you're trying to become?",
+  "What would you tell a friend in exactly your situation?",
+  "What's taking up space in your head that you can't control?",
+  "What did today teach you about how you actually work?",
+  "If today repeated, what one thing would you change?",
+  "What are you pretending not to know?",
+  "Where did you show patience you didn't feel?",
+  "What's the honest reason you didn't do the thing you planned?",
+  "What's worth protecting about how you spent today?",
+  "What would make tomorrow feel like a win by ten in the morning?",
+  "What did you give today that cost you something?",
+  "Which part of today would you happily live again?",
+  "What's a belief about yourself that's overdue for retirement?",
+  "What are you quietly proud of right now?",
+  "What did you say yes to that you should have declined?",
+  "Where is your energy going that nobody is asking for?",
+  "What's one thing you know now that you'd have found useful a month ago?",
+];
+
 export const JOURNAL_MOODS = [
   { id: "grateful",  label: "Grateful",  emoji: "🙏" },
   { id: "proud",     label: "Proud",     emoji: "💪" },

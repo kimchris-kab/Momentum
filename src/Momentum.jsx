@@ -15,6 +15,7 @@ import { notificationPermission, scheduleReminders } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx";
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
+import EntrySheet from "./components/EntrySheet.jsx";
 import Celebration from "./components/Celebration.jsx";
 import ReviewView from "./views/ReviewView.jsx";
 import TodayView from "./views/TodayView.jsx";
@@ -42,6 +43,7 @@ export default function Momentum() {
   const [editing, setEditing] = useState(null);
   const [ritual, setRitual] = useState(null);
   const [celebration, setCelebration] = useState(null);
+  const [editingEntry, setEditingEntry] = useState(null);
   const { toast, show, dismiss, act } = useToast();
 
   useEffect(() => {
@@ -233,6 +235,25 @@ export default function Momentum() {
       : "Review saved");
   }, [show]);
 
+  // ---- Journal ----
+  const addEntry = useCallback((entry) => setState((s) => ({
+    ...s, journalEntries: [...s.journalEntries, entry], journalDraft: null,
+  })), []);
+
+  const updateEntry = useCallback((id, patchObj) => setState((s) => ({
+    ...s,
+    journalEntries: s.journalEntries.map((e) => (e.id === id ? { ...e, ...patchObj, updatedAt: Date.now() } : e)),
+  })), []);
+
+  const removeEntry = useCallback((id) => setState((s) => {
+    const victim = s.journalEntries.find((e) => e.id === id);
+    if (victim) {
+      show("Entry deleted", "Undo", () =>
+        setState((cur) => ({ ...cur, journalEntries: [...cur.journalEntries, victim] })));
+    }
+    return { ...s, journalEntries: s.journalEntries.filter((e) => e.id !== id) };
+  }), [show]);
+
   // ---- Money records ----
   const saveTx = useCallback((tx) => setState((s) => {
     if (!tx.id) return { ...s, transactions: [...s.transactions, { ...tx, id: Date.now(), createdAt: Date.now() }] };
@@ -397,8 +418,11 @@ export default function Momentum() {
             {view === "journal" && (
               <JournalView
                 state={state}
-                onAddEntry={(e) => patch({ journalEntries: [...state.journalEntries, e] })}
-                onRemoveEntry={(id) => patch({ journalEntries: state.journalEntries.filter((x) => x.id !== id) })}
+                onAddEntry={addEntry}
+                onUpdateEntry={updateEntry}
+                onRemoveEntry={removeEntry}
+                onOpenEntry={(e) => setEditingEntry(e)}
+                onSaveDraft={(d) => patch({ journalDraft: d })}
                 onCheckin={() => setView("checkin")}
               />
             )}
@@ -462,6 +486,14 @@ export default function Momentum() {
             if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr(), { minimal });
             setRitual(null);
           }}
+        />
+
+        <EntrySheet
+          open={!!editingEntry} entry={editingEntry}
+          onChange={setEditingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSave={() => { updateEntry(editingEntry.id, editingEntry); setEditingEntry(null); }}
+          onDelete={() => { removeEntry(editingEntry.id); setEditingEntry(null); }}
         />
 
         <Celebration
