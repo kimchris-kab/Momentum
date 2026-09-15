@@ -1,181 +1,170 @@
 import React, { useMemo, useState } from "react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ReferenceLine,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Check, Flame, Plus, Target, Trash2, TrendingUp } from "lucide-react";
+import {
+  ArrowDownRight, ArrowRight, ArrowUpRight, Ban, Flame, Lightbulb, Minus, Plus, Snowflake,
+  Target, Trash2, TrendingUp, Trophy,
+} from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, P_BY_ID } from "../data/constants.js";
-import { addDays, parseD, prettyDate, todayStr } from "../lib/date.js";
-import { dayStats, isDone, tasksForDate } from "../lib/tasks.js";
+import { addDays, prettyDate, todayStr } from "../lib/date.js";
+import { dayStats, isDone } from "../lib/tasks.js";
+import {
+  SPANS, balanceOf, blockerImpact, buildFindings, checkinsIn, delta, eachDay, energizerImpact,
+  habitMoodLink, habitTrends, metricsFor, moodCounts, narrative, periodRange, pillarMovement,
+  weekdayBalance, weekdayPattern,
+} from "../lib/insights.js";
 import {
   Card, Checkbox, EmptyState, Pill, ProgressBar, SegmentedControl, SectionLabel,
 } from "../components/ui.jsx";
 
-function summarize(entries) {
-  const perPillar = {};
-  PILLARS.forEach((p) => {
-    const vals = entries.map((c) => c.scores[p.id]).filter((v) => typeof v === "number");
-    if (vals.length) perPillar[p.id] = vals.reduce((a, b) => a + b, 0) / vals.length;
-  });
-  const ids = Object.keys(perPillar);
-  const balance = ids.length ? ids.reduce((a, id) => a + perPillar[id], 0) / ids.length : 0;
-  let best = null, focus = null;
-  ids.forEach((id) => {
-    if (best === null || perPillar[id] > perPillar[best]) best = id;
-    if (focus === null || perPillar[id] < perPillar[focus]) focus = id;
-  });
-  return { perPillar, balance, best, focus, deeds: entries.filter((c) => c.deed).length, entries: entries.length };
-}
+const tooltipStyle = {
+  background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 12,
+};
 
 export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, onRemoveGoal }) {
-  const { checkins, goals, tasks, dayLog } = state;
-  const [span, setSpan] = useState("week");
+  const [span, setSpan] = useState("month");
+  const [tab, setTab] = useState("overview");
   const [pid, setPid] = useState("overall");
   const [gpid, setGpid] = useState(PILLARS[0].id);
   const [gtext, setGtext] = useState("");
 
-  const sorted = useMemo(() => [...checkins].sort((a, b) => a.date.localeCompare(b.date)), [checkins]);
-  const days = span === "week" ? 7 : 30;
+  const range = useMemo(() => periodRange(state, span), [state, span]);
+  const cur = useMemo(() => metricsFor(state, range.from, range.to), [state, range]);
+  const prev = useMemo(() => metricsFor(state, range.prevFrom, range.prevTo), [state, range]);
+  const findings = useMemo(() => buildFindings(state, range), [state, range]);
+  const pillars = useMemo(
+    () => pillarMovement(state.checkins, range.from, range.to, range.prevFrom, range.prevTo),
+    [state.checkins, range]);
+  const weekdays = useMemo(
+    () => weekdayPattern(state.tasks, state.dayLog, range.from, range.to),
+    [state.tasks, state.dayLog, range]);
+  const habits = useMemo(
+    () => habitTrends(state, range.from, range.to, range.prevFrom, range.prevTo),
+    [state, range]);
 
-  const period = useMemo(() => {
-    const cut = addDays(todayStr(), -(days - 1));
-    return summarize(sorted.filter((c) => c.date >= cut));
-  }, [sorted, days]);
-
-  const trend = useMemo(() => sorted.map((c) => {
-    const row = { date: prettyDate(c.date) };
-    if (pid === "overall") {
-      const vals = PILLARS.map((p) => c.scores[p.id]).filter((v) => typeof v === "number");
-      row.value = vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : null;
-    } else row.value = c.scores[pid] ?? null;
-    return row;
-  }), [sorted, pid]);
-
-  // Habit consistency over the same window
-  const consistency = useMemo(() => {
-    const out = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = addDays(todayStr(), -i);
-      const s = dayStats(tasks, d, dayLog, "build");
-      out.push({ date: prettyDate(d), pct: s.ratio === null ? null : Math.round(s.ratio * 100) });
-    }
-    return out;
-  }, [tasks, dayLog, days]);
-
-  const completedInWindow = useMemo(() => {
-    let done = 0, scheduled = 0;
-    for (let i = days - 1; i >= 0; i--) {
-      const d = addDays(todayStr(), -i);
-      const s = dayStats(tasks, d, dayLog, "build");
-      done += s.done;
-      scheduled += s.total;
-    }
-    return { done, scheduled, pct: scheduled ? Math.round((done / scheduled) * 100) : 0 };
-  }, [tasks, dayLog, days]);
-
-  // Per-habit reliability, best first
-  const habitBreakdown = useMemo(() => {
-    const habits = tasks.filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt);
-    return habits.map((h) => {
-      let done = 0, scheduled = 0;
-      for (let i = days - 1; i >= 0; i--) {
-        const d = addDays(todayStr(), -i);
-        if (!tasksForDate([h], d, "build").length) continue;
-        scheduled++;
-        if (isDone(h, d, dayLog)) done++;
-      }
-      return { id: h.id, text: h.text, done, scheduled, pct: scheduled ? Math.round((done / scheduled) * 100) : null };
-    }).filter((h) => h.scheduled > 0).sort((a, b) => b.pct - a.pct);
-  }, [tasks, dayLog, days]);
-
-  const pillarBars = useMemo(() => PILLARS.map((p) => ({
-    name: p.name.split("-")[0],
-    value: +(period.perPillar[p.id] || 0).toFixed(2),
-    color: p.color,
-  })), [period]);
-
-  const active = pid === "overall" ? { name: "Balance", color: C.gold } : P_BY_ID[pid];
-
-  const addGoal = () => {
-    if (!gtext.trim()) return;
-    onAddGoal({
-      id: Date.now(), pillar: gpid, text: gtext.trim(), done: false,
-      notes: "", subtasks: [], starred: false,
-    });
-    setGtext("");
-  };
+  const hasAnything = cur.logged > 0 || cur.habitScheduled > 0 || cur.tasksDone > 0;
 
   return (
     <div style={styles.page}>
       <p style={styles.eyebrow}>Look back</p>
       <h1 style={styles.h1}>Insights</h1>
 
-      <SegmentedControl value={span} onChange={setSpan} style={{ marginBottom: 14 }}
-        options={[{ id: "week", label: "This week" }, { id: "month", label: "This month" }]} />
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto" }}>
+        {SPANS.map((s) => (
+          <Pill key={s.id} on={span === s.id} onClick={() => setSpan(s.id)}>{s.label}</Pill>
+        ))}
+      </div>
 
+      <SegmentedControl
+        value={tab} onChange={setTab} style={{ marginBottom: 16 }}
+        options={[
+          { id: "overview", label: "Overview" },
+          { id: "habits", label: "Habits" },
+          { id: "patterns", label: "Patterns" },
+        ]}
+      />
+
+      {!hasAnything ? (
+        <EmptyState
+          Icon={TrendingUp} title="Nothing to analyse yet"
+          hint="Check in, finish a habit or clear a task — this fills in with real patterns, not just counts."
+        />
+      ) : tab === "overview" ? (
+        <Overview state={state} cur={cur} prev={prev} range={range} pillars={pillars}
+          streak={streak} pid={pid} setPid={setPid}
+          gpid={gpid} setGpid={setGpid} gtext={gtext} setGtext={setGtext}
+          onAddGoal={onAddGoal} onUpdateGoal={onUpdateGoal} onRemoveGoal={onRemoveGoal} />
+      ) : tab === "habits" ? (
+        <Habits state={state} cur={cur} prev={prev} range={range} weekdays={weekdays} habits={habits} />
+      ) : (
+        <Patterns state={state} range={range} findings={findings} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Overview ---------------- */
+function Overview({
+  state, cur, prev, range, pillars, streak, pid, setPid,
+  gpid, setGpid, gtext, setGtext, onAddGoal, onUpdateGoal, onRemoveGoal,
+}) {
+  const sorted = useMemo(
+    () => [...state.checkins].sort((a, b) => a.date.localeCompare(b.date)), [state.checkins]);
+
+  const trend = useMemo(() => checkinsIn(sorted, range.from, range.to).map((c) => ({
+    date: prettyDate(c.date),
+    value: pid === "overall" ? round(balanceOf(c)) : (c.scores?.[pid] ?? null),
+  })), [sorted, range, pid]);
+
+  const active = pid === "overall" ? { name: "Balance", color: C.gold } : P_BY_ID[pid];
+  const addGoal = () => {
+    if (!gtext.trim()) return;
+    onAddGoal({ id: Date.now(), pillar: gpid, text: gtext.trim(), done: false, notes: "", subtasks: [], starred: false });
+    setGtext("");
+  };
+
+  return (
+    <>
       <Card flip style={styles.cardTall}>
-        {period.entries === 0 && completedInWindow.scheduled === 0 ? (
-          <EmptyState Icon={TrendingUp} title="Nothing to summarize yet"
-            hint="Check in and complete a few habits — your patterns fill in here." />
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Tile label="Balance" value={period.balance ? period.balance.toFixed(1) : "—"} sub="/ 5" />
-              <Tile label="Logged" value={period.entries} sub={`/ ${days}`} />
-              <Tile label="Habits" value={`${completedInWindow.pct}%`} sub="hit" />
-              <Tile label="Streak" value={streak} sub="d" />
-            </div>
-            {period.best && (
-              <p style={{
-                color: C.text, fontSize: 13.5, lineHeight: 1.65, marginTop: 16, marginBottom: 0,
-                paddingTop: 14, borderTop: `1px solid ${C.border}`,
-              }}>
-                Your strongest area was <b style={{ color: P_BY_ID[period.best].color }}>{P_BY_ID[period.best].name}</b>.
-                {period.focus && period.focus !== period.best && (
-                  <> The one asking for attention is <b style={{ color: P_BY_ID[period.focus].color }}>
-                    {P_BY_ID[period.focus].name}</b> — a small step there would even out your map.</>
-                )}
-              </p>
-            )}
-          </>
+        <p style={{ color: C.text, fontSize: 14, lineHeight: 1.65, margin: 0, fontFamily: F.display }}>
+          {narrative(cur, prev, range)}
+        </p>
+      </Card>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+        <Metric label="Balance" value={cur.balance ?? "—"} sub="/ 5" change={delta(cur.balance, prev.balance)} />
+        <Metric label="Habits" value={cur.habitPct === null ? "—" : `${cur.habitPct}%`}
+          change={delta(cur.habitPct, prev.habitPct)} />
+        <Metric label="Streak" value={streak} sub="d" Icon={Flame} />
+        <Metric label="Tasks" value={cur.tasksDone} change={delta(cur.tasksDone, prev.tasksDone)} />
+        <Metric label="Logged" value={cur.logged} sub={`/ ${cur.days}`}
+          change={delta(cur.logged, prev.logged)} />
+        <Metric label="Clean sweeps" value={cur.perfectDays} sub={`/ ${cur.scheduledDays}`}
+          change={delta(cur.perfectDays, prev.perfectDays)} />
+        {cur.breakPct !== null && (
+          <Metric label="Avoided" value={`${cur.breakPct}%`} Icon={Ban}
+            change={delta(cur.breakPct, prev.breakPct)} />
         )}
-      </Card>
+        {cur.savingsRate !== null && (
+          <Metric label="Saved" value={`${cur.savingsRate}%`} change={delta(cur.savingsRate, prev.savingsRate)} />
+        )}
+        {cur.feel !== null && (
+          <Metric label="Energy" value={cur.feel} sub="/ 5" change={delta(cur.feel, prev.feel)} />
+        )}
+        {cur.recharge !== null && (
+          <Metric label="Recharge" value={cur.recharge} sub="/ 5" change={delta(cur.recharge, prev.recharge)} />
+        )}
+        {cur.milestones > 0 && <Metric label="Milestones" value={cur.milestones} Icon={Trophy} />}
+        {cur.freezesUsed > 0 && <Metric label="Freezes" value={cur.freezesUsed} Icon={Snowflake} />}
+      </div>
 
-      <SectionLabel>Habit consistency</SectionLabel>
-      <Card style={{ height: 180, padding: "16px 6px 4px" }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={consistency} margin={{ top: 6, right: 12, bottom: 4, left: -22 }}>
-            <defs>
-              <linearGradient id="consfill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.gold} stopOpacity={0.45} />
-                <stop offset="100%" stopColor={C.gold} stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey="date" tick={{ fill: C.faint, fontSize: 9.5 }} tickLine={false} axisLine={false}
-              interval={Math.floor(consistency.length / 6)} />
-            <YAxis domain={[0, 100]} tick={{ fill: C.faint, fontSize: 10 }} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}%`, "Completed"]} />
-            <Area type="monotone" dataKey="pct" stroke={C.gold} strokeWidth={2} fill="url(#consfill)" connectNulls />
-          </AreaChart>
-        </ResponsiveContainer>
-      </Card>
-
-      <SectionLabel>Pillar balance</SectionLabel>
-      <Card style={{ height: 200, padding: "16px 6px 4px" }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={pillarBars} margin={{ top: 6, right: 12, bottom: 4, left: -22 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey="name" tick={{ fill: C.faint, fontSize: 9.5 }} tickLine={false} axisLine={false}
-              interval={0} angle={-28} textAnchor="end" height={46} />
-            <YAxis domain={[0, 5]} tick={{ fill: C.faint, fontSize: 10 }} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-            <Bar dataKey="value" radius={[5, 5, 0, 0]}>
-              {pillarBars.map((b) => <Cell key={b.name} fill={b.color} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <SectionLabel>Pillar movement</SectionLabel>
+      <Card>
+        {pillars.every((p) => p.value === null) ? (
+          <p style={{ color: C.muted, fontSize: 12.5, margin: 0, lineHeight: 1.55 }}>
+            No check-ins in this window — the pillars fill in as you log.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pillars.map((p) => (
+              <div key={p.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
+                  <span style={{ color: C.text, fontSize: 12.5 }}>{p.name}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <ChangeChip change={p.change} suffix="" />
+                    <span style={{ color: C.muted, fontSize: 11.5, minWidth: 22, textAlign: "right" }}>
+                      {p.value ?? "—"}
+                    </span>
+                  </span>
+                </div>
+                <ProgressBar pct={((p.value || 0) / 5) * 100} color={p.color} height={5} />
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <SectionLabel>Trend</SectionLabel>
@@ -184,10 +173,10 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
           <Pill key={p.id} on={pid === p.id} color={p.color} onClick={() => setPid(p.id)}>{p.name}</Pill>
         ))}
       </div>
-      {sorted.length < 2 ? (
-        <Card><EmptyState Icon={TrendingUp} title="Two check-ins and the lines start to grow" hint="Keep going." /></Card>
+      {trend.length < 2 ? (
+        <Card><EmptyState Icon={TrendingUp} title="Two check-ins and the line starts to grow" hint="Keep going." /></Card>
       ) : (
-        <Card style={{ height: 240, padding: "16px 6px 4px" }}>
+        <Card style={{ height: 230, padding: "16px 6px 4px" }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trend} margin={{ top: 6, right: 12, bottom: 4, left: -22 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
@@ -195,32 +184,15 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
               <YAxis domain={[0, 5]} ticks={[0, 1, 2, 3, 4, 5]} tick={{ fill: C.faint, fontSize: 10 }}
                 tickLine={false} axisLine={false} />
               <Tooltip contentStyle={tooltipStyle} />
+              {prev.balance !== null && pid === "overall" && (
+                <ReferenceLine y={prev.balance} stroke={C.faint} strokeDasharray="4 4"
+                  label={{ value: `prev ${prev.balance}`, fill: C.faint, fontSize: 9, position: "insideTopRight" }} />
+              )}
               <Line type="monotone" dataKey="value" stroke={active.color} strokeWidth={2.4}
                 dot={{ r: 3, fill: active.color, strokeWidth: 0 }} connectNulls name={active.name} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
-      )}
-
-      {habitBreakdown.length > 0 && (
-        <>
-          <SectionLabel>Which habits are holding</SectionLabel>
-          <Card>
-            <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
-              {habitBreakdown.map((h) => (
-                <div key={h.id}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ color: C.text, fontSize: 12.5, flex: 1, minWidth: 0 }}>{h.text}</span>
-                    <span style={{ color: h.pct >= 70 ? C.green : h.pct >= 40 ? C.gold : C.red, fontSize: 11.5, fontWeight: 600 }}>
-                      {h.pct}% · {h.done}/{h.scheduled}
-                    </span>
-                  </div>
-                  <ProgressBar pct={h.pct} color={h.pct >= 70 ? C.green : h.pct >= 40 ? C.gold : C.red} height={5} />
-                </div>
-              ))}
-            </div>
-          </Card>
-        </>
       )}
 
       <SectionLabel>Intentions</SectionLabel>
@@ -238,12 +210,12 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
         </div>
       </Card>
 
-      {goals.length === 0 ? (
+      {state.goals.length === 0 ? (
         <EmptyState Icon={Target} title="No intentions set"
           hint="Name one thing you want to move on, in any pillar." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          {goals.map((g) => {
+          {state.goals.map((g) => {
             const p = P_BY_ID[g.pillar];
             return (
               <Card key={g.id} style={{ marginBottom: 0, padding: "13px 14px" }}>
@@ -275,22 +247,342 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
           })}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-const tooltipStyle = {
-  background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 12,
-};
+/* ---------------- Habits ---------------- */
+function Habits({ state, cur, prev, range, weekdays, habits }) {
+  const consistency = useMemo(() => eachDay(range.from, range.to).map((d) => {
+    const s = dayStats(state.tasks, d, state.dayLog, "build");
+    return { date: prettyDate(d), pct: s.ratio === null ? null : Math.round(s.ratio * 100) };
+  }), [state.tasks, state.dayLog, range]);
 
-function Tile({ label, value, sub }) {
+  const scheduled = weekdays.filter((d) => d.scheduled > 0);
+  const worst = scheduled.length ? [...scheduled].sort((a, b) => a.pct - b.pct)[0] : null;
+
   return (
-    <div style={{ flex: 1, textAlign: "center" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 2 }}>
-        <span style={{ color: C.text, fontSize: 19, fontFamily: F.display, fontWeight: 600 }}>{value}</span>
-        <span style={{ color: C.faint, fontSize: 10 }}>{sub}</span>
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+        <Metric label="Completion" value={cur.habitPct === null ? "—" : `${cur.habitPct}%`}
+          change={delta(cur.habitPct, prev.habitPct)} />
+        <Metric label="Reps done" value={cur.habitDone} sub={`/ ${cur.habitScheduled}`}
+          change={delta(cur.habitDone, prev.habitDone)} />
+        <Metric label="Clean sweeps" value={cur.perfectDays} sub={`/ ${cur.scheduledDays}`}
+          change={delta(cur.perfectDays, prev.perfectDays)} />
       </div>
-      <p style={{ color: C.muted, fontSize: 9.5, marginTop: 3, letterSpacing: 0.3, textTransform: "uppercase" }}>{label}</p>
+
+      <SectionLabel>Consistency</SectionLabel>
+      <Card style={{ height: 180, padding: "16px 6px 4px" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={consistency} margin={{ top: 6, right: 12, bottom: 4, left: -22 }}>
+            <defs>
+              <linearGradient id="consfill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={C.gold} stopOpacity={0.45} />
+                <stop offset="100%" stopColor={C.gold} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: C.faint, fontSize: 9.5 }} tickLine={false} axisLine={false}
+              interval={Math.max(0, Math.floor(consistency.length / 6))} />
+            <YAxis domain={[0, 100]} tick={{ fill: C.faint, fontSize: 10 }} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}%`, "Completed"]} />
+            {prev.habitPct !== null && (
+              <ReferenceLine y={prev.habitPct} stroke={C.faint} strokeDasharray="4 4"
+                label={{ value: `prev ${prev.habitPct}%`, fill: C.faint, fontSize: 9, position: "insideTopRight" }} />
+            )}
+            <Area type="monotone" dataKey="pct" stroke={C.gold} strokeWidth={2} fill="url(#consfill)" connectNulls />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <SectionLabel>Which days you actually show up</SectionLabel>
+      <Card>
+        <div style={{ display: "flex", gap: 5 }}>
+          {weekdays.map((d) => {
+            const color = d.pct === null ? C.surface2 : d.pct >= 70 ? C.green : d.pct >= 40 ? C.gold : C.red;
+            return (
+              <div key={d.key} style={{ flex: 1, textAlign: "center" }}>
+                <div title={`${d.label}: ${d.done}/${d.scheduled}`} style={{
+                  height: 62, borderRadius: 9, background: alpha(color, d.pct === null ? 0.25 : 0.18),
+                  border: `1px solid ${d.pct === null ? C.border : alpha(color, 0.45)}`,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end",
+                  padding: 4, position: "relative", overflow: "hidden",
+                }}>
+                  <div style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0,
+                    height: `${d.pct || 0}%`, background: alpha(color, 0.5),
+                  }} />
+                  <span style={{ color: C.text, fontSize: 10.5, fontWeight: 600, zIndex: 1 }}>
+                    {d.pct === null ? "—" : `${d.pct}%`}
+                  </span>
+                </div>
+                <span style={{ color: C.muted, fontSize: 10, display: "block", marginTop: 5 }}>{d.letter}</span>
+              </div>
+            );
+          })}
+        </div>
+        {worst && worst.pct !== null && worst.pct < 60 && (
+          <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.55, margin: "14px 0 0" }}>
+            <b style={{ color: C.red }}>{worst.full}</b> is where it breaks down — {worst.done} of{" "}
+            {worst.scheduled} done. Moving or shrinking what's scheduled there beats trying harder.
+          </p>
+        )}
+      </Card>
+
+      <SectionLabel>Per habit</SectionLabel>
+      {habits.length === 0 ? (
+        <EmptyState Icon={Flame} title="No habits scheduled in this window"
+          hint="Add a habit and its reliability shows up here." />
+      ) : (
+        <Card>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {habits.map((h) => {
+              const color = h.pct >= 70 ? C.green : h.pct >= 40 ? C.gold : C.red;
+              return (
+                <div key={h.id}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, gap: 8 }}>
+                    <span style={{ color: C.text, fontSize: 12.5, flex: 1, minWidth: 0 }}>{h.text}</span>
+                    <ChangeChip change={h.change === null ? null : { diff: h.change, dir: h.change > 0 ? "up" : h.change < 0 ? "down" : "flat" }} suffix="pt" />
+                    <span style={{ color, fontSize: 11.5, fontWeight: 600 }}>{h.pct}% · {h.done}/{h.scheduled}</span>
+                  </div>
+                  <ProgressBar pct={h.pct} color={color} height={5} />
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {cur.breakPct !== null && (
+        <>
+          <SectionLabel>Staying away</SectionLabel>
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+              <span style={{ color: C.text, fontSize: 13 }}>Days you stayed clean</span>
+              <span style={{ color: cur.breakPct >= 70 ? C.green : C.red, fontSize: 13, fontWeight: 600 }}>
+                {cur.breakPct}%
+              </span>
+            </div>
+            <ProgressBar pct={cur.breakPct} color={cur.breakPct >= 70 ? C.green : C.red} />
+          </Card>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ---------------- Patterns ---------------- */
+function Patterns({ state, range, findings }) {
+  const cs = useMemo(() => checkinsIn(state.checkins, range.from, range.to), [state.checkins, range]);
+  const energizers = useMemo(() => energizerImpact(cs), [cs]);
+  const blockers = useMemo(() => blockerImpact(cs), [cs]);
+  const link = useMemo(() => habitMoodLink(state, range.from, range.to), [state, range]);
+  const wkBalance = useMemo(() => weekdayBalance(state.checkins, range.from, range.to), [state.checkins, range]);
+  const moods = useMemo(() => moodCounts(state.journalEntries, range.from, range.to), [state.journalEntries, range]);
+
+  const anyCorrelation = energizers.length || blockers.length || link;
+
+  return (
+    <>
+      <SectionLabel>What your data says</SectionLabel>
+      {findings.length === 0 ? (
+        <Card>
+          <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.6, margin: 0 }}>
+            Not enough logged yet to say anything honest. A handful more check-ins and this
+            starts calling out what's actually driving your days — rather than inventing patterns
+            out of three data points.
+          </p>
+        </Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          {findings.map((f, i) => (
+            <Card key={i} style={{
+              marginBottom: 0,
+              borderColor: alpha(f.tone === "good" ? C.green : C.red, 0.25),
+              background: `linear-gradient(135deg, ${alpha(f.tone === "good" ? C.green : C.red, 0.06)}, ${C.surface})`,
+            }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <Lightbulb size={15} color={f.tone === "good" ? C.green : C.red}
+                  style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <p style={{
+                    color: f.tone === "good" ? C.green : C.red, fontSize: 11,
+                    letterSpacing: 0.5, textTransform: "uppercase", margin: 0, fontWeight: 600,
+                  }}>{f.label}</p>
+                  <p style={{ color: C.text, fontSize: 13, lineHeight: 1.6, margin: "5px 0 0" }}>{f.text}</p>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {energizers.length > 0 && (
+        <>
+          <SectionLabel>What lifts your days</SectionLabel>
+          <Card>
+            <p style={{ color: C.muted, fontSize: 11.5, lineHeight: 1.55, margin: "0 0 14px" }}>
+              Average balance on days each energizer showed up, against days it didn't.
+            </p>
+            {energizers.map((e) => <LiftRow key={e.id} item={e} good />)}
+          </Card>
+        </>
+      )}
+
+      {blockers.length > 0 && (
+        <>
+          <SectionLabel color={C.red}>What drags them down</SectionLabel>
+          <Card>
+            {blockers.map((b) => <LiftRow key={b.id} item={b} />)}
+          </Card>
+        </>
+      )}
+
+      {link && (
+        <>
+          <SectionLabel>Habits versus how you felt</SectionLabel>
+          <Card>
+            <div style={{ display: "flex", gap: 12 }}>
+              <CompareTile label="Every habit done" value={link.full} n={link.nFull} color={C.green} />
+              <CompareTile label="Some left undone" value={link.partial} n={link.nPartial} color={C.muted} />
+            </div>
+            <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "14px 0 0" }}>
+              {link.lift > 0
+                ? `Finishing everything is worth about ${link.lift.toFixed(1)} points of mood. That's the payoff the plan is actually for.`
+                : "No clear mood difference yet between full days and partial ones."}
+            </p>
+          </Card>
+        </>
+      )}
+
+      {wkBalance.some((d) => d.n > 0) && (
+        <>
+          <SectionLabel>Your week, by feel</SectionLabel>
+          <Card style={{ height: 190, padding: "16px 6px 4px" }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={wkBalance} margin={{ top: 6, right: 12, bottom: 4, left: -22 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: C.faint, fontSize: 10 }} tickLine={false} axisLine={false} />
+                <YAxis domain={[0, 5]} tick={{ fill: C.faint, fontSize: 10 }} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                  formatter={(v, _n, p) => [v ?? "no data", `${p.payload.n} check-in${p.payload.n === 1 ? "" : "s"}`]} />
+                <Bar dataKey="value" radius={[5, 5, 0, 0]}>
+                  {wkBalance.map((d) => (
+                    <Cell key={d.key} fill={d.value === null ? C.surface3 : d.value >= 3.5 ? C.green : d.value >= 2.5 ? C.gold : C.red} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </>
+      )}
+
+      {moods.length > 0 && (
+        <>
+          <SectionLabel>How you wrote about it</SectionLabel>
+          <Card>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {moods.map((m) => {
+                const max = moods[0].count;
+                return (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 15, width: 20 }}>{m.emoji}</span>
+                    <span style={{ color: C.text, fontSize: 12.5, width: 74 }}>{m.label}</span>
+                    <div style={{ flex: 1 }}>
+                      <ProgressBar pct={(m.count / max) * 100} color={C.purple} height={6} />
+                    </div>
+                    <span style={{ color: C.muted, fontSize: 11.5, width: 20, textAlign: "right" }}>{m.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {!anyCorrelation && findings.length === 0 && (
+        <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.6, marginTop: 16 }}>
+          Correlations need at least three check-ins on each side of a comparison before they mean
+          anything, so they appear as your history grows.
+        </p>
+      )}
+    </>
+  );
+}
+
+/* ---------------- Small pieces ---------------- */
+function Metric({ label, value, sub, change, Icon }) {
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.md, padding: "12px 10px",
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
+        {Icon && <Icon size={12} color={C.gold} style={{ alignSelf: "center" }} />}
+        <span style={{ color: C.text, fontSize: 19, fontFamily: F.display, fontWeight: 600 }}>{value}</span>
+        {sub && <span style={{ color: C.faint, fontSize: 10 }}>{sub}</span>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, gap: 4 }}>
+        <span style={{ color: C.muted, fontSize: 9, letterSpacing: 0.3, textTransform: "uppercase" }}>{label}</span>
+        <ChangeChip change={change} compact />
+      </div>
     </div>
   );
 }
+
+function ChangeChip({ change, compact, suffix = "" }) {
+  if (!change) return null;
+  if (change.dir === "flat") {
+    return <Minus size={compact ? 10 : 12} color={C.faint} />;
+  }
+  const up = change.dir === "up";
+  const Arrow = up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 1,
+      color: up ? C.green : C.red, fontSize: compact ? 9.5 : 11, fontWeight: 600,
+    }}>
+      <Arrow size={compact ? 10 : 12} />{Math.abs(change.diff)}{suffix}
+    </span>
+  );
+}
+
+function LiftRow({ item, good }) {
+  const positive = item.lift > 0;
+  const color = positive ? C.green : C.red;
+  const width = Math.min(100, Math.abs(item.lift) * 40);
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <item.Icon size={13} color={item.color} />
+        <span style={{ flex: 1, color: C.text, fontSize: 12.5 }}>{item.label}</span>
+        <span style={{ color, fontSize: 11.5, fontWeight: 600 }}>
+          {positive ? "+" : ""}{item.lift.toFixed(1)}
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, display: "flex", justifyContent: positive ? "flex-start" : "flex-end" }}>
+          <div style={{ width: `${width}%`, height: 5, borderRadius: 3, background: color, opacity: 0.75 }} />
+        </div>
+      </div>
+      <p style={{ color: C.faint, fontSize: 10.5, margin: "5px 0 0" }}>
+        {item.with} with · {item.without} without · {item.n} day{item.n === 1 ? "" : "s"}
+      </p>
+    </div>
+  );
+}
+
+function CompareTile({ label, value, n, color }) {
+  return (
+    <div style={{
+      flex: 1, textAlign: "center", background: alpha(color, 0.08),
+      border: `1px solid ${alpha(color, 0.25)}`, borderRadius: R.md, padding: "14px 8px",
+    }}>
+      <p style={{ color, fontSize: 24, fontFamily: F.display, fontWeight: 600, margin: 0 }}>{value}</p>
+      <p style={{ color: C.text, fontSize: 11.5, margin: "6px 0 0", lineHeight: 1.35 }}>{label}</p>
+      <p style={{ color: C.faint, fontSize: 10, margin: "3px 0 0" }}>{n} days</p>
+    </div>
+  );
+}
+
+const round = (n) => (n === null ? null : Math.round(n * 100) / 100);
