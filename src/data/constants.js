@@ -215,6 +215,40 @@ export const RECUR_FREQ = [
   { id: "weekly", label: "Weekly" },
 ];
 
+// Starter habits: each arrives with a schedule, a pillar and — crucially — a two-minute
+// version already written, since that's the part people skip and then wonder why it didn't stick.
+export const HABIT_TEMPLATES = [
+  { text: "Drink a glass of water", preset: "daily", pillarId: "health", twoMin: "Fill the glass and drink it", time: "08:00" },
+  { text: "10-minute walk", preset: "daily", pillarId: "health", twoMin: "Put your shoes on and step outside", timerMinutes: 10 },
+  { text: "Read 10 pages", preset: "daily", pillarId: "growth", twoMin: "Read one page" },
+  { text: "Morning prayer", preset: "daily", pillarId: "spiritual", twoMin: "One minute of stillness", time: "07:00" },
+  { text: "Gym", preset: "thrice", pillarId: "health", twoMin: "Change into your gym clothes", timerMinutes: 45 },
+  { text: "Journal", preset: "daily", pillarId: "growth", twoMin: "Write one sentence", time: "21:00" },
+  { text: "Stretch", preset: "daily", pillarId: "health", twoMin: "One stretch, thirty seconds", timerMinutes: 5 },
+  { text: "Review spending", preset: "weekly", pillarId: "financial", twoMin: "Open the ledger and look" },
+  { text: "Call someone you love", preset: "weekly", pillarId: "relationships", twoMin: "Send one message" },
+  { text: "Tidy for five minutes", preset: "daily", pillarId: "personality", twoMin: "Clear one surface", timerMinutes: 5 },
+  { text: "Do one kind thing", preset: "daily", pillarId: "deeds", twoMin: "Send one kind message" },
+  { text: "Lights out by 11", preset: "daily", pillarId: "health", twoMin: "Put the phone on the charger" },
+];
+
+export const BREAK_TEMPLATES = [
+  { text: "Doomscrolling", preset: "daily", trigger: "Boredom or waiting" },
+  { text: "Late-night snacking", preset: "daily", trigger: "Watching TV" },
+  { text: "Phone in bed", preset: "daily", trigger: "Charging it beside the bed" },
+  { text: "Energy drinks", preset: "daily", trigger: "The afternoon slump" },
+  { text: "Skipping breakfast", preset: "weekdays", trigger: "Running late" },
+  { text: "Impulse buying", preset: "daily", trigger: "Adverts and sales emails" },
+];
+
+export const DAY_PRESETS = [
+  { id: "daily", label: "Every day", days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
+  { id: "weekdays", label: "Weekdays", days: ["mon", "tue", "wed", "thu", "fri"] },
+  { id: "weekends", label: "Weekends", days: ["sat", "sun"] },
+  { id: "thrice", label: "3× a week", days: ["mon", "wed", "fri"] },
+  { id: "weekly", label: "Once a week", days: ["sun"] },
+];
+
 export const JOURNAL_MOODS = [
   { id: "grateful",  label: "Grateful",  emoji: "🙏" },
   { id: "proud",     label: "Proud",     emoji: "💪" },

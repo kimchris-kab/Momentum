@@ -157,6 +157,41 @@ export default function Momentum() {
     ...s, tasks: reorderTasks(s.tasks, id, siblings, dir),
   })), []);
 
+  // Copies the setup, not the history: a duplicate starts its own streak from zero and
+  // doesn't inherit a reward that was already claimed.
+  const duplicateTask = useCallback((id) => setState((s) => {
+    const source = s.tasks.find((t) => t.id === id);
+    if (!source) return s;
+    // drop the id rather than blanking it — newTask spreads the patch over its own defaults
+    const { id: _sourceId, ...rest } = source;
+    const copy = newTask({
+      ...rest,
+      text: `${source.text} (copy)`,
+      done: false,
+      doneAt: null,
+      archivedAt: null,
+      startDate: todayStr(),
+      reward: source.reward ? { ...source.reward, claimedAt: null } : null,
+      subtasks: (source.subtasks || []).map((x) => ({ ...x, done: false })),
+      order: (source.order || 0) + 0.5,
+      createdAt: Date.now(),
+    });
+    show(`Duplicated "${source.text}"`);
+    return { ...s, tasks: [...s.tasks, copy] };
+  }), [show]);
+
+  const setArchived = useCallback((id, archived) => setState((s) => {
+    const task = s.tasks.find((t) => t.id === id);
+    show(archived ? `Paused "${task?.text}"` : `Resumed "${task?.text}"`, archived ? "Undo" : null,
+      archived ? () => setState((cur) => ({
+        ...cur, tasks: cur.tasks.map((t) => (t.id === id ? { ...t, archivedAt: null } : t)),
+      })) : null);
+    return {
+      ...s,
+      tasks: s.tasks.map((t) => (t.id === id ? { ...t, archivedAt: archived ? Date.now() : null } : t)),
+    };
+  }), [show]);
+
   // ---- Habit formation ----
   const freezeYesterday = useCallback(() => setState((s) => {
     const y = addDays(todayStr(), -1);
@@ -348,7 +383,9 @@ export default function Momentum() {
             {view === "habits" && (
               <HabitsView state={state} onAdd={addTask} onOpenTask={(t) => setEditing(t.id)}
                 onBack={() => setView("today")}
-                onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })} />
+                onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
+                onDuplicate={duplicateTask} onArchive={setArchived} onDelete={removeTask}
+                onMove={moveTask} />
             )}
             {view === "identity" && (
               <IdentityView state={state} tally={tally} onPatch={patch} onBack={() => setView("today")} />
