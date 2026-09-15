@@ -1,22 +1,26 @@
 import React, { useMemo, useState } from "react";
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
 import {
-  AlertTriangle, Ban, CalendarDays, Check, ChevronDown, ChevronUp, Fingerprint, Flame,
-  ListChecks, PartyPopper, PenLine, RefreshCw, Sparkles, Sun,
+  Ban, CalendarCheck, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Fingerprint,
+  Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake, Sparkles, Sun,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, P_BY_ID } from "../data/constants.js";
 import { hashIdx, longDate, todayStr } from "../lib/date.js";
-import { dayStats, habitStreak, isDone, tasksForDate } from "../lib/tasks.js";
+import { dayStats, isDone, tasksForDate } from "../lib/tasks.js";
+import {
+  freezesLeft, habitStreakProtected, isFrozen, missedYesterday, nextMilestone, reviewDue,
+} from "../lib/habits.js";
 import { Card, Checkbox, EmptyState, IconButton, ProgressRing, SectionLabel } from "../components/ui.jsx";
 import TaskRow from "../components/TaskRow.jsx";
+import RecoveryCard from "../components/RecoveryCard.jsx";
 
 export default function TodayView({
-  state, averages, overall, streak, breakStreak, tally, heatmap, yesterdayMissed, needsRest,
+  state, averages, overall, streak, breakStreak, tally, heatmap, needsRest,
   onToggleTask, onOpenTask, onToggleStar, onCheckin, onOpenHabits, onOpenIdentity, onOpenTasks,
-  onRerollMantra,
+  onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview,
 }) {
-  const { tasks, dayLog, checkins, lists } = state;
+  const { tasks, dayLog, checkins, lists, freezes, reviews } = state;
   const today = todayStr();
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -50,13 +54,21 @@ export default function TodayView({
   for (let i = 0; i < heatmap.length; i += 7) weeks.push(heatmap.slice(i, i + 7));
 
   const listById = Object.fromEntries(lists.map((l) => [l.id, l]));
+  const missed = useMemo(() => missedYesterday(tasks, dayLog, freezes), [tasks, dayLog, freezes]);
+  const showReview = reviewDue(reviews) && tasks.some((t) => t.kind === "build" && t.recurrence);
+
+  // A habit with a two-minute version or a timer earns the start ritual; anything simpler
+  // stays a single tap, so "take vitamins" never gets ceremony it doesn't need.
+  const wantsRitual = (t) => t.kind === "build" && (t.twoMin || t.timerMinutes);
 
   const row = (t) => (
     <TaskRow
       key={t.id} task={t} date={today} done={isDone(t, today, dayLog)}
-      streak={t.kind === "build" ? habitStreak(t, tasks, dayLog) : 0}
+      streak={t.kind === "build" ? habitStreakProtected(t, dayLog, freezes) : 0}
       listChip={t.kind === "todo" && t.listId !== "inbox" ? listById[t.listId] : null}
-      onToggle={() => onToggleTask(t)} onOpen={() => onOpenTask(t)} onToggleStar={() => onToggleStar(t)}
+      onToggle={() => onToggleTask(t)}
+      onOpen={() => (wantsRitual(t) ? onStartRitual(t) : onOpenTask(t))}
+      onToggleStar={() => onToggleStar(t)}
     />
   );
 
@@ -77,7 +89,7 @@ export default function TodayView({
               ? "Nothing scheduled yet — add a task or a habit."
               : `${agendaDone.length} of ${agenda.length} done · ${buildStats.total} habit${buildStats.total === 1 ? "" : "s"}`}
           </p>
-          <div style={{ display: "flex", gap: 14, marginTop: 10 }}>
+          <div style={{ display: "flex", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 5, color: C.gold, fontSize: 12 }}>
               <Flame size={13} className="mtm-glow-pulse" /> {streak}d build
             </span>
@@ -86,16 +98,44 @@ export default function TodayView({
                 <Ban size={12} /> {breakStreak}d clean
               </span>
             )}
+            {isFrozen(freezes, today) && (
+              <span style={{ display: "flex", alignItems: "center", gap: 5, color: C.teal, fontSize: 12 }}>
+                <Snowflake size={12} /> frozen
+              </span>
+            )}
           </div>
+          {nextMilestone(streak) && streak > 0 && (
+            <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0" }}>
+              {nextMilestone(streak) - streak} day{nextMilestone(streak) - streak === 1 ? "" : "s"} to your{" "}
+              {nextMilestone(streak)}-day milestone
+            </p>
+          )}
         </div>
       </Card>
 
-      {yesterdayMissed && (
-        <div className="mtm-card-flip" style={warn(C.red)}>
-          <AlertTriangle size={16} color={C.red} style={{ flexShrink: 0, marginTop: 1 }} />
-          <p style={warnText}>Yesterday's habits weren't finished. <b>Never miss twice</b> — let's get today done.</p>
-        </div>
+      <RecoveryCard
+        missed={missed} freezes={freezes} streak={streak}
+        onFreeze={onFreeze} onRepair={onRepair} onStartMinimal={onStartRitual}
+      />
+
+      {showReview && (
+        <button onClick={onOpenReview} className="mtm-card-flip" style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 11, cursor: "pointer",
+          background: `linear-gradient(135deg, ${alpha(C.teal, 0.1)}, ${C.surface})`,
+          border: `1px solid ${alpha(C.teal, 0.28)}`, borderRadius: R.lg,
+          padding: "14px 15px", marginBottom: 12, textAlign: "left",
+        }}>
+          <CalendarCheck size={17} color={C.teal} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>Weekly review is due</p>
+            <p style={{ color: C.muted, fontSize: 12, margin: "3px 0 0", lineHeight: 1.45 }}>
+              Five minutes to see what's slipping and shrink it before it breaks.
+            </p>
+          </div>
+          <ChevronRight size={16} color={C.faint} />
+        </button>
       )}
+
       {needsRest && (
         <div className="mtm-card-flip" style={warn(C.teal)}>
           <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>🪫</span>
@@ -264,21 +304,25 @@ export default function TodayView({
         <div style={{ display: "flex", gap: 3, overflowX: "auto", paddingBottom: 2 }}>
           {weeks.map((week, wi) => (
             <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {week.map((day) => (
-                <div key={day.date}
-                  title={`${day.date}${day.ratio !== null ? ` · ${Math.round(day.ratio * 100)}%` : ""}`}
-                  style={{
-                    width: 10, height: 10, borderRadius: 3,
-                    background: day.ratio === null ? C.surface2 : C.gold,
-                    opacity: day.ratio === null ? 1 : 0.15 + day.ratio * 0.85,
-                    border: day.ratio === null ? `1px solid ${C.border}` : "none",
-                  }} />
-              ))}
+              {week.map((day) => {
+                const frozen = isFrozen(freezes, day.date);
+                return (
+                  <div key={day.date}
+                    title={`${day.date}${frozen ? " · frozen" : day.ratio !== null ? ` · ${Math.round(day.ratio * 100)}%` : ""}`}
+                    style={{
+                      width: 10, height: 10, borderRadius: 3,
+                      background: frozen ? C.teal : day.ratio === null ? C.surface2 : C.gold,
+                      opacity: frozen ? 0.75 : day.ratio === null ? 1 : 0.15 + day.ratio * 0.85,
+                      border: !frozen && day.ratio === null ? `1px solid ${C.border}` : "none",
+                    }} />
+                );
+              })}
             </div>
           ))}
         </div>
         <p style={{ color: C.faint, fontSize: 10.5, marginTop: 10, marginBottom: 0 }}>
-          Last 12 weeks of habit completion
+          Last 12 weeks · <span style={{ color: C.teal }}>teal</span> days were frozen, not missed
+          {freezesLeft(freezes) < 2 && ` · ${freezesLeft(freezes)} freeze${freezesLeft(freezes) === 1 ? "" : "s"} left this month`}
         </p>
       </Card>
     </div>

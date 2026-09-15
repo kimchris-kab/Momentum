@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import {
-  CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus, Repeat,
-  Trash2, X, Zap,
+  Bell, BellOff, CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus,
+  Repeat, Timer, Trash2, X, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
-import { addDays, todayStr } from "../lib/date.js";
+import { addDays, formatTime12, todayStr } from "../lib/date.js";
 import { dailyRule, monthlyRule, weeklyRule } from "../lib/tasks.js";
 import { Checkbox, IconButton, Pill, SegmentedControl, Sheet } from "./ui.jsx";
 
@@ -199,6 +199,66 @@ export default function TaskSheet({ open, task, lists, onClose, onChange, onDele
             ))}
           </div>
         </Field>
+
+        {task.kind === "build" && (
+          <>
+            <Field label="Start ritual">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={styles.fieldShell}>
+                  <Zap size={13} color={C.muted} />
+                  <input value={task.twoMin || ""} onChange={(e) => set({ twoMin: e.target.value || null })}
+                    placeholder="Two-minute version" style={{ ...styles.bareInput, flex: 1, minWidth: 150 }} />
+                </div>
+                <div style={styles.fieldShell}>
+                  <Timer size={13} color={C.muted} />
+                  <input type="number" min={1} max={120} value={task.timerMinutes || ""}
+                    onChange={(e) => set({ timerMinutes: Number(e.target.value) || null })}
+                    placeholder="0" style={{ ...styles.bareInput, width: 40 }} />
+                  <span style={{ color: C.muted, fontSize: 12.5 }}>min timer</span>
+                </div>
+              </div>
+              <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0", lineHeight: 1.5 }}>
+                Set either one and tapping this habit opens the start ritual instead of just ticking it off.
+              </p>
+            </Field>
+
+            <Field label="Reminder">
+              <button onClick={() => set({ reminder: task.reminder === false })} style={{
+                display: "flex", alignItems: "center", gap: 9, width: "100%", cursor: "pointer",
+                background: task.reminder === false ? C.surface : C.goldSoft,
+                border: `1px solid ${task.reminder === false ? C.border : alpha(C.gold, 0.35)}`,
+                borderRadius: R.md, padding: "12px 13px", textAlign: "left",
+              }}>
+                {task.reminder === false ? <BellOff size={15} color={C.faint} /> : <Bell size={15} color={C.gold} />}
+                <span style={{ flex: 1, color: task.reminder === false ? C.muted : C.text, fontSize: 13 }}>
+                  {task.reminder === false
+                    ? "No reminder for this habit"
+                    : task.time ? `Remind me at ${formatTime12(task.time)}` : "Set a time above to be reminded"}
+                </span>
+              </button>
+            </Field>
+
+            <Field label="Reward">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={styles.fieldShell}>
+                  <Gift size={13} color={C.muted} />
+                  <input value={task.reward?.text || ""}
+                    onChange={(e) => set({ reward: { ...(task.reward || { atDays: 30 }), text: e.target.value } })}
+                    placeholder="What you'll give yourself" style={{ ...styles.bareInput, flex: 1, minWidth: 150 }} />
+                </div>
+                <div style={styles.fieldShell}>
+                  <span style={{ color: C.muted, fontSize: 12.5 }}>at</span>
+                  <input type="number" min={1} max={365} value={task.reward?.atDays || 30}
+                    onChange={(e) => set({
+                      reward: { ...(task.reward || { text: "" }), atDays: Number(e.target.value) || 30 },
+                    })}
+                    style={{ ...styles.bareInput, width: 44 }} />
+                  <span style={{ color: C.muted, fontSize: 12.5 }}>days</span>
+                </div>
+              </div>
+            </Field>
+          </>
+        )}
 
         <Field label="Identity this builds">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

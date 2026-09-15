@@ -73,7 +73,20 @@ key and run `./gradlew bundleRelease`.
   collapse into recurring tasks; completions replay into the day log)
 - `src/components/` — UI primitives (Card, Sheet, SegmentedControl, ProgressRing,
   Toast…), the task row, and the full task editor sheet
-- `src/views/` — Today, Tasks, Habits, Identity, Check-in, Journal, Money, Insights
+- `src/lib/habits.js` — habit formation: freeze-protected streaks, milestones, rewards,
+  never-miss-twice detection and the weekly-review scoring
+- `src/lib/notify.js` — habit reminders, via Capacitor local notifications on the installed
+  Android app, Notification Triggers in a supporting installed PWA, or in-page timers as a
+  last resort (which only fire while the app is open — the UI says so rather than pretending)
+- `src/lib/money.js` — ledger maths: month totals, category breakdown, recurring posting, CSV
+- `src/views/` — Today, Tasks, Habits, Identity, Check-in, Journal, Money, Insights, Review
+
+### Reminders
+
+Reminders need the app **installed** — home-screen PWA or the APK — and one permission
+grant (Habits → "Turn on reminders"). In a plain browser tab they only fire while the tab is
+open. On Android the `@capacitor/local-notifications` plugin schedules real OS alarms; run
+`npx cap sync android` after installing dependencies so the plugin is wired in.
 - `src/storageShim.js` — polyfills the `window.storage.get/set` API the app
   uses for persistence, backed by `localStorage`, so it works outside its
   original host environment

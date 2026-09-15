@@ -22,7 +22,10 @@ export const emptyState = () => ({
   monthlyIncome: "",
   budgetSplit: { needs: 50, wants: 30, savings: 20 },
   mantraIdxByDate: {},
-  settings: { sortMode: "manual", showCompleted: false },
+  freezes: {},
+  milestones: [],
+  reviews: [],
+  settings: { sortMode: "manual", showCompleted: false, reminders: true },
 });
 
 // v1 kept habits as per-weekday template rows (routines / breakRoutines) plus a per-day copy of

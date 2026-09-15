@@ -179,6 +179,11 @@ export const MOTION_CSS = `
   0%   { opacity: 0; transform: translateY(6px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+@keyframes mtm-confetti-fall {
+  0%   { opacity: 0; transform: translateY(-10vh) rotate(0deg); }
+  10%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(105vh) rotate(620deg); }
+}
 
 .mtm-orb-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
 .mtm-orb {
@@ -202,6 +207,10 @@ export const MOTION_CSS = `
   animation: mtm-shimmer-sweep 3s ease-in-out infinite; pointer-events: none;
 }
 .mtm-glow-pulse { animation: mtm-glow-pulse 2.4s ease-in-out infinite; }
+.mtm-confetti {
+  animation: mtm-confetti-fall var(--mtm-cdur, 3s) linear var(--mtm-cdelay, 0s) forwards;
+  pointer-events: none;
+}
 .mtm-sheet { animation: mtm-sheet-up .28s cubic-bezier(.2,.8,.25,1) both; }
 .mtm-backdrop { animation: mtm-fade-in .2s ease both; }
 .mtm-toast { animation: mtm-toast-in .26s cubic-bezier(.2,.8,.25,1) both; }
@@ -214,7 +223,8 @@ textarea, input { font-family: Inter, system-ui, sans-serif; }
 
 @media (prefers-reduced-motion: reduce) {
   .mtm-sparkle, .mtm-orb, .mtm-view-flip, .mtm-card-flip, .mtm-row-in,
-  .mtm-shimmer::after, .mtm-glow-pulse, .mtm-sheet, .mtm-backdrop, .mtm-toast, .mtm-pop {
+  .mtm-shimmer::after, .mtm-glow-pulse, .mtm-sheet, .mtm-backdrop, .mtm-toast, .mtm-pop,
+  .mtm-confetti {
     animation: none !important;
   }
 }

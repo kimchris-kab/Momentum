@@ -4,12 +4,19 @@ import { C, MOTION_CSS, styles } from "./theme.js";
 import { MANTRAS, PILLARS } from "./data/constants.js";
 import { addDays, dstr, hashIdx, todayStr } from "./lib/date.js";
 import {
-  computeStreak, heatmapDays, newTask, reorderTasks, toggleDoneReducer, voteTally,
+  heatmapDays, isDone, newTask, reorderTasks, tasksForDate, toggleDoneReducer, voteTally,
 } from "./lib/tasks.js";
+import {
+  MILESTONES, freezesLeft, habitStreakProtected, isMilestone, protectedStreak,
+} from "./lib/habits.js";
 import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { postDueRecurring } from "./lib/money.js";
+import { notificationPermission, scheduleReminders } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx";
 import TaskSheet from "./components/TaskSheet.jsx";
+import RitualSheet from "./components/RitualSheet.jsx";
+import Celebration from "./components/Celebration.jsx";
+import ReviewView from "./views/ReviewView.jsx";
 import TodayView from "./views/TodayView.jsx";
 import TasksView from "./views/TasksView.jsx";
 import HabitsView from "./views/HabitsView.jsx";
@@ -33,6 +40,8 @@ export default function Momentum() {
   const [state, setState] = useState(emptyState);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [ritual, setRitual] = useState(null);
+  const [celebration, setCelebration] = useState(null);
   const { toast, show, dismiss, act } = useToast();
 
   useEffect(() => {
@@ -67,6 +76,17 @@ export default function Momentum() {
       catch (e) { console.error("Could not save", e); }
     })();
   }, [state, loaded]);
+
+  // Re-scheduled whenever the habits or the setting change, so edits to a habit's time take
+  // effect without the user thinking about it. Debounced because every keystroke in the task
+  // editor writes state, and rescheduling OS alarms on each one would be wasteful on device.
+  useEffect(() => {
+    if (!loaded) return undefined;
+    const t = setTimeout(() => {
+      scheduleReminders(state.tasks, { enabled: state.settings.reminders !== false });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [loaded, state.tasks, state.settings.reminders]);
 
   // Rent, salary and subscriptions post themselves for every occurrence that came due
   // while the app was closed, so the ledger is complete without anyone remembering.
@@ -103,9 +123,31 @@ export default function Momentum() {
     });
   }, [show]);
 
-  const toggleTask = useCallback((task, date = todayStr()) => setState((s) => {
+  // Completing a build habit can cross a milestone; that has to be detected after the write,
+  // against the new log, so the celebration reflects the streak you just earned.
+  const toggleTask = useCallback((task, date = todayStr(), opts = {}) => setState((s) => {
     const next = toggleDoneReducer(task, date, s.tasks, s.dayLog);
-    return { ...s, tasks: next.tasks, dayLog: next.dayLog };
+    let dayLog = next.dayLog;
+    if (opts.minimal && task.recurrence && dayLog[date]?.[task.id]?.done) {
+      dayLog = { ...dayLog, [date]: { ...dayLog[date], [task.id]: { ...dayLog[date][task.id], minimal: true } } };
+    }
+    const after = { ...s, tasks: next.tasks, dayLog };
+
+    if (task.kind === "build" && isDone(task, date, dayLog)) {
+      const streak = habitStreakProtected(task, dayLog, s.freezes);
+      const already = s.milestones.some((m) => m.taskId === task.id && m.days === streak);
+      if (isMilestone(streak) && !already) {
+        const reward = task.reward?.atDays && streak >= task.reward.atDays && !task.reward.claimedAt
+          ? task.reward : null;
+        after.milestones = [...s.milestones, { id: `${task.id}-${streak}`, taskId: task.id, days: streak, date }];
+        setTimeout(() => setCelebration({
+          id: `${task.id}-${streak}`, taskId: task.id, days: streak, title: task.text,
+          message: MILESTONE_COPY[streak] || "Another mark on the board. Keep the chain alive.",
+          reward,
+        }), 260);
+      }
+    }
+    return after;
   }), []);
 
   const toggleStar = useCallback((task) =>
@@ -114,6 +156,47 @@ export default function Momentum() {
   const moveTask = useCallback((id, siblings, dir) => setState((s) => ({
     ...s, tasks: reorderTasks(s.tasks, id, siblings, dir),
   })), []);
+
+  // ---- Habit formation ----
+  const freezeYesterday = useCallback(() => setState((s) => {
+    const y = addDays(todayStr(), -1);
+    if (s.freezes?.[y]) return s;
+    if (freezesLeft(s.freezes) === 0) {
+      show("No freezes left this month");
+      return s;
+    }
+    show("Yesterday frozen — chain protected", "Undo", () =>
+      setState((cur) => {
+        const { [y]: _dropped, ...rest } = cur.freezes;
+        return { ...cur, freezes: rest };
+      }));
+    return { ...s, freezes: { ...s.freezes, [y]: { usedAt: Date.now() } } };
+  }), [show]);
+
+  // Logging a missed day late, marked as such, so the record stays honest
+  const repairDay = useCallback((date) => setState((s) => {
+    const scheduled = tasksForDate(s.tasks, date, "build");
+    const day = { ...(s.dayLog[date] || {}) };
+    scheduled.forEach((t) => {
+      if (!day[t.id]?.done) day[t.id] = { done: true, doneAt: Date.now(), repaired: true };
+    });
+    show(`Logged ${scheduled.length} habit${scheduled.length === 1 ? "" : "s"} for yesterday`);
+    return { ...s, dayLog: { ...s.dayLog, [date]: day } };
+  }), [show]);
+
+  const claimReward = useCallback((taskId) => setState((s) => ({
+    ...s,
+    tasks: s.tasks.map((t) => (t.id === taskId && t.reward
+      ? { ...t, reward: { ...t.reward, claimedAt: Date.now() } } : t)),
+  })), []);
+
+  const finishReview = useCallback((entry) => {
+    setState((s) => ({ ...s, reviews: [...s.reviews, entry] }));
+    setView("today");
+    show(entry.applied?.length
+      ? `Review saved · ${entry.applied.length} change${entry.applied.length === 1 ? "" : "s"} applied`
+      : "Review saved");
+  }, [show]);
 
   // ---- Money records ----
   const saveTx = useCallback((tx) => setState((s) => {
@@ -188,18 +271,14 @@ export default function Momentum() {
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
   }, [averages]);
 
-  const streak = useMemo(() => computeStreak(state.tasks, state.dayLog, "build"), [state.tasks, state.dayLog]);
-  const breakStreak = useMemo(() => computeStreak(state.tasks, state.dayLog, "break"), [state.tasks, state.dayLog]);
+  const streak = useMemo(
+    () => protectedStreak(state.tasks, state.dayLog, state.freezes, "build"),
+    [state.tasks, state.dayLog, state.freezes]);
+  const breakStreak = useMemo(
+    () => protectedStreak(state.tasks, state.dayLog, state.freezes, "break"),
+    [state.tasks, state.dayLog, state.freezes]);
   const tally = useMemo(() => voteTally(state.tasks, state.dayLog), [state.tasks, state.dayLog]);
   const heatmap = useMemo(() => heatmapDays(state.tasks, state.dayLog), [state.tasks, state.dayLog]);
-
-  const yesterdayMissed = useMemo(() => {
-    const y = addDays(todayStr(), -1);
-    const scheduled = state.tasks.filter((t) => t.kind === "build");
-    if (!scheduled.length) return false;
-    const stats = heatmap.find((d) => d.date === y);
-    return stats && stats.ratio !== null && stats.ratio < 1;
-  }, [heatmap, state.tasks]);
 
   const needsRest = useMemo(() => {
     const last3 = [...state.checkins].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
@@ -207,6 +286,7 @@ export default function Momentum() {
   }, [state.checkins]);
 
   const editingTask = editing ? state.tasks.find((t) => t.id === editing) : null;
+  const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
 
   const saveCheckin = (entry) => {
     setState((s) => ({ ...s, checkins: [...s.checkins.filter((c) => c.date !== entry.date), entry] }));
@@ -231,7 +311,7 @@ export default function Momentum() {
     );
   }
 
-  const isSubView = ["checkin", "habits", "identity"].includes(view);
+  const isSubView = ["checkin", "habits", "identity", "review"].includes(view);
 
   return (
     <div style={styles.app}>
@@ -244,12 +324,18 @@ export default function Momentum() {
             {view === "today" && (
               <TodayView
                 state={state} averages={averages} overall={overall} streak={streak} breakStreak={breakStreak}
-                tally={tally} heatmap={heatmap} yesterdayMissed={yesterdayMissed} needsRest={needsRest}
+                tally={tally} heatmap={heatmap} needsRest={needsRest}
                 onToggleTask={toggleTask} onOpenTask={(t) => setEditing(t.id)} onToggleStar={toggleStar}
                 onCheckin={() => setView("checkin")} onOpenHabits={() => setView("habits")}
                 onOpenIdentity={() => setView("identity")} onOpenTasks={() => setView("tasks")}
                 onRerollMantra={rerollMantra}
+                onFreeze={freezeYesterday} onRepair={repairDay}
+                onStartRitual={(t) => setRitual(t.id)} onOpenReview={() => setView("review")}
               />
+            )}
+            {view === "review" && (
+              <ReviewView state={state} onUpdateTask={updateTask} onFinish={finishReview}
+                onBack={() => setView("today")} />
             )}
             {view === "tasks" && (
               <TasksView
@@ -261,7 +347,8 @@ export default function Momentum() {
             )}
             {view === "habits" && (
               <HabitsView state={state} onAdd={addTask} onOpenTask={(t) => setEditing(t.id)}
-                onBack={() => setView("today")} />
+                onBack={() => setView("today")}
+                onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })} />
             )}
             {view === "identity" && (
               <IdentityView state={state} tally={tally} onPatch={patch} onBack={() => setView("today")} />
@@ -328,7 +415,31 @@ export default function Momentum() {
           open={!!editingTask} task={editingTask} lists={state.lists}
           onClose={() => setEditing(null)} onChange={updateTask} onDelete={removeTask}
         />
+
+        <RitualSheet
+          open={!!ritualTask} task={ritualTask} identity={state.identities}
+          streak={ritualTask ? habitStreakProtected(ritualTask, state.dayLog, state.freezes) : 0}
+          onClose={() => setRitual(null)}
+          onEdit={(t) => setEditing(t.id)}
+          onComplete={(t, minimal) => {
+            if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr(), { minimal });
+            setRitual(null);
+          }}
+        />
+
+        <Celebration
+          event={celebration} onClose={() => setCelebration(null)} onClaimReward={claimReward}
+        />
       </div>
     </div>
   );
 }
+
+const MILESTONE_COPY = {
+  7: "One full week. This is the point most people never reach — the habit is real now.",
+  21: "Three weeks in. It's starting to feel like something you do, not something you're trying.",
+  30: "A month. Look back at the chain — that's evidence, not motivation.",
+  66: "Sixty-six days: roughly where behaviour becomes automatic. You built this.",
+  100: "One hundred. This isn't a habit any more, it's part of who you are.",
+  365: "A full year. Whatever you were before you started, you're not that person now.",
+};
