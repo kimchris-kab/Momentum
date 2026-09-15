@@ -1,4 +1,4 @@
-import { occursOn, tasksForDate } from "./tasks.js";
+import { isDone, tasksForDate } from "./tasks.js";
 import { todayStr } from "./date.js";
 
 // Reminders take the best route available:
@@ -48,10 +48,19 @@ export async function requestNotificationPermission() {
 
 const bodyFor = (task) => {
   const bits = [];
+  if (task.kind === "break") {
+    if (task.trigger) bits.push(`Usual trigger: ${task.trigger}`);
+    return bits.join(" · ") || "This is the window. Ride it out.";
+  }
   if (task.twoMin) bits.push(`Hard day? Just: ${task.twoMin}`);
   else if (task.stackAfter) bits.push(`After ${task.stackAfter}`);
   if (task.location) bits.push(`in ${task.location}`);
-  return bits.join(" · ") || "Time to show up for this one.";
+  if (bits.length) return bits.join(" · ");
+  if (task.kind === "todo") {
+    const note = (task.notes || "").trim();
+    return note ? note.slice(0, 120) : "This is the time you set for it.";
+  }
+  return "Time to show up for this one.";
 };
 
 // A stable 31-bit id per habit+time, so rescheduling replaces rather than duplicates
@@ -62,12 +71,17 @@ const idFor = (taskId, offsetDays) => {
   return h % 2000000000;
 };
 
-function occurrencesWithin(tasks, days) {
+// Anything with a time on it earns a reminder — a one-off task, a habit you're building, or
+// a habit you're avoiding. Setting a time and getting nothing was the interface promising
+// something the scheduler never delivered.
+function occurrencesWithin(tasks, days, dayLog) {
   const out = [];
   for (let offset = 0; offset < days; offset++) {
     const date = offset === 0 ? todayStr() : shiftISO(todayStr(), offset);
-    tasksForDate(tasks, date, "build").forEach((t) => {
+    tasksForDate(tasks, date).forEach((t) => {
       if (!t.time || t.reminder === false) return;
+      // don't nag about something already ticked off earlier in the day
+      if (isDone(t, date, dayLog)) return;
       const at = new Date(`${date}T${t.time}:00`);
       if (at.getTime() <= Date.now()) return;
       out.push({ task: t, date, at, offset });
@@ -85,12 +99,12 @@ function shiftISO(dateStr, days) {
 let pageTimers = [];
 const clearPageTimers = () => { pageTimers.forEach(clearTimeout); pageTimers = []; };
 
-export async function scheduleReminders(tasks, { enabled = true, daysAhead = 7 } = {}) {
+export async function scheduleReminders(tasks, { enabled = true, daysAhead = 7, dayLog = {} } = {}) {
   clearPageTimers();
   if (!enabled) { await cancelAllReminders(); return { scheduled: 0, via: "disabled" }; }
   if ((await notificationPermission()) !== "granted") return { scheduled: 0, via: "unpermitted" };
 
-  const items = occurrencesWithin(tasks, daysAhead);
+  const items = occurrencesWithin(tasks, daysAhead, dayLog);
 
   if (isNative()) {
     try {

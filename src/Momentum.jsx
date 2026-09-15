@@ -87,10 +87,13 @@ export default function Momentum() {
   useEffect(() => {
     if (!loaded) return undefined;
     const t = setTimeout(() => {
-      scheduleReminders(state.tasks, { enabled: state.settings.reminders !== false });
+      scheduleReminders(state.tasks, {
+        enabled: state.settings.reminders !== false,
+        dayLog: state.dayLog,
+      });
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, state.tasks, state.settings.reminders]);
+  }, [loaded, state.tasks, state.dayLog, state.settings.reminders]);
 
   // Rent, salary and subscriptions post themselves for every occurrence that came due
   // while the app was closed, so the ledger is complete without anyone remembering.

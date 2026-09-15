@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Bell, BellOff, CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus,
   Repeat, Target, Timer, Trash2, X, Zap,
@@ -7,6 +7,9 @@ import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
 import { addDays, formatTime12, todayStr } from "../lib/date.js";
 import { dailyRule, monthlyRule, weeklyRule } from "../lib/tasks.js";
+import {
+  notificationPermission, reminderCapability, requestNotificationPermission,
+} from "../lib/notify.js";
 import { Checkbox, IconButton, Pill, SegmentedControl, Sheet } from "./ui.jsx";
 
 const REPEAT_MODES = [
@@ -32,10 +35,28 @@ function Field({ label, children }) {
 export default function TaskSheet({ open, task, lists, goals = [], onClose, onChange, onDelete }) {
   const [subText, setSubText] = useState("");
   const [advanced, setAdvanced] = useState(false);
+  const [perm, setPerm] = useState("default");
+  const capability = useMemo(() => reminderCapability(), []);
+
+  useEffect(() => { if (open) notificationPermission().then(setPerm); }, [open]);
+
   if (!open || !task) return null;
 
   const set = (patch) => onChange(task.id, patch);
   const repeatMode = repeatModeOf(task.recurrence);
+
+  // A reminder needs permission, and the place someone asks for one is right here — not in a
+  // settings screen they may never open.
+  const askPermission = async () => {
+    const result = await requestNotificationPermission();
+    setPerm(result);
+    if (result === "granted") set({ reminder: true });
+  };
+  const off = task.reminder === false || perm !== "granted";
+  const reminderLabel = perm === "denied" ? "Notifications are blocked — enable them in system settings"
+    : perm !== "granted" ? "Turn on reminders"
+    : task.reminder === false ? "No reminder for this one"
+    : task.time ? `Remind me at ${formatTime12(task.time)}` : "Set a time to be reminded";
 
   const setRepeat = (mode) => {
     // dropping a repeat shouldn't strand the task in "No date" — put it back on today
@@ -222,22 +243,6 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
               </p>
             </Field>
 
-            <Field label="Reminder">
-              <button onClick={() => set({ reminder: task.reminder === false })} style={{
-                display: "flex", alignItems: "center", gap: 9, width: "100%", cursor: "pointer",
-                background: task.reminder === false ? C.surface : C.goldSoft,
-                border: `1px solid ${task.reminder === false ? C.border : alpha(C.gold, 0.35)}`,
-                borderRadius: R.md, padding: "12px 13px", textAlign: "left",
-              }}>
-                {task.reminder === false ? <BellOff size={15} color={C.faint} /> : <Bell size={15} color={C.gold} />}
-                <span style={{ flex: 1, color: task.reminder === false ? C.muted : C.text, fontSize: 13 }}>
-                  {task.reminder === false
-                    ? "No reminder for this habit"
-                    : task.time ? `Remind me at ${formatTime12(task.time)}` : "Set a time above to be reminded"}
-                </span>
-              </button>
-            </Field>
-
             <Field label="Reward">
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <div style={styles.fieldShell}>
@@ -259,6 +264,29 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
             </Field>
           </>
         )}
+
+        <Field label="Reminder">
+          <button onClick={() => (perm === "granted" ? set({ reminder: task.reminder === false }) : askPermission())}
+            style={{
+              display: "flex", alignItems: "center", gap: 9, width: "100%", cursor: "pointer",
+              background: off ? C.surface : C.goldSoft,
+              border: `1px solid ${off ? C.border : alpha(C.gold, 0.35)}`,
+              borderRadius: R.md, padding: "12px 13px", textAlign: "left",
+            }}>
+            {off ? <BellOff size={15} color={C.faint} /> : <Bell size={15} color={C.gold} />}
+            <span style={{ flex: 1, color: off ? C.muted : C.text, fontSize: 13 }}>{reminderLabel}</span>
+          </button>
+          {!task.time && task.reminder !== false && (
+            <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0", lineHeight: 1.5 }}>
+              Give it a time above and you'll be nudged when it comes round.
+            </p>
+          )}
+          {perm === "granted" && task.time && capability.level === "foreground" && (
+            <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0", lineHeight: 1.5 }}>
+              {capability.label}
+            </p>
+          )}
+        </Field>
 
         {goals.filter((g) => !g.done).length > 0 && (
           <Field label="Works toward">
