@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
 import {
-  Ban, CalendarCheck, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Fingerprint,
-  Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake, Sparkles, Sun,
+  Ban, CalendarCheck, CalendarDays, CalendarRange, Check, ChevronDown, ChevronRight, ChevronUp,
+  Clock4, Crosshair, Fingerprint, Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake,
+  Sparkles, Sun, Target,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, P_BY_ID } from "../data/constants.js";
@@ -11,6 +12,9 @@ import { dayStats, isDone, tasksForDate } from "../lib/tasks.js";
 import {
   freezesLeft, habitStreakProtected, isFrozen, missedYesterday, nextMilestone, reviewDue,
 } from "../lib/habits.js";
+import {
+  MAX_FOCUS, daysLate, focusFor, overdueTasks, planDue, planFor, weekStart,
+} from "../lib/planning.js";
 import { Card, Checkbox, EmptyState, IconButton, ProgressRing, SectionLabel } from "../components/ui.jsx";
 import TaskRow from "../components/TaskRow.jsx";
 import RecoveryCard from "../components/RecoveryCard.jsx";
@@ -18,9 +22,10 @@ import RecoveryCard from "../components/RecoveryCard.jsx";
 export default function TodayView({
   state, averages, overall, streak, breakStreak, tally, heatmap, needsRest,
   onToggleTask, onOpenTask, onToggleStar, onCheckin, onOpenHabits, onOpenIdentity, onOpenTasks,
-  onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview,
+  onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview, onOpenPlan,
+  onRescheduleOverdue, onToggleFocus,
 }) {
-  const { tasks, dayLog, checkins, lists, freezes, reviews } = state;
+  const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -32,8 +37,12 @@ export default function TodayView({
   const builds = useMemo(() => tasksForDate(tasks, today, "build"), [tasks, today]);
   const todos = useMemo(() => tasksForDate(tasks, today, "todo"), [tasks, today]);
   const avoids = useMemo(() => tasksForDate(tasks, today, "break"), [tasks, today]);
+  const overdue = useMemo(() => overdueTasks(tasks, today), [tasks, today]);
 
   const agenda = [...builds, ...todos];
+  const focusIds = focusFor(dayFocus, today);
+  const focus = agenda.filter((t) => focusIds.includes(t.id));
+  const focusDone = focus.filter((t) => isDone(t, today, dayLog)).length;
   const agendaDone = agenda.filter((t) => isDone(t, today, dayLog));
   const agendaOpen = agenda.filter((t) => !isDone(t, today, dayLog))
     .sort((a, b) => (a.time && b.time) ? a.time.localeCompare(b.time) : a.time ? -1 : b.time ? 1 : 0);
@@ -56,20 +65,33 @@ export default function TodayView({
   const listById = Object.fromEntries(lists.map((l) => [l.id, l]));
   const missed = useMemo(() => missedYesterday(tasks, dayLog, freezes), [tasks, dayLog, freezes]);
   const showReview = reviewDue(reviews) && tasks.some((t) => t.kind === "build" && t.recurrence);
+  const weekPriorities = planFor(weekPlans, weekStart(today)).priorities || [];
+  const showPlanPrompt = planDue(weekPlans) && weekPriorities.length === 0;
 
   // A habit with a two-minute version or a timer earns the start ritual; anything simpler
   // stays a single tap, so "take vitamins" never gets ceremony it doesn't need.
   const wantsRitual = (t) => t.kind === "build" && (t.twoMin || t.timerMinutes);
 
   const row = (t) => (
-    <TaskRow
-      key={t.id} task={t} date={today} done={isDone(t, today, dayLog)}
-      streak={t.kind === "build" ? habitStreakProtected(t, dayLog, freezes) : 0}
-      listChip={t.kind === "todo" && t.listId !== "inbox" ? listById[t.listId] : null}
-      onToggle={() => onToggleTask(t)}
-      onOpen={() => (wantsRitual(t) ? onStartRitual(t) : onOpenTask(t))}
-      onToggleStar={() => onToggleStar(t)}
-    />
+    <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <TaskRow
+          task={t} date={today} done={isDone(t, today, dayLog)}
+          streak={t.kind === "build" ? habitStreakProtected(t, dayLog, freezes) : 0}
+          listChip={t.kind === "todo" && t.listId !== "inbox" ? listById[t.listId] : null}
+          onToggle={() => onToggleTask(t)}
+          onOpen={() => (wantsRitual(t) ? onStartRitual(t) : onOpenTask(t))}
+          onToggleStar={() => onToggleStar(t)}
+        />
+      </div>
+      <button onClick={() => onToggleFocus(t.id)} title={focusIds.includes(t.id) ? "Remove from focus" : "Make this a focus"}
+        style={{
+          background: "none", border: "none", cursor: "pointer", padding: "10px 2px 2px",
+          color: focusIds.includes(t.id) ? C.gold : C.faint, flexShrink: 0,
+        }}>
+        <Crosshair size={13} />
+      </button>
+    </div>
   );
 
   return (
@@ -104,12 +126,20 @@ export default function TodayView({
               </span>
             )}
           </div>
-          {nextMilestone(streak) && streak > 0 && (
+          {focus.length > 0 ? (
+            <p style={{ color: C.muted, fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.5 }}>
+              <Crosshair size={11} color={C.gold} style={{ verticalAlign: -1, marginRight: 4 }} />
+              Focus: <b style={{ color: focusDone === focus.length ? C.green : C.text }}>
+                {focusDone}/{focus.length}
+              </b>{" "}
+              — {focus.filter((t) => !isDone(t, today, dayLog)).map((t) => t.text).join(", ") || "all done"}
+            </p>
+          ) : nextMilestone(streak) && streak > 0 ? (
             <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0" }}>
               {nextMilestone(streak) - streak} day{nextMilestone(streak) - streak === 1 ? "" : "s"} to your{" "}
               {nextMilestone(streak)}-day milestone
             </p>
-          )}
+          ) : null}
         </div>
       </Card>
 
@@ -117,6 +147,97 @@ export default function TodayView({
         missed={missed} freezes={freezes} streak={streak}
         onFreeze={onFreeze} onRepair={onRepair} onStartMinimal={onStartRitual}
       />
+
+      {overdue.length > 0 && (
+        <div className="mtm-card-flip" style={{
+          background: `linear-gradient(135deg, ${alpha(C.orange, 0.11)}, ${C.surface})`,
+          border: `1px solid ${alpha(C.orange, 0.3)}`, borderRadius: R.lg, padding: 16, marginBottom: 12,
+        }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <Clock4 size={17} color={C.orange} style={{ flexShrink: 0, marginTop: 2 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: C.text, fontSize: 14.5, fontWeight: 650, margin: 0, fontFamily: F.display }}>
+                {overdue.length} still owed
+              </p>
+              <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, margin: "4px 0 0" }}>
+                Dated before today and never finished. They don't disappear just because the date did.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 12 }}>
+            {overdue.slice(0, 4).map((t) => (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0" }}>
+                <Checkbox checked={false} onClick={() => onToggleTask(t, t.dueDate)} color={C.orange} size={20} />
+                <button onClick={() => onOpenTask(t)} style={{
+                  flex: 1, minWidth: 0, background: "none", border: "none", padding: 0,
+                  cursor: "pointer", textAlign: "left",
+                }}>
+                  <span style={{ display: "block", color: C.text, fontSize: 13.5 }}>{t.text}</span>
+                </button>
+                <span style={{ ...styles.tag, color: C.orange, background: alpha(C.orange, 0.14) }}>
+                  {daysLate(t)}d late
+                </span>
+              </div>
+            ))}
+            {overdue.length > 4 && (
+              <p style={{ color: C.faint, fontSize: 11, margin: "6px 0 0" }}>
+                and {overdue.length - 4} more
+              </p>
+            )}
+          </div>
+
+          <button onClick={onRescheduleOverdue} style={{
+            ...styles.ghostCta, height: 42, marginTop: 12, fontSize: 13,
+            borderColor: alpha(C.orange, 0.45), color: C.orange,
+          }}>
+            <CalendarDays size={14} /> Pull all {overdue.length} into today
+          </button>
+        </div>
+      )}
+
+      {weekPriorities.length > 0 && (
+        <button onClick={onOpenPlan} className="mtm-card-flip" style={{
+          width: "100%", textAlign: "left", cursor: "pointer", marginBottom: 12,
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: R.lg, padding: "14px 15px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <Target size={14} color={C.gold} />
+            <span style={{ color: C.muted, fontSize: 11, letterSpacing: 0.7, textTransform: "uppercase", fontWeight: 600 }}>
+              This week
+            </span>
+            <span style={{ ...styles.tag, marginLeft: "auto" }}>
+              {weekPriorities.filter((p) => p.done).length}/{weekPriorities.length}
+            </span>
+          </div>
+          {weekPriorities.map((p, i) => (
+            <p key={p.id} style={{
+              color: p.done ? C.faint : C.text, fontSize: 13, lineHeight: 1.5, margin: i ? "6px 0 0" : 0,
+              textDecoration: p.done ? "line-through" : "none",
+            }}>
+              <b style={{ color: C.gold, marginRight: 6 }}>{i + 1}</b>{p.text}
+            </p>
+          ))}
+        </button>
+      )}
+
+      {showPlanPrompt && (
+        <button onClick={onOpenPlan} className="mtm-card-flip" style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 11, cursor: "pointer",
+          background: `linear-gradient(135deg, ${alpha(C.gold, 0.1)}, ${C.surface})`,
+          border: `1px solid ${alpha(C.gold, 0.28)}`, borderRadius: R.lg,
+          padding: "14px 15px", marginBottom: 12, textAlign: "left",
+        }}>
+          <CalendarRange size={17} color={C.gold} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>Plan the week</p>
+            <p style={{ color: C.muted, fontSize: 12, margin: "3px 0 0", lineHeight: 1.45 }}>
+              Three things that would make it a win, before it fills up on its own.
+            </p>
+          </div>
+          <ChevronRight size={16} color={C.faint} />
+        </button>
+      )}
 
       {showReview && (
         <button onClick={onOpenReview} className="mtm-card-flip" style={{
@@ -168,6 +289,7 @@ export default function TodayView({
           <span style={{ color: C.text, fontSize: 14.5, fontWeight: 650 }}>Your plan</span>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
+          <IconButton onClick={onOpenPlan} title="Plan"><Target size={15} /></IconButton>
           <IconButton onClick={onOpenIdentity} title="Identity"><Fingerprint size={15} /></IconButton>
           <IconButton onClick={onOpenHabits} title="Habits"><CalendarDays size={15} /></IconButton>
           <IconButton onClick={onOpenTasks} title="All tasks"><ListChecks size={15} /></IconButton>

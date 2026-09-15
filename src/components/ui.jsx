@@ -85,10 +85,10 @@ export function SegmentedControl({ options, value, onChange, style }) {
   );
 }
 
-export function Checkbox({ checked, onClick, color = C.gold, danger, size = 22, style }) {
+export function Checkbox({ checked, onClick, color = C.gold, danger, size = 22, style, label }) {
   const ring = checked ? color : danger ? C.red : C.faint;
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} aria-label={label} aria-pressed={!!checked} style={{
       width: size, height: size, borderRadius: size > 19 ? 8 : 6, flexShrink: 0, cursor: "pointer",
       border: `1.6px solid ${ring}`, background: checked ? color : "transparent",
       display: "flex", alignItems: "center", justifyContent: "center",

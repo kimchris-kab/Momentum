@@ -11,6 +11,7 @@ import {
 } from "./lib/habits.js";
 import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { postDueRecurring } from "./lib/money.js";
+import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { notificationPermission, scheduleReminders } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx";
 import TaskSheet from "./components/TaskSheet.jsx";
@@ -18,6 +19,7 @@ import RitualSheet from "./components/RitualSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
 import Celebration from "./components/Celebration.jsx";
 import ReviewView from "./views/ReviewView.jsx";
+import PlanView from "./views/PlanView.jsx";
 import TodayView from "./views/TodayView.jsx";
 import TasksView from "./views/TasksView.jsx";
 import HabitsView from "./views/HabitsView.jsx";
@@ -235,6 +237,43 @@ export default function Momentum() {
       : "Review saved");
   }, [show]);
 
+  // ---- Planning ----
+  const savePlan = useCallback((weekKey, plan) => setState((s) => ({
+    ...s, weekPlans: { ...s.weekPlans, [weekKey]: plan },
+  })), []);
+
+  // Overdue work stays owed: pulling it forward re-dates it to today rather than quietly
+  // marking it done or dropping it.
+  const rescheduleOverdue = useCallback(() => setState((s) => {
+    const today = todayStr();
+    const late = overdueTasks(s.tasks, today);
+    if (!late.length) return s;
+    const ids = new Set(late.map((t) => t.id));
+    const before = late.map((t) => ({ id: t.id, dueDate: t.dueDate }));
+    show(`Moved ${late.length} task${late.length === 1 ? "" : "s"} to today`, "Undo", () =>
+      setState((cur) => ({
+        ...cur,
+        tasks: cur.tasks.map((t) => {
+          const prev = before.find((b) => b.id === t.id);
+          return prev ? { ...t, dueDate: prev.dueDate } : t;
+        }),
+      })));
+    return { ...s, tasks: s.tasks.map((t) => (ids.has(t.id) ? { ...t, dueDate: today } : t)) };
+  }), [show]);
+
+  const toggleFocus = useCallback((taskId) => setState((s) => {
+    const today = todayStr();
+    const cur = s.dayFocus?.[today] || [];
+    if (cur.includes(taskId)) {
+      return { ...s, dayFocus: { ...s.dayFocus, [today]: cur.filter((id) => id !== taskId) } };
+    }
+    if (cur.length >= MAX_FOCUS) {
+      show(`Three is the limit — that's the point`);
+      return s;
+    }
+    return { ...s, dayFocus: { ...s.dayFocus, [today]: [...cur, taskId] } };
+  }), [show]);
+
   // ---- Journal ----
   const addEntry = useCallback((entry) => setState((s) => ({
     ...s, journalEntries: [...s.journalEntries, entry], journalDraft: null,
@@ -367,7 +406,7 @@ export default function Momentum() {
     );
   }
 
-  const isSubView = ["checkin", "habits", "identity", "review"].includes(view);
+  const isSubView = ["checkin", "habits", "identity", "review", "plan"].includes(view);
 
   return (
     <div style={styles.app}>
@@ -387,6 +426,18 @@ export default function Momentum() {
                 onRerollMantra={rerollMantra}
                 onFreeze={freezeYesterday} onRepair={repairDay}
                 onStartRitual={(t) => setRitual(t.id)} onOpenReview={() => setView("review")}
+                onOpenPlan={() => setView("plan")}
+                onRescheduleOverdue={rescheduleOverdue} onToggleFocus={toggleFocus}
+              />
+            )}
+            {view === "plan" && (
+              <PlanView
+                state={state} onSavePlan={savePlan}
+                onAddGoal={(g) => patch({ goals: [...state.goals, g] })}
+                onUpdateGoal={(id, p) => patch({ goals: state.goals.map((x) => (x.id === id ? { ...x, ...p } : x)) })}
+                onRemoveGoal={(id) => patch({ goals: state.goals.filter((x) => x.id !== id) })}
+                onOpenTask={(t) => setEditing(t.id)}
+                onBack={() => setView("today")}
               />
             )}
             {view === "review" && (
@@ -473,7 +524,7 @@ export default function Momentum() {
         </nav>
 
         <TaskSheet
-          open={!!editingTask} task={editingTask} lists={state.lists}
+          open={!!editingTask} task={editingTask} lists={state.lists} goals={state.goals}
           onClose={() => setEditing(null)} onChange={updateTask} onDelete={removeTask}
         />
 

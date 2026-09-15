@@ -23,6 +23,8 @@ export const emptyState = () => ({
   budgetSplit: { needs: 50, wants: 30, savings: 20 },
   mantraIdxByDate: {},
   journalDraft: null,
+  weekPlans: {},
+  dayFocus: {},
   freezes: {},
   milestones: [],
   reviews: [],
@@ -37,7 +39,9 @@ function migrateV1(d) {
   const state = { ...emptyState() };
 
   state.checkins = d.checkins || [];
-  state.goals = (d.goals || []).map((g) => ({ notes: "", subtasks: [], starred: false, ...g }));
+  state.goals = (d.goals || []).map((g) => ({
+    notes: "", subtasks: [], starred: false, why: "", targetDate: null, ...g,
+  }));
   state.strategies = (d.strategies || []).map((s) => ({ notes: "", subtasks: [], starred: false, targetDate: null, ...s }));
   state.identities = d.identities || {};
   state.habitAudit = d.habitAudit || [];

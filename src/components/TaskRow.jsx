@@ -44,7 +44,8 @@ export default function TaskRow({
       border: `1px solid ${overdue ? alpha(C.red, 0.22) : "transparent"}`,
       borderRadius: R.md, padding: overdue ? "10px 10px" : "8px 2px",
     }}>
-      <Checkbox checked={done} onClick={onToggle} color={accent} danger={overdue} style={{ marginTop: 1 }} />
+      <Checkbox checked={done} onClick={onToggle} color={accent} danger={overdue} style={{ marginTop: 1 }}
+        label={`${done ? "Undo" : "Complete"} ${task.text}`} />
       <span style={{
         width: 6, height: 6, borderRadius: 3, marginTop: 9, flexShrink: 0,
         background: PRIORITY[task.priority || "med"].color,

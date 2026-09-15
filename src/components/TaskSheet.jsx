@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Bell, BellOff, CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus,
-  Repeat, Timer, Trash2, X, Zap,
+  Repeat, Target, Timer, Trash2, X, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
@@ -29,7 +29,7 @@ function Field({ label, children }) {
   );
 }
 
-export default function TaskSheet({ open, task, lists, onClose, onChange, onDelete }) {
+export default function TaskSheet({ open, task, lists, goals = [], onClose, onChange, onDelete }) {
   const [subText, setSubText] = useState("");
   const [advanced, setAdvanced] = useState(false);
   if (!open || !task) return null;
@@ -258,6 +258,22 @@ export default function TaskSheet({ open, task, lists, onClose, onChange, onDele
               </div>
             </Field>
           </>
+        )}
+
+        {goals.filter((g) => !g.done).length > 0 && (
+          <Field label="Works toward">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {goals.filter((g) => !g.done).map((g) => (
+                <Pill key={g.id} on={task.goalId === g.id} color={C.gold}
+                  onClick={() => set({ goalId: task.goalId === g.id ? null : g.id })}>
+                  <Target size={11} style={{ verticalAlign: -2, marginRight: 4 }} />{g.text}
+                </Pill>
+              ))}
+            </div>
+            <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0", lineHeight: 1.5 }}>
+              Linking it means this goal's progress comes from work you actually finished.
+            </p>
+          </Field>
         )}
 
         <Field label="Identity this builds">
