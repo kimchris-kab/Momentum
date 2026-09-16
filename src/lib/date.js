@@ -17,6 +17,12 @@ export const monthLabel = (mKey) => {
 };
 
 export const money = (n) => (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+// Keeps cents when there are any — for entry fields and running totals, where rounding
+// a 12.40 down to 12 while the person is still typing reads as a bug.
+export const moneyPrecise = (n) => (n || 0).toLocaleString(undefined, {
+  minimumFractionDigits: Number.isInteger(n || 0) ? 0 : 2,
+  maximumFractionDigits: 2,
+});
 export const hashIdx = (s, len) => {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;

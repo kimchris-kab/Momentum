@@ -120,8 +120,12 @@ export const PILLAR_LEVELS = {
   ],
 };
 
-// Original mantras — rotates by date, refreshable
+// Original mantras — one surfaces per day, keyed off the date, and the refresh button
+// re-rolls it. A deep deck matters: at one a day a short list starts repeating inside a
+// month, and a line you've already dismissed twice stops landing. Grouped by what a day
+// tends to need so the deck stays varied rather than twenty takes on discipline.
 export const MANTRAS = [
+  // — Starting, and starting again
   "Small steps today become the person you're building tomorrow.",
   "Discipline is choosing what you want most over what you want now.",
   "You don't need a perfect day — you need a directed one.",
@@ -146,6 +150,180 @@ export const MANTRAS = [
   "Gratitude turns what you have into enough.",
   "Kindness today plants what you'll need tomorrow.",
   "One grounded day is worth more than ten scattered ones.",
+
+  // — Starting, and starting again
+  "The first five minutes are the whole negotiation. Win those.",
+  "You can begin badly. You cannot begin later than now.",
+  "Motivation follows motion, not the other way around.",
+  "Lower the bar until you can step over it, then step over it.",
+  "A messy start beats a perfect plan you never open.",
+  "Begin with the smallest honest version of the thing.",
+  "You've restarted before and it counted. It counts again.",
+  "Day one is not wasted just because there were other day ones.",
+  "The hardest rep is the one that gets you off the chair.",
+  "Open the file. That's the whole task for now.",
+
+  // — Consistency and identity
+  "You are not behind. You are mid-build.",
+  "Who you are is just what you did often enough to stop noticing.",
+  "Skip once and it's a day. Skip twice and it's a direction.",
+  "Be the kind of person who finishes small things.",
+  "Identity is the argument your calendar makes on your behalf.",
+  "Boring repetition is what mastery looks like from the inside.",
+  "You don't need more willpower. You need fewer decisions.",
+  "Make the good choice the easy one and you'll stop having to be brave.",
+  "The habit is the point. The result is the side effect.",
+  "Show up on the ordinary days — those are the ones that add up.",
+  "Nobody sees the streak. You'll feel it anyway.",
+  "Half-effort done today beats full effort scheduled forever.",
+  "Do it again. That's the secret, and it's a dull one.",
+  "Let today be unremarkable and honest.",
+
+  // — Focus and attention
+  "Your attention is the only currency you can't earn back.",
+  "One thing, finished, changes more than five things, started.",
+  "Close the tabs. Close the loops. Then decide.",
+  "Busy is not the same as moving.",
+  "Protect the hour that actually matters. Let the rest be noisy.",
+  "Ask what makes everything else easier — then do that first.",
+  "If it isn't today's priority, it's tomorrow's permission slip.",
+  "Depth is a decision you make before you sit down.",
+  "You can do anything, but not everything, and not all at once.",
+  "Guard the first hour and the day tends to follow.",
+  "Say no on purpose so your yes means something.",
+  "Single-tasking is the rarest advantage left.",
+
+  // — Discipline and desire
+  "Feelings are information, not instructions.",
+  "You don't have to want to. You just have to start.",
+  "Comfort is expensive; it charges you later.",
+  "The urge will pass whether or not you obey it.",
+  "Choose the discomfort that builds over the one that erodes.",
+  "Future you is a real person. Act like you'll meet them.",
+  "Decide once, ahead of time, and stop renegotiating at midnight.",
+  "Hard now, or hard later — pick which hard you'd rather carry.",
+  "The craving is loud but it isn't in charge.",
+  "You can feel resistance and move anyway. Both at once is allowed.",
+
+  // — Setbacks, repair and self-compassion
+  "Never miss twice. That's the whole recovery plan.",
+  "A slip is data, not a verdict.",
+  "Repair beats regret. Start the repair.",
+  "You are allowed to have a bad day without becoming a bad story.",
+  "Shame is a poor coach. Fire it and try curiosity.",
+  "Get back on the same day if you can, the next day if you can't.",
+  "The chain isn't broken; it's just got a gap you can close.",
+  "Being gentle with yourself is not the same as letting yourself off.",
+  "You've survived every worst day so far. The record is perfect.",
+  "Judge the week, not the hour.",
+  "Falling short of the plan is not falling out of the plan.",
+  "Forgive the miss, keep the direction.",
+
+  // — Rest, energy and the body
+  "Rest is maintenance, not reward.",
+  "Tired decisions are expensive. Sleep first, decide second.",
+  "Your body keeps the schedule your mind keeps ignoring.",
+  "Move a little. It fixes more moods than thinking does.",
+  "Eat, drink water, step outside — then reassess the crisis.",
+  "A rested hour outperforms three exhausted ones.",
+  "Stopping on time is a skill worth practising.",
+  "Recovery is where the work actually becomes strength.",
+  "Slow is fine. Stopped and starting again is also fine.",
+  "Burnout isn't proof you cared. It's proof the pace was wrong.",
+  "Put the phone down before the day puts you down.",
+
+  // — Patience and the long game
+  "Growth is quiet long before it's obvious.",
+  "Trust the interval between effort and evidence.",
+  "Most overnight changes took a few unremarkable years.",
+  "You're planting. It's supposed to look like nothing for a while.",
+  "Compare yourself to last month, not to someone's highlight reel.",
+  "Small and permanent beats big and temporary.",
+  "The slow way is usually the only way that holds.",
+  "Give it one more month before you call it a failure.",
+  "Consistency has a long fuse and a large blast radius.",
+  "Roots first. The visible part comes later.",
+
+  // — Clarity and planning
+  "A vague goal is just a wish with better posture.",
+  "Write it down and it stops living rent-free in your head.",
+  "Plan the week so the days don't have to be heroic.",
+  "If it isn't scheduled, you've only agreed to want it.",
+  "Name the next physical action. That's what unsticks things.",
+  "Review honestly — the point isn't to feel good, it's to steer.",
+  "Half of overwhelm is just unsorted.",
+  "Fewer commitments, kept. That's the upgrade.",
+  "Ask what you'd cut if the week were half as long, then cut it now.",
+  "Make the plan simple enough to survive a bad mood.",
+
+  // — Courage and change
+  "Do the thing you're avoiding first; it's costing you all day.",
+  "Discomfort is the entry fee for anything new.",
+  "You'll never feel ready. Ready is a story you tell afterwards.",
+  "The conversation you're dreading is shorter than the dread.",
+  "Ask. The worst outcome is the situation you're already in.",
+  "Let yourself be a beginner. It's the price of becoming good.",
+  "Fear shrinks when you take one concrete step toward it.",
+  "Bet on the version of you that keeps showing up.",
+  "Change feels like loss before it feels like growth.",
+  "If it scares you and it's yours to do, that's usually the sign.",
+
+  // — Work and craft
+  "Finished and imperfect beats perfect and imagined.",
+  "Standards are for the edit, not the first draft.",
+  "Do the unglamorous part well — that's where the edge is.",
+  "Quality is just care, applied repeatedly.",
+  "Ship it, learn from it, improve it. In that order.",
+  "The work will teach you things thinking about it never will.",
+  "Effort you can sustain beats intensity you can't.",
+  "Study one thing deeply enough to become useful with it.",
+  "Skill compounds faster than luck does.",
+
+  // — Money and stewardship
+  "Spend on purpose and the rest stops feeling like guilt.",
+  "Every small saving is a future option you're buying.",
+  "Wealth is quiet; the loud part is usually debt.",
+  "Pay yourself first, then live on what's honestly left.",
+  "A budget is permission, not punishment.",
+  "The cheapest version of a want is usually waiting a week.",
+  "Earning more matters less than keeping some of it.",
+  "Track it and it stops running you.",
+
+  // — People and connection
+  "Send the message. The thought alone reaches no one.",
+  "Be easy to be honest with.",
+  "Attention is the most generous thing you own.",
+  "People remember how reliably you showed up, not how impressively.",
+  "Ask one real question today and actually wait for the answer.",
+  "Repair small ruptures early; they cost almost nothing now.",
+  "You can be kind and still say no.",
+  "Let someone help you. That's part of the relationship too.",
+  "The people who matter are a practice, not a given.",
+  "Say the good thing out loud while it's still true.",
+
+  // — Mind, gratitude and perspective
+  "Not every thought deserves a hearing.",
+  "Name what you're feeling and it loosens its grip.",
+  "You can hold a hard truth and a kind tone at the same time.",
+  "Count what's already working before you audit what isn't.",
+  "Today will be a memory. Make one worth keeping.",
+  "Most of what you worried about last month never arrived.",
+  "Enough is a decision, not an amount.",
+  "Zoom out. Very little is as permanent as it feels at 11pm.",
+  "Notice one ordinary good thing. That's the whole exercise.",
+  "Peace is often just the absence of an argument you chose not to have.",
+  "Curiosity ages better than certainty.",
+  "You don't have to earn your own patience.",
+
+  // — Ending the day
+  "Close the day deliberately, not just eventually.",
+  "Ask what went well before you ask what went wrong.",
+  "Tomorrow starts tonight — decide the first thing now.",
+  "Put the day down. It's finished with you.",
+  "You did more than you'll remember. Write one line of it down.",
+  "An honest review is worth more than a flattering one.",
+  "Leave one easy win set up for the morning.",
+  "Let good enough be good enough, today.",
 ];
 
 // Money — foundational principles checklist (general education, not personal financial advice)

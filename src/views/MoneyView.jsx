@@ -10,6 +10,7 @@ import { C, F, R, alpha, styles } from "../theme.js";
 import {
   BUDGET_CATS, MONEY_PRINCIPLES, SIDE_HUSTLE_IDEAS, TX_CAT_BY_ID,
 } from "../data/constants.js";
+import { txIcon } from "../data/txIcons.js";
 import { longDate, money, prettyDate, todayStr } from "../lib/date.js";
 import {
   categoryBreakdown, describeRule, downloadCsv, filterLedger, groupByDate, monthKeyNow,
@@ -362,7 +363,7 @@ export default function MoneyView({
                           ...styles.row, width: "100%", background: "none", border: "none",
                           cursor: "pointer", textAlign: "left",
                         }}>
-                          <span style={{ width: 7, height: 7, borderRadius: 4, background: color, flexShrink: 0 }} />
+                          <CatGlyph catId={t.catId} color={color} />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <span style={{ display: "block", color: C.text, fontSize: 13 }}>
                               {t.payee || t.note || cat?.label || (t.type === "income" ? "Income" : "Expense")}
@@ -400,10 +401,10 @@ export default function MoneyView({
                   const cat = TX_CAT_BY_ID[r.catId];
                   return (
                     <div key={r.id} style={styles.row}>
-                      <span style={{
-                        width: 7, height: 7, borderRadius: 4, flexShrink: 0,
-                        background: r.active ? (r.type === "income" ? C.gold : cat?.color || C.muted) : C.faint,
-                      }} />
+                      <CatGlyph
+                        catId={r.catId}
+                        color={r.active ? (r.type === "income" ? C.gold : cat?.color || C.muted) : C.faint}
+                      />
                       <button onClick={() => setEditingRule(r)} style={{
                         flex: 1, minWidth: 0, background: "none", border: "none", padding: 0,
                         cursor: "pointer", textAlign: "left",
@@ -635,20 +636,35 @@ export default function MoneyView({
       </p>
 
       <TxSheet
-        open={!!editing} tx={editing} mode="tx"
+        open={!!editing} tx={editing} mode="tx" transactions={transactions}
         onChange={setEditing}
         onClose={() => setEditing(null)}
         onSave={() => { onSaveTx(editing); setEditing(null); }}
         onDelete={editing?.id ? () => { onDeleteTx(editing.id); setEditing(null); } : null}
       />
       <TxSheet
-        open={!!editingRule} tx={editingRule} mode="rule"
+        open={!!editingRule} tx={editingRule} mode="rule" transactions={transactions}
         onChange={setEditingRule}
         onClose={() => setEditingRule(null)}
         onSave={() => { onSaveRule(editingRule); setEditingRule(null); }}
         onDelete={editingRule?.id ? () => { onDeleteRule(editingRule.id); setEditingRule(null); } : null}
       />
     </div>
+  );
+}
+
+// A category glyph reads faster down a list of entries than a colour dot does, and still
+// carries the bucket colour.
+function CatGlyph({ catId, color }) {
+  const Icon = txIcon(catId);
+  return (
+    <span style={{
+      width: 28, height: 28, borderRadius: 9, flexShrink: 0, display: "flex",
+      alignItems: "center", justifyContent: "center",
+      background: alpha(color, 0.13), border: `1px solid ${alpha(color, 0.22)}`,
+    }}>
+      <Icon size={13} color={color} />
+    </span>
   );
 }
 

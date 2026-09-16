@@ -1,4 +1,4 @@
-import { BUDGET_CATS, TX_CAT_BY_ID } from "../data/constants.js";
+import { BUDGET_CATS, TX_CATEGORIES, TX_CAT_BY_ID } from "../data/constants.js";
 import { addDays, dstr, monthKeyOf, monthLabel, pad, parseD, todayStr } from "./date.js";
 
 export const txBucket = (t) => t.category || TX_CAT_BY_ID[t.catId]?.bucket || "wants";
@@ -80,6 +80,69 @@ export function groupByDate(list) {
       items,
       net: items.reduce((a, t) => a + (t.type === "income" ? t.amount : -t.amount), 0),
     }));
+}
+
+// ---- Fast entry ----
+// The amount field accepts a small running sum ("12.40+3+18") so a receipt with several
+// lines can be tallied in place instead of in a separate calculator. Anything that isn't a
+// digit, a dot or a plus is ignored, and a trailing operator just contributes nothing yet.
+export function evalAmount(expr) {
+  if (typeof expr === "number") return expr;
+  const cleaned = String(expr || "").replace(/[^0-9.+]/g, "");
+  if (!cleaned) return 0;
+  const total = cleaned.split("+").reduce((sum, part) => sum + (parseFloat(part) || 0), 0);
+  return Math.round(total * 100) / 100;
+}
+
+// True once the expression holds more than one term worth showing a running total for.
+export const isSum = (expr) => String(expr || "").split("+").filter((p) => p !== "").length > 1;
+
+const RECENCY_WINDOW = 90;
+
+// Categories the person actually uses, most-used first, with recent use weighted heavier
+// than old use. Everything else keeps its declared order behind them.
+export function rankedCategories(transactions, type, today = todayStr()) {
+  const all = TX_CATEGORIES.filter((c) => c.type === type);
+  const score = {};
+  transactions.forEach((t) => {
+    if (t.type !== type || !t.catId) return;
+    const age = Math.max(0, Math.round((parseD(today) - parseD(t.date)) / 86400000));
+    score[t.catId] = (score[t.catId] || 0) + (age <= RECENCY_WINDOW ? 3 : 1);
+  });
+  const used = all.filter((c) => score[c.id]).sort((a, b) => score[b.id] - score[a.id]);
+  return { ranked: used, all, score };
+}
+
+// A handful of amounts worth one tap: the ones this category is usually charged at,
+// then round numbers to fill the row out.
+export function amountSuggestions(transactions, { type, catId }, limit = 4) {
+  const counts = {};
+  transactions.forEach((t) => {
+    if (t.type !== type || !t.amount) return;
+    if (catId && t.catId !== catId) return;
+    counts[t.amount] = (counts[t.amount] || 0) + 1;
+  });
+  const seen = Object.entries(counts)
+    .map(([amount, n]) => ({ amount: Number(amount), n }))
+    .filter((a) => a.n > 1)
+    .sort((a, b) => b.n - a.n || b.amount - a.amount)
+    .slice(0, limit)
+    .map((a) => a.amount);
+
+  const rounded = [10, 20, 50, 100].filter((n) => !seen.includes(n));
+  return [...seen, ...rounded].slice(0, limit);
+}
+
+// If this payee has been logged before, the last entry is almost always the right shape
+// for the new one — offer it rather than applying it silently.
+export function payeeSuggestion(transactions, payee, type) {
+  const q = String(payee || "").trim().toLowerCase();
+  if (q.length < 2) return null;
+  const match = transactions
+    .filter((t) => t.type === type && (t.payee || "").trim().toLowerCase().startsWith(q))
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (!match) return null;
+  return { catId: match.catId, amount: match.amount, payee: match.payee };
 }
 
 // ---- Recurring transactions ----
