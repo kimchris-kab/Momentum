@@ -25,7 +25,7 @@ const GROUP_ORDER = [
 
 export default function TasksView({
   state, onAdd, onToggleTask, onOpenTask, onToggleStar, onMove, onAddList, onRenameList, onDeleteList,
-  onSetSetting,
+  onSetSetting, onStartFocus,
 }) {
   const { tasks, dayLog, lists, settings } = state;
   const [listId, setListId] = useState("all");
@@ -74,6 +74,7 @@ export default function TasksView({
         onToggle={() => onToggleTask(t)}
         onOpen={() => onOpenTask(t)}
         onToggleStar={() => onToggleStar(t)}
+        onFocus={onStartFocus ? () => onStartFocus(t) : null}
         showReorder={canReorder}
         onMoveUp={canReorder && idx > 0 ? () => onMove(t.id, siblings, -1) : null}
         onMoveDown={canReorder && idx < siblings.length - 1 ? () => onMove(t.id, siblings, 1) : null}

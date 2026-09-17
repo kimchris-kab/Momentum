@@ -18,12 +18,13 @@ import {
 import { Card, Checkbox, EmptyState, IconButton, ProgressRing, SectionLabel } from "../components/ui.jsx";
 import TaskRow from "../components/TaskRow.jsx";
 import RecoveryCard from "../components/RecoveryCard.jsx";
+import DayTimeline from "../components/DayTimeline.jsx";
 
 export default function TodayView({
   state, averages, overall, streak, breakStreak, tally, heatmap, needsRest,
   onToggleTask, onOpenTask, onToggleStar, onCheckin, onOpenHabits, onOpenIdentity, onOpenTasks,
   onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview, onOpenPlan,
-  onRescheduleOverdue, onToggleFocus,
+  onRescheduleOverdue, onToggleFocus, onStartFocus, onSchedule,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -85,6 +86,7 @@ export default function TodayView({
           onToggle={() => onToggleTask(t)}
           onOpen={() => (wantsRitual(t) ? onStartRitual(t) : onOpenTask(t))}
           onToggleStar={() => onToggleStar(t)}
+          onFocus={onStartFocus ? () => onStartFocus(t) : null}
         />
       </div>
       <button onClick={() => onToggleFocus(t.id)} title={focusIds.includes(t.id) ? "Remove from focus" : "Make this a focus"}
@@ -370,6 +372,12 @@ export default function TodayView({
           </Card>
         </>
       )}
+
+      <DayTimeline
+        tasks={agenda} date={today} dayLog={dayLog}
+        onSchedule={onSchedule} onOpenTask={onOpenTask}
+        onFocus={onStartFocus}
+      />
 
       {/* Map */}
       <SectionLabel>Your map</SectionLabel>

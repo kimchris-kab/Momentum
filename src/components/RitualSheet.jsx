@@ -1,46 +1,38 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Check, Flame, Pause, Pencil, Play, RotateCcw, Sparkles, Timer, Zap } from "lucide-react";
+import React, { useState } from "react";
+import { Check, Flame, Pause, Pencil, Play, RotateCcw, Sparkles, Zap } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { P_BY_ID } from "../data/constants.js";
 import { formatTime12 } from "../lib/date.js";
-import { nextMilestone, rewardProgress } from "../lib/habits.js";
+import { nextMilestoneFor, rewardProgress } from "../lib/habits.js";
+import { shouldLog } from "../lib/focus.js";
+import { TimerRing, useTimer } from "./Timer.jsx";
 import { Sheet } from "./ui.jsx";
 
-const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+export default function RitualSheet(props) {
+  if (!props.open || !props.task) return null;
+  // Remounting per habit resets the timer cleanly rather than carrying one habit's clock
+  // into the next.
+  return <RitualBody key={props.task.id} {...props} />;
+}
 
-export default function RitualSheet({ open, task, streak, identity, onClose, onComplete, onEdit }) {
-  const defaultSecs = Math.max(1, task?.timerMinutes || 2) * 60;
-  const [secs, setSecs] = useState(defaultSecs);
-  const [running, setRunning] = useState(false);
+function RitualBody({ task, streak, identity, onClose, onComplete, onEdit, onLogFocus }) {
   const [mode, setMode] = useState("full");
-  const tick = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setSecs(Math.max(1, task?.timerMinutes || 2) * 60);
-    setRunning(false);
-    setMode("full");
-  }, [open, task?.id, task?.timerMinutes]);
-
-  useEffect(() => {
-    if (!running) return undefined;
-    tick.current = setInterval(() => {
-      setSecs((s) => {
-        if (s <= 1) { clearInterval(tick.current); setRunning(false); return 0; }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(tick.current);
-  }, [running]);
-
-  if (!open || !task) return null;
+  const total = Math.max(1, task.timerMinutes || 2) * 60;
+  const timer = useTimer({ totalSecs: total, resetKey: task.id });
 
   const pillar = task.pillarId ? P_BY_ID[task.pillarId] : null;
   const identityLine = pillar && identity?.[pillar.id];
-  const upcoming = nextMilestone(streak);
+  const upcoming = nextMilestoneFor(task, streak);
   const reward = rewardProgress(task, streak);
-  const total = Math.max(1, task.timerMinutes || 2) * 60;
-  const pct = ((total - secs) / total) * 100;
+
+  // The ritual's clock is focus time like any other, so it lands in the same log.
+  const flush = (completed) => {
+    if (onLogFocus && shouldLog(timer.elapsed)) {
+      onLogFocus({ task, seconds: timer.elapsed, planned: total, completed });
+    }
+  };
+  const close = () => { flush(false); onClose(); };
+  const complete = () => { flush(true); onComplete(task, mode === "min"); };
 
   const intention = task.stackAfter
     ? `After ${task.stackAfter}, I will ${task.text}${task.location ? ` in ${task.location}` : ""}`
@@ -49,7 +41,7 @@ export default function RitualSheet({ open, task, streak, identity, onClose, onC
       : task.location ? `I will ${task.text} in ${task.location}` : null;
 
   return (
-    <Sheet open={open} onClose={onClose} title={null}>
+    <Sheet open onClose={close} title={null}>
       <div style={{ textAlign: "center", marginBottom: 6 }}>
         {pillar && (
           <span style={{
@@ -92,34 +84,16 @@ export default function RitualSheet({ open, task, streak, identity, onClose, onC
       )}
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginBottom: 18 }}>
-        <div style={{ position: "relative", width: 150, height: 150 }}>
-          <svg width={150} height={150} style={{ transform: "rotate(-90deg)" }}>
-            <circle cx={75} cy={75} r={68} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={8} />
-            <circle
-              cx={75} cy={75} r={68} fill="none" stroke={secs === 0 ? C.green : C.gold} strokeWidth={8}
-              strokeLinecap="round" strokeDasharray={2 * Math.PI * 68}
-              strokeDashoffset={2 * Math.PI * 68 - (pct / 100) * 2 * Math.PI * 68}
-              style={{ transition: "stroke-dashoffset 1s linear" }}
-            />
-          </svg>
-          <div style={{
-            position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
-          }}>
-            <span style={{ color: C.text, fontFamily: F.display, fontSize: 32, fontWeight: 600 }}>{mmss(secs)}</span>
-            <span style={{ color: C.faint, fontSize: 10, letterSpacing: 0.5 }}>
-              {secs === 0 ? "TIME'S UP" : running ? "IN PROGRESS" : "READY"}
-            </span>
-          </div>
-        </div>
+        <TimerRing elapsed={timer.elapsed} total={total} running={timer.running} />
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setRunning((r) => !r)} style={{
+          <button onClick={timer.toggle} style={{
             ...styles.ghostCta, width: "auto", padding: "0 18px", height: 40, fontSize: 13,
             borderColor: alpha(C.gold, 0.4), color: C.gold,
           }}>
-            {running ? <Pause size={14} /> : <Play size={14} />} {running ? "Pause" : secs === total ? "Start" : "Resume"}
+            {timer.running ? <Pause size={14} /> : <Play size={14} />}
+            {timer.running ? "Pause" : timer.elapsed > 0 ? "Resume" : "Start"}
           </button>
-          <button onClick={() => { setRunning(false); setSecs(total); }} style={{
+          <button onClick={timer.reset} style={{
             ...styles.ghostCta, width: "auto", padding: "0 14px", height: 40, fontSize: 13,
           }}>
             <RotateCcw size={14} />
@@ -154,13 +128,13 @@ export default function RitualSheet({ open, task, streak, identity, onClose, onC
         </p>
       )}
 
-      <button onClick={() => onComplete(task, mode === "min")} className="mtm-shimmer" style={{
+      <button onClick={complete} className="mtm-shimmer" style={{
         ...styles.cta, background: `linear-gradient(135deg, ${C.gold}, ${C.orange})`,
       }}>
         <Check size={19} /> {mode === "min" ? "Did the two-minute version" : "Done — mark it"}
       </button>
 
-      <button onClick={() => { onEdit(task); onClose(); }} style={{ ...styles.linkBtn, margin: "14px auto 0" }}>
+      <button onClick={() => { onEdit(task); close(); }} style={{ ...styles.linkBtn, margin: "14px auto 0" }}>
         <Pencil size={12} /> Edit this habit
       </button>
     </Sheet>

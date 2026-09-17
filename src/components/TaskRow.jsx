@@ -1,6 +1,7 @@
 import React from "react";
 import {
-  CalendarClock, ChevronDown, ChevronUp, Clock, Flame, ListTodo, Repeat, StickyNote, Star, Target, Zap,
+  CalendarClock, ChevronDown, ChevronUp, Clock, Flame, ListTodo, Repeat, StickyNote, Star, Target,
+  Timer, Zap,
 } from "lucide-react";
 import { C, R, alpha, styles } from "../theme.js";
 import { PRIORITY, P_BY_ID } from "../data/constants.js";
@@ -12,7 +13,7 @@ const KIND_COLOR = { todo: C.gold, build: C.gold, break: C.red };
 
 export default function TaskRow({
   task, date = todayStr(), done, streak = 0, listChip, week = null, onToggle, onOpen,
-  onToggleStar, onMoveUp, onMoveDown, showReorder,
+  onToggleStar, onFocus, onMoveUp, onMoveDown, showReorder,
 }) {
   const overdue = (!task.recurrence && task.dueDate && task.dueDate < todayStr() && !done)
     || (isPastTime(task.time, date) && !done);
@@ -96,6 +97,14 @@ export default function TaskRow({
             color: onMoveDown ? C.faint : "transparent", lineHeight: 0,
           }}><ChevronDown size={13} /></button>
         </span>
+      )}
+
+      {onFocus && !done && (
+        <button onClick={onFocus} title={`Focus on ${task.text}`} style={{
+          background: "none", border: "none", cursor: "pointer", padding: 2, flexShrink: 0, marginTop: 1,
+        }}>
+          <Timer size={14} color={C.faint} />
+        </button>
       )}
 
       <button onClick={onToggleStar} style={{

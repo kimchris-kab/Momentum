@@ -27,6 +27,7 @@ export const emptyState = () => ({
   dayFocus: {},
   freezes: {},
   milestones: [],
+  focusSessions: [],
   reviews: [],
   settings: { sortMode: "manual", showCompleted: false, reminders: true },
 });

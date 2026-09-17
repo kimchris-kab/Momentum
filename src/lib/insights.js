@@ -3,6 +3,7 @@ import { addDays, daysBetween, monthKeyOf, todayStr, weekdayKey } from "./date.j
 import {
   countsTowardDay, isDone, isFlexible, occursOn, tasksForDate, weeklyTarget,
 } from "./tasks.js";
+import { fmtDuration, focusTotals } from "./focus.js";
 import { txBucket } from "./money.js";
 
 export const SPANS = [
@@ -103,6 +104,7 @@ export function metricsFor(state, from, to) {
     freezesUsed: Object.keys(freezes || {}).filter((d) => inRange(d, from, to)).length,
     savingsRate: income > 0 ? Math.round((saved / income) * 100) : null,
     deeds: cs.filter((c) => c.deed).length,
+    focusSeconds: focusTotals(state.focusSessions, from, to).seconds,
   };
 }
 
@@ -336,10 +338,27 @@ export function buildFindings(state, range) {
     });
   }
 
+  const focus = focusFinding(state, range);
+  if (focus) out.push(focus);
+
   return out;
 }
 
-// One-line summary for the top of the view
+// Where the hours went, stated only when there are enough of them to mean something.
+export function focusFinding(state, range) {
+  const { from, to } = range;
+  const cur = focusTotals(state.focusSessions, from, to);
+  if (cur.seconds < 3600 || cur.count < 3) return null;
+  const top = cur.topTasks[0];
+  const share = Math.round((top.seconds / cur.seconds) * 100);
+  return {
+    tone: share >= 50 ? "good" : "neutral",
+    label: "Focus",
+    text: `${fmtDuration(cur.seconds)} of timed focus across ${cur.count} sessions. `
+      + `${share}% of it went to ${top.text}.`,
+  };
+}
+
 export function narrative(cur, prev, range) {
   if (!cur.logged && !cur.habitScheduled) {
     return "Nothing logged in this window yet — check in or complete a habit and this fills in.";

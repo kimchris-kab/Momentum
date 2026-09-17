@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Compass, ListTodo, Plus, TrendingUp, Wallet } from "lucide-react";
 import { C, MOTION_CSS, styles } from "./theme.js";
 import { MANTRAS, PILLARS } from "./data/constants.js";
-import { addDays, dstr, hashIdx, todayStr } from "./lib/date.js";
+import { addDays, dstr, formatTime12, hashIdx, todayStr } from "./lib/date.js";
 import {
   heatmapDays, isDone, isFlexible, newTask, reorderTasks, tasksForDate, toggleDoneReducer, voteTally,
 } from "./lib/tasks.js";
@@ -10,12 +10,14 @@ import {
   MILESTONES, freezesLeft, habitStreakProtected, isMilestoneFor, protectedStreak,
 } from "./lib/habits.js";
 import { emptyState, loadState, serializeState } from "./lib/migrate.js";
+import { newSession } from "./lib/focus.js";
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { notificationPermission, scheduleReminders } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx";
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
+import FocusSheet from "./components/FocusSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
 import Celebration from "./components/Celebration.jsx";
 import CaptureSheet from "./components/CaptureSheet.jsx";
@@ -45,6 +47,7 @@ export default function Momentum() {
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(null);
   const [ritual, setRitual] = useState(null);
+  const [focusId, setFocusId] = useState(null);
   const [celebration, setCelebration] = useState(null);
   const [capturing, setCapturing] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
@@ -393,6 +396,7 @@ export default function Momentum() {
 
   const editingTask = editing ? state.tasks.find((t) => t.id === editing) : null;
   const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
+  const focusTask = focusId ? state.tasks.find((t) => t.id === focusId) : null;
 
   const saveCheckin = (entry) => {
     setState((s) => ({ ...s, checkins: [...s.checkins.filter((c) => c.date !== entry.date), entry] }));
@@ -403,6 +407,17 @@ export default function Momentum() {
     ...s,
     mantraIdxByDate: { ...s.mantraIdxByDate, [todayStr()]: hashIdx(todayStr() + Date.now(), MANTRAS.length) },
   }));
+
+  // Focus sessions record time actually spent, so they are appended wherever a timer stops —
+  // the general focus sheet and the habit ritual both land here.
+  const logFocus = useCallback((entry) => setState((s) => ({
+    ...s, focusSessions: [...(s.focusSessions || []), newSession(entry)],
+  })), []);
+
+  const scheduleTask = useCallback((task, time) => {
+    updateTask(task.id, { time, dueDate: task.recurrence ? task.dueDate : (task.dueDate || todayStr()) });
+    show(`${task.text} at ${formatTime12(time)}`);
+  }, [updateTask, show]);
 
   // Capture first, edit only if the task actually needs it.
   const captureTask = (patch) => addTask({
@@ -444,6 +459,7 @@ export default function Momentum() {
                 onRerollMantra={rerollMantra}
                 onFreeze={freezeYesterday} onRepair={repairDay}
                 onStartRitual={(t) => setRitual(t.id)} onOpenReview={() => setView("review")}
+                onStartFocus={(t) => setFocusId(t.id)} onSchedule={scheduleTask}
                 onOpenPlan={() => setView("plan")}
                 onRescheduleOverdue={rescheduleOverdue} onToggleFocus={toggleFocus}
               />
@@ -468,6 +484,7 @@ export default function Momentum() {
                 onOpenTask={(t) => setEditing(t.id)} onToggleStar={toggleStar} onMove={moveTask}
                 onAddList={addList} onRenameList={renameList} onDeleteList={deleteList}
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
+                onStartFocus={(t) => setFocusId(t.id)}
               />
             )}
             {view === "habits" && (
@@ -550,6 +567,7 @@ export default function Momentum() {
         <TaskSheet
           open={!!editingTask} task={editingTask} lists={state.lists} goals={state.goals}
           onClose={() => setEditing(null)} onChange={updateTask} onDelete={removeTask}
+          onStartFocus={(t) => setFocusId(t.id)}
         />
 
         <RitualSheet
@@ -557,10 +575,18 @@ export default function Momentum() {
           streak={ritualTask ? habitStreakProtected(ritualTask, state.dayLog, state.freezes) : 0}
           onClose={() => setRitual(null)}
           onEdit={(t) => setEditing(t.id)}
+          onLogFocus={logFocus}
           onComplete={(t, minimal) => {
             if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr(), { minimal });
             setRitual(null);
           }}
+        />
+
+        <FocusSheet
+          open={!!focusTask} task={focusTask}
+          onClose={() => setFocusId(null)}
+          onLog={logFocus}
+          onComplete={(t) => { if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr()); }}
         />
 
         <EntrySheet

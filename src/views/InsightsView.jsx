@@ -5,10 +5,11 @@ import {
 } from "recharts";
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, Ban, Flame, Lightbulb, Minus, Plus, Snowflake,
-  Target, Trash2, TrendingUp, Trophy,
+  Target, Timer, Trash2, TrendingUp, Trophy,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { NO_PILLAR, PILLARS, P_BY_ID } from "../data/constants.js";
+import { fmtDuration, focusTotals } from "../lib/focus.js";
 import { addDays, prettyDate, todayStr } from "../lib/date.js";
 import { dayStats, isDone } from "../lib/tasks.js";
 import {
@@ -86,6 +87,75 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
   );
 }
 
+// Time logged against a task is the one number here that isn't self-reported after the fact,
+// so it earns its own breakdown rather than sitting as a single figure in the grid.
+function FocusBreakdown({ state, range }) {
+  const totals = useMemo(
+    () => focusTotals(state.focusSessions, range.from, range.to), [state.focusSessions, range]);
+  if (!totals.count) return null;
+
+  const pillars = Object.entries(totals.byPillar)
+    .map(([id, seconds]) => ({ ...(P_BY_ID[id] || NO_PILLAR), seconds }))
+    .sort((a, b) => b.seconds - a.seconds);
+  const pillarTotal = pillars.reduce((a, p) => a + p.seconds, 0);
+
+  return (
+    <>
+      <SectionLabel>Where the hours went</SectionLabel>
+      <Card>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 12 }}>
+          <span style={{ color: C.text, fontFamily: F.display, fontSize: 26, fontWeight: 600 }}>
+            {fmtDuration(totals.seconds)}
+          </span>
+          <span style={{ color: C.muted, fontSize: 12 }}>
+            across {totals.count} session{totals.count === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        {pillarTotal > 0 && (
+          <div style={{ display: "flex", gap: 2, height: 8, marginBottom: 10 }}>
+            {pillars.map((p) => (
+              <span key={p.id || "none"} title={`${p.name} · ${fmtDuration(p.seconds)}`} style={{
+                // Several pillar colours sit close together; a hairline between segments is
+                // what makes the split readable at a glance.
+                width: `${(p.seconds / pillarTotal) * 100}%`, background: p.color, borderRadius: 4,
+              }} />
+            ))}
+          </div>
+        )}
+        {pillars.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {pillars.map((p) => (
+              <span key={p.id || "none"} style={{
+                ...styles.tag, color: p.color, background: alpha(p.color, 0.13),
+              }}>
+                {p.name} {fmtDuration(p.seconds)}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {totals.topTasks.slice(0, 5).map((t) => (
+            <div key={t.text} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{
+                flex: 1, minWidth: 0, color: C.text, fontSize: 12.5, overflow: "hidden",
+                textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {t.text}
+              </span>
+              <span style={{ color: C.faint, fontSize: 10.5 }}>×{t.count}</span>
+              <span style={{ color: C.muted, fontSize: 12, minWidth: 52, textAlign: "right" }}>
+                {fmtDuration(t.seconds)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </>
+  );
+}
+
 /* ---------------- Overview ---------------- */
 function Overview({
   state, cur, prev, range, pillars, streak, pid, setPid,
@@ -137,9 +207,15 @@ function Overview({
         {cur.recharge !== null && (
           <Metric label="Recharge" value={cur.recharge} sub="/ 5" change={delta(cur.recharge, prev.recharge)} />
         )}
+        {cur.focusSeconds > 0 && (
+          <Metric label="Focus" value={fmtDuration(cur.focusSeconds)} Icon={Timer}
+            change={delta(Math.round(cur.focusSeconds / 60), Math.round((prev.focusSeconds || 0) / 60))} />
+        )}
         {cur.milestones > 0 && <Metric label="Milestones" value={cur.milestones} Icon={Trophy} />}
         {cur.freezesUsed > 0 && <Metric label="Freezes" value={cur.freezesUsed} Icon={Snowflake} />}
       </div>
+
+      <FocusBreakdown state={state} range={range} />
 
       <SectionLabel>Pillar movement</SectionLabel>
       <Card>

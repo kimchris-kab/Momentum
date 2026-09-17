@@ -38,7 +38,7 @@ function Field({ label, children }) {
   );
 }
 
-export default function TaskSheet({ open, task, lists, goals = [], onClose, onChange, onDelete }) {
+export default function TaskSheet({ open, task, lists, goals = [], onClose, onChange, onDelete, onStartFocus }) {
   const [subText, setSubText] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [perm, setPerm] = useState("default");
@@ -416,6 +416,14 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
               </div>
             )}
           </div>
+        )}
+
+        {onStartFocus && task.kind !== "break" && (
+          <button onClick={() => { onClose(); onStartFocus(task); }} style={{
+            ...styles.ghostCta, height: 44, marginTop: 4, color: C.gold, borderColor: alpha(C.gold, 0.35),
+          }}>
+            <Timer size={14} /> Start a focus session
+          </button>
         )}
 
         <button onClick={() => { onDelete(task.id); onClose(); }} style={{
