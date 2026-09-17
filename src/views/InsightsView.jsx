@@ -8,7 +8,7 @@ import {
   Target, Trash2, TrendingUp, Trophy,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { PILLARS, P_BY_ID } from "../data/constants.js";
+import { NO_PILLAR, PILLARS, P_BY_ID } from "../data/constants.js";
 import { addDays, prettyDate, todayStr } from "../lib/date.js";
 import { dayStats, isDone } from "../lib/tasks.js";
 import {
@@ -216,7 +216,7 @@ function Overview({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           {state.goals.map((g) => {
-            const p = P_BY_ID[g.pillar];
+            const p = P_BY_ID[g.pillar] || NO_PILLAR;
             return (
               <Card key={g.id} style={{ marginBottom: 0, padding: "13px 14px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>

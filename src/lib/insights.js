@@ -1,6 +1,8 @@
 import { BLOCKERS, ENERGIZERS, JOURNAL_MOODS, PILLARS, P_BY_ID, WEEKDAYS, WK_ORDER } from "../data/constants.js";
 import { addDays, daysBetween, monthKeyOf, todayStr, weekdayKey } from "./date.js";
-import { isDone, occursOn, tasksForDate } from "./tasks.js";
+import {
+  countsTowardDay, isDone, isFlexible, occursOn, tasksForDate, weeklyTarget,
+} from "./tasks.js";
 import { txBucket } from "./money.js";
 
 export const SPANS = [
@@ -59,7 +61,8 @@ export function metricsFor(state, from, to) {
   let habitDone = 0, habitScheduled = 0, perfectDays = 0, scheduledDays = 0;
   let breakDone = 0, breakScheduled = 0;
   days.forEach((d) => {
-    const build = tasksForDate(tasks, d, "build");
+    // countsTowardDay everywhere a day is the denominator — see its definition in tasks.js.
+    const build = tasksForDate(tasks, d, "build").filter((t) => countsTowardDay(t, d, dayLog));
     const doneCount = build.filter((t) => isDone(t, d, dayLog)).length;
     habitScheduled += build.length;
     habitDone += doneCount;
@@ -67,7 +70,7 @@ export function metricsFor(state, from, to) {
       scheduledDays++;
       if (doneCount === build.length) perfectDays++;
     }
-    const avoid = tasksForDate(tasks, d, "break");
+    const avoid = tasksForDate(tasks, d, "break").filter((t) => countsTowardDay(t, d, dayLog));
     breakScheduled += avoid.length;
     breakDone += avoid.filter((t) => isDone(t, d, dayLog)).length;
   });
@@ -131,7 +134,9 @@ export function weekdayPattern(tasks, dayLog, from, to) {
   const buckets = Object.fromEntries(WK_ORDER.map((k) => [k, { done: 0, scheduled: 0 }]));
   eachDay(from, to).forEach((d) => {
     const wk = weekdayKey(d);
-    tasksForDate(tasks, d, "build").forEach((t) => {
+    // Same rule as the day rollups: a quota habit is available every day, so counting it as
+    // scheduled on all seven would inflate every weekday's denominator and invent a slump.
+    tasksForDate(tasks, d, "build").filter((t) => countsTowardDay(t, d, dayLog)).forEach((t) => {
       buckets[wk].scheduled++;
       if (isDone(t, d, dayLog)) buckets[wk].done++;
     });
@@ -171,7 +176,7 @@ export function habitMoodLink(state, from, to) {
   const { tasks, dayLog, checkins } = state;
   const full = [], partial = [];
   checkinsIn(checkins, from, to).forEach((c) => {
-    const build = tasksForDate(tasks, c.date, "build");
+    const build = tasksForDate(tasks, c.date, "build").filter((t) => countsTowardDay(t, c.date, dayLog));
     if (!build.length || !c.feel) return;
     const done = build.filter((t) => isDone(t, c.date, dayLog)).length;
     (done === build.length ? full : partial).push(c.feel);
@@ -208,6 +213,13 @@ export function habitTrends(state, from, to, prevFrom, prevTo) {
   const { tasks, dayLog } = state;
   const rate = (task, a, b) => {
     let done = 0, scheduled = 0;
+    // A quota habit asks for target × weeks over the window, not one per day it appears on.
+    if (isFlexible(task)) {
+      const all = eachDay(a, b);
+      all.forEach((d) => { if (isDone(task, d, dayLog)) done++; });
+      scheduled = weeklyTarget(task) * Math.max(1, Math.round(all.length / 7));
+      return { done, scheduled, pct: Math.min(100, pct(done, scheduled) ?? 0) };
+    }
     eachDay(a, b).forEach((d) => {
       if (!occursOn(task, d)) return;
       scheduled++;

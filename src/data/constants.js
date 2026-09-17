@@ -1,6 +1,6 @@
 import {
   Sparkles, Coins, Sprout, Heart, HandHeart, HeartPulse, Users,
-  Gamepad2, Zap, HelpCircle, AlertCircle, Anchor,
+  Gamepad2, Zap, HelpCircle, AlertCircle, Anchor, Circle,
 } from "lucide-react";
 import { C } from "../theme.js";
 
@@ -15,6 +15,9 @@ export const PILLARS = [
   { id: "relationships", name: "Relationships", color: C.blue,   Icon: Users,      prompt: "Family, friends, presence with others" },
 ];
 export const P_BY_ID = Object.fromEntries(PILLARS.map((p) => [p.id, p]));
+// Goals carried over from an older save can have no pillar at all. Rendering them against
+// this is better than the undefined lookup, which used to take the whole screen down.
+export const NO_PILLAR = { id: null, name: "No pillar", color: C.muted, Icon: Circle, prompt: "" };
 
 export const WEEKDAYS = [
   { key: "mon", label: "Monday",    short: "Mon", letter: "M" },
@@ -419,12 +422,16 @@ export const BREAK_TEMPLATES = [
   { text: "Impulse buying", preset: "daily", trigger: "Adverts and sales emails" },
 ];
 
+// The first three pin specific weekdays. The last three set a weekly quota instead — the
+// week is the unit and which days you use is yours. "3× a week" used to be stored as
+// Mon/Wed/Fri, which reported a kept habit as four missed days every week.
 export const DAY_PRESETS = [
   { id: "daily", label: "Every day", days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
   { id: "weekdays", label: "Weekdays", days: ["mon", "tue", "wed", "thu", "fri"] },
   { id: "weekends", label: "Weekends", days: ["sat", "sun"] },
-  { id: "thrice", label: "3× a week", days: ["mon", "wed", "fri"] },
-  { id: "weekly", label: "Once a week", days: ["sun"] },
+  { id: "thrice", label: "3× a week", days: [], times: 3 },
+  { id: "twice", label: "2× a week", days: [], times: 2 },
+  { id: "weekly", label: "Once a week", days: [], times: 1 },
 ];
 
 // Prompts for the days the blank box wins. Deliberately concrete and a little pointed —

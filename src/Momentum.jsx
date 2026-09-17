@@ -4,10 +4,10 @@ import { C, MOTION_CSS, styles } from "./theme.js";
 import { MANTRAS, PILLARS } from "./data/constants.js";
 import { addDays, dstr, hashIdx, todayStr } from "./lib/date.js";
 import {
-  heatmapDays, isDone, newTask, reorderTasks, tasksForDate, toggleDoneReducer, voteTally,
+  heatmapDays, isDone, isFlexible, newTask, reorderTasks, tasksForDate, toggleDoneReducer, voteTally,
 } from "./lib/tasks.js";
 import {
-  MILESTONES, freezesLeft, habitStreakProtected, isMilestone, protectedStreak,
+  MILESTONES, freezesLeft, habitStreakProtected, isMilestoneFor, protectedStreak,
 } from "./lib/habits.js";
 import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { postDueRecurring } from "./lib/money.js";
@@ -18,6 +18,7 @@ import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
 import Celebration from "./components/Celebration.jsx";
+import CaptureSheet from "./components/CaptureSheet.jsx";
 import ReviewView from "./views/ReviewView.jsx";
 import PlanView from "./views/PlanView.jsx";
 import TodayView from "./views/TodayView.jsx";
@@ -45,6 +46,7 @@ export default function Momentum() {
   const [editing, setEditing] = useState(null);
   const [ritual, setRitual] = useState(null);
   const [celebration, setCelebration] = useState(null);
+  const [capturing, setCapturing] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const { toast, show, dismiss, act } = useToast();
 
@@ -143,13 +145,16 @@ export default function Momentum() {
     if (task.kind === "build" && isDone(task, date, dayLog)) {
       const streak = habitStreakProtected(task, dayLog, s.freezes);
       const already = s.milestones.some((m) => m.taskId === task.id && m.days === streak);
-      if (isMilestone(streak) && !already) {
+      // A quota habit's streak counts weeks, so it gets week-scale marks and week-scale copy.
+      if (isMilestoneFor(task, streak) && !already) {
         const reward = task.reward?.atDays && streak >= task.reward.atDays && !task.reward.claimedAt
           ? task.reward : null;
         after.milestones = [...s.milestones, { id: `${task.id}-${streak}`, taskId: task.id, days: streak, date }];
         setTimeout(() => setCelebration({
           id: `${task.id}-${streak}`, taskId: task.id, days: streak, title: task.text,
-          message: MILESTONE_COPY[streak] || "Another mark on the board. Keep the chain alive.",
+          unit: isFlexible(task) ? "week" : "day",
+          message: (isFlexible(task) ? WEEK_MILESTONE_COPY : MILESTONE_COPY)[streak]
+            || "Another mark on the board. Keep the chain alive.",
           reward,
         }), 260);
       }
@@ -358,7 +363,10 @@ export default function Momentum() {
     const recent = [...state.checkins].sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
     const out = {};
     PILLARS.forEach((p) => {
-      const vals = recent.map((c) => c.scores[p.id]).filter((v) => typeof v === "number");
+      // A check-in carried over from an older save may have no scores object at all; the
+      // rest of the app already guards this, and an unguarded read here takes down the
+      // whole shell rather than losing one average.
+      const vals = recent.map((c) => c.scores?.[p.id]).filter((v) => typeof v === "number");
       out[p.id] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     });
     return out;
@@ -396,9 +404,16 @@ export default function Momentum() {
     mantraIdxByDate: { ...s.mantraIdxByDate, [todayStr()]: hashIdx(todayStr() + Date.now(), MANTRAS.length) },
   }));
 
-  const quickAdd = () => {
-    const task = addTask({ text: "", kind: "todo", dueDate: todayStr(), listId: "inbox" });
-    setEditing(task.id);
+  // Capture first, edit only if the task actually needs it.
+  const captureTask = (patch) => addTask({
+    kind: "todo",
+    listId: "inbox",
+    ...patch,
+    dueDate: patch.recurrence ? null : (patch.dueDate ?? todayStr()),
+  });
+  const captureAndEdit = (patch) => {
+    const task = captureTask(patch);
+    if (task) setEditing(task.id);
   };
 
   if (!loaded) {
@@ -505,10 +520,16 @@ export default function Momentum() {
         </div>
 
         {FAB_VIEWS.includes(view) && (
-          <button onClick={quickAdd} style={styles.fab} title="New task">
+          <button onClick={() => setCapturing(true)} style={styles.fab} title="New task">
             <Plus size={24} strokeWidth={2.6} />
           </button>
         )}
+
+        <CaptureSheet
+          open={capturing} lists={state.lists}
+          onClose={() => setCapturing(false)}
+          onAdd={captureTask} onAddAndEdit={captureAndEdit}
+        />
 
         <Toast toast={toast} onAction={act} onDismiss={dismiss} />
 
@@ -565,4 +586,12 @@ const MILESTONE_COPY = {
   66: "Sixty-six days: roughly where behaviour becomes automatic. You built this.",
   100: "One hundred. This isn't a habit any more, it's part of who you are.",
   365: "A full year. Whatever you were before you started, you're not that person now.",
+};
+
+// Quota habits are counted in weeks, so their marks land on a different scale.
+const WEEK_MILESTONE_COPY = {
+  4: "A month of hitting your number. You picked a pace you can actually keep.",
+  12: "Twelve weeks. A quarter of consistency beats a fortnight of intensity every time.",
+  26: "Half a year. This has survived bad weeks, and that's the whole test.",
+  52: "A full year at your own pace. That's not discipline any more, it's just how you live.",
 };

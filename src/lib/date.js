@@ -10,6 +10,9 @@ export const daysBetween = (a, b) => Math.round((parseD(b) - parseD(a)) / 864000
 export const prettyDate = (s) => parseD(s).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 export const longDate = (s) => parseD(s).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 export const weekdayKey = (s) => WK_ORDER[parseD(s).getDay()];
+// Weeks run Monday to Sunday and are keyed by their Monday, which keeps every lookup a
+// plain date string rather than ISO week arithmetic.
+export const weekStartOf = (s = todayStr()) => addDays(s, -((parseD(s).getDay() + 6) % 7));
 export const monthKeyOf = (s) => s.slice(0, 7);
 export const monthLabel = (mKey) => {
   const [y, m] = mKey.split("-").map(Number);

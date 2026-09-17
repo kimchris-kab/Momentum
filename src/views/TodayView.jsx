@@ -8,7 +8,7 @@ import {
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, P_BY_ID } from "../data/constants.js";
 import { hashIdx, longDate, todayStr } from "../lib/date.js";
-import { dayStats, isDone, tasksForDate } from "../lib/tasks.js";
+import { agendaForDate, dayStats, isDone, isFlexible, tasksForDate, weekProgress } from "../lib/tasks.js";
 import {
   freezesLeft, habitStreakProtected, isFrozen, missedYesterday, nextMilestone, reviewDue,
 } from "../lib/habits.js";
@@ -34,9 +34,11 @@ export default function TodayView({
   const checkedInToday = checkins.some((c) => c.date === today);
   const count = checkins.length;
 
-  const builds = useMemo(() => tasksForDate(tasks, today, "build"), [tasks, today]);
+  // agendaForDate, not tasksForDate: a quota habit that has already hit its week stops
+  // asking for a tap instead of sitting in the list looking undone.
+  const builds = useMemo(() => agendaForDate(tasks, today, dayLog, "build"), [tasks, today, dayLog]);
   const todos = useMemo(() => tasksForDate(tasks, today, "todo"), [tasks, today]);
-  const avoids = useMemo(() => tasksForDate(tasks, today, "break"), [tasks, today]);
+  const avoids = useMemo(() => agendaForDate(tasks, today, dayLog, "break"), [tasks, today, dayLog]);
   const overdue = useMemo(() => overdueTasks(tasks, today), [tasks, today]);
 
   const agenda = [...builds, ...todos];
@@ -79,6 +81,7 @@ export default function TodayView({
           task={t} date={today} done={isDone(t, today, dayLog)}
           streak={t.kind === "build" ? habitStreakProtected(t, dayLog, freezes) : 0}
           listChip={t.kind === "todo" && t.listId !== "inbox" ? listById[t.listId] : null}
+          week={isFlexible(t) ? weekProgress(t, dayLog, today) : null}
           onToggle={() => onToggleTask(t)}
           onOpen={() => (wantsRitual(t) ? onStartRitual(t) : onOpenTask(t))}
           onToggleStar={() => onToggleStar(t)}

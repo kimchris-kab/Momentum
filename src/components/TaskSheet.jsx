@@ -6,7 +6,7 @@ import {
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
 import { addDays, formatTime12, todayStr } from "../lib/date.js";
-import { dailyRule, monthlyRule, weeklyRule } from "../lib/tasks.js";
+import { dailyRule, describeRecurrence, monthlyRule, weeklyCountRule, weeklyRule } from "../lib/tasks.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission,
 } from "../lib/notify.js";
@@ -19,7 +19,13 @@ const REPEAT_MODES = [
   { id: "monthly", label: "Monthly" },
 ];
 
-const repeatModeOf = (rec) => (!rec ? "none" : rec.freq);
+// weeklyCount sits under "Weekly" rather than taking a fifth slot in the control: both are
+// weekly patterns, and the real choice is whether the week names the days or just a count.
+const repeatModeOf = (rec) => (!rec ? "none" : rec.freq === "weeklyCount" ? "weekly" : rec.freq);
+const WEEKLY_SHAPES = [
+  { id: "days", label: "On set days" },
+  { id: "count", label: "Any days" },
+];
 
 function Field({ label, children }) {
   return (
@@ -44,6 +50,7 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
 
   const set = (patch) => onChange(task.id, patch);
   const repeatMode = repeatModeOf(task.recurrence);
+  const weeklyShape = task.recurrence?.freq === "weeklyCount" ? "count" : "days";
 
   // A reminder needs permission, and the place someone asks for one is right here — not in a
   // settings screen they may never open.
@@ -70,6 +77,14 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
       ? task.recurrence.weekdays
       : [WEEKDAYS[(new Date().getDay() + 6) % 7].key];
     set({ recurrence: weeklyRule(wk), dueDate: null });
+  };
+
+  const setWeeklyShape = (shape) => {
+    if (shape === "count") return set({ recurrence: weeklyCountRule(task.recurrence?.timesPerWeek || 3) });
+    const wk = task.recurrence?.weekdays?.length
+      ? task.recurrence.weekdays
+      : [WEEKDAYS[(new Date().getDay() + 6) % 7].key];
+    set({ recurrence: weeklyRule(wk) });
   };
 
   const toggleWeekday = (key) => {
@@ -152,22 +167,49 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
         <Field label="Repeat">
           <SegmentedControl options={REPEAT_MODES} value={repeatMode} onChange={setRepeat} />
           {repeatMode === "weekly" && (
-            <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
-              {WEEKDAYS.map((d) => {
-                const on = (task.recurrence?.weekdays || []).includes(d.key);
-                return (
-                  <button key={d.key} onClick={() => toggleWeekday(d.key)} style={{
-                    flex: 1, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
-                    fontFamily: F.body,
-                    border: `1px solid ${on ? C.gold : C.border}`,
-                    background: on ? C.goldSoft : "transparent",
-                    color: on ? C.gold : C.muted,
-                  }}>
-                    {d.letter}
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              <SegmentedControl style={{ marginTop: 10 }} options={WEEKLY_SHAPES}
+                value={weeklyShape} onChange={setWeeklyShape} />
+              {weeklyShape === "days" ? (
+                <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
+                  {WEEKDAYS.map((d) => {
+                    const on = (task.recurrence?.weekdays || []).includes(d.key);
+                    return (
+                      <button key={d.key} onClick={() => toggleWeekday(d.key)} style={{
+                        flex: 1, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
+                        fontFamily: F.body,
+                        border: `1px solid ${on ? C.gold : C.border}`,
+                        background: on ? C.goldSoft : "transparent",
+                        color: on ? C.gold : C.muted,
+                      }}>
+                        {d.letter}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
+                    {[1, 2, 3, 4, 5, 6, 7].map((n) => {
+                      const on = (task.recurrence?.timesPerWeek || 3) === n;
+                      return (
+                        <button key={n} onClick={() => set({ recurrence: weeklyCountRule(n) })} style={{
+                          flex: 1, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+                          fontFamily: F.body,
+                          border: `1px solid ${on ? C.gold : C.border}`,
+                          background: on ? C.goldSoft : "transparent",
+                          color: on ? C.gold : C.muted,
+                        }}>{n}</button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "8px 0 0" }}>
+                    {describeRecurrence(task.recurrence)} — any days you like. A week counts when you
+                    hit the number, so a rest day never breaks the streak.
+                  </p>
+                </>
+              )}
+            </>
           )}
           {repeatMode === "daily" && (
             <div style={{ ...styles.fieldShell, marginTop: 10, width: "fit-content" }}>

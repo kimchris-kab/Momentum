@@ -2,7 +2,8 @@ import React, { useEffect, useMemo } from "react";
 import { Gift, Trophy } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 
-// Fires when a habit crosses 7 / 21 / 30 / 66 / 100 / 365 days. The immediate, slightly
+// Fires when a habit crosses a milestone — 7 / 21 / 30 / 66 / 100 / 365 days for a habit
+// scheduled by day, 4 / 12 / 26 / 52 weeks for one on a weekly quota. The immediate, slightly
 // over-the-top payoff is the point: habits need a reward closer than "someday I'll be fitter".
 export default function Celebration({ event, onClose, onClaimReward }) {
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function Celebration({ event, onClose, onClaimReward }) {
         </div>
 
         <p style={{ color: C.gold, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", margin: 0 }}>
-          {event.days}-day milestone
+          {event.days}-{event.unit || "day"} milestone
         </p>
         <h2 style={{ ...styles.h2, fontSize: 24, margin: "8px 0 10px" }}>{event.title}</h2>
         <p style={{ color: C.muted, fontSize: 13.5, lineHeight: 1.6, margin: 0 }}>{event.message}</p>

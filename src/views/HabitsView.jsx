@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Ban, Bell, BellOff, ChevronDown, ChevronUp, Copy, Flame, MoreHorizontal, Pause, Pencil,
-  Play, Plus, Repeat, Sparkles, Sprout, Timer, Trash2, Zap,
+  Play, Plus, Repeat, Sparkles, Sprout, Target, Timer, Trash2, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import {
   BREAK_TEMPLATES, DAY_PRESETS, HABIT_TEMPLATES, PILLARS, PRIORITY, P_BY_ID, WEEKDAYS,
 } from "../data/constants.js";
 import { formatTime12, todayStr } from "../lib/date.js";
-import { describeRecurrence, isDone, occursOn, weeklyRule } from "../lib/tasks.js";
-import { habitStreakProtected, nextMilestone, rewardProgress } from "../lib/habits.js";
+import {
+  describeRecurrence, isDone, isFlexible, occursOn, weekProgress, weeklyCountRule, weeklyRule,
+} from "../lib/tasks.js";
+import { habitStreakProtected, nextMilestoneFor, rewardProgress } from "../lib/habits.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission, scheduleReminders,
   sendTestReminder,
@@ -19,7 +21,9 @@ import {
 } from "../components/ui.jsx";
 
 const sameDays = (a, b) => a.length === b.length && a.every((d) => b.includes(d));
-const presetFor = (days) => DAY_PRESETS.find((p) => sameDays(p.days, days))?.id || "custom";
+const presetFor = (days, times) => (times
+  ? DAY_PRESETS.find((p) => p.times === times)?.id || "custom"
+  : DAY_PRESETS.find((p) => !p.times && sameDays(p.days, days))?.id || "custom");
 
 export default function HabitsView({
   state, onAdd, onOpenTask, onBack, onSetSetting, onDuplicate, onArchive, onDelete, onMove,
@@ -35,6 +39,8 @@ export default function HabitsView({
   // composer
   const [text, setText] = useState("");
   const [days, setDays] = useState(DAY_PRESETS[0].days);
+  // null = the schedule names its days; a number = a weekly quota instead.
+  const [times, setTimes] = useState(null);
   const [time, setTime] = useState("");
   const [prio, setPrio] = useState("high");
   const [pillarId, setPillarId] = useState(null);
@@ -64,11 +70,11 @@ export default function HabitsView({
 
   const accent = kind === "break" ? C.red : C.gold;
   const templates = kind === "break" ? BREAK_TEMPLATES : HABIT_TEMPLATES;
-  const preset = presetFor(days);
+  const preset = presetFor(days, times);
 
   const resetComposer = () => {
     setText(""); setTime(""); setTwoMin(""); setTrigger(""); setPillarId(null); setMore(false);
-    setDays(DAY_PRESETS[0].days);
+    setDays(DAY_PRESETS[0].days); setTimes(null);
   };
 
   const build = (over = {}) => ({
@@ -80,12 +86,14 @@ export default function HabitsView({
     twoMin: (over.twoMin ?? twoMin) || null,
     trigger: (over.trigger ?? trigger) || null,
     timerMinutes: over.timerMinutes ?? null,
-    recurrence: weeklyRule([...(over.days ?? days)]),
+    recurrence: (over.times ?? times)
+      ? weeklyCountRule(over.times ?? times)
+      : weeklyRule([...(over.days ?? days)]),
     startDate: todayStr(),
   });
 
   const add = (andEdit) => {
-    if (!text.trim() || days.length === 0) return;
+    if (!text.trim() || (!times && days.length === 0)) return;
     const created = onAdd(build());
     resetComposer();
     if (andEdit && created) onOpenTask(created);
@@ -95,6 +103,7 @@ export default function HabitsView({
     const created = onAdd(build({
       text: tpl.text,
       days: DAY_PRESETS.find((p) => p.id === tpl.preset)?.days || days,
+      times: DAY_PRESETS.find((p) => p.id === tpl.preset)?.times ?? null,
       pillarId: tpl.pillarId ?? null,
       twoMin: tpl.twoMin ?? "",
       trigger: tpl.trigger ?? "",
@@ -115,8 +124,9 @@ export default function HabitsView({
       <button onClick={onBack} style={styles.back}>Back</button>
       <h1 style={styles.h1}>Habits</h1>
       <p style={styles.lede}>
-        Habits repeat on the days you pick and show up in your plan automatically. Building one
-        feeds your streak; avoiding one keeps your clean days running.
+        Habits show up in your plan automatically — either on the days you pick, or as a weekly
+        number you hit on whichever days suit. Building one feeds your streak; avoiding one keeps
+        your clean days running.
       </p>
 
       {kind === "build" && capability.level !== "none" && (
@@ -183,29 +193,39 @@ export default function HabitsView({
         </p>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8 }}>
           {DAY_PRESETS.map((p) => (
-            <Pill key={p.id} on={preset === p.id} color={accent} onClick={() => setDays([...p.days])}>
+            <Pill key={p.id} on={preset === p.id} color={accent}
+              onClick={() => { setTimes(p.times ?? null); if (!p.times) setDays([...p.days]); }}>
               {p.label}
             </Pill>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 5 }}>
-          {WEEKDAYS.map((d) => {
-            const on = days.includes(d.key);
-            return (
-              <button key={d.key}
-                onClick={() => setDays((cur) => cur.includes(d.key) ? cur.filter((x) => x !== d.key) : [...cur, d.key])}
-                style={{
-                  flex: 1, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
-                  fontFamily: F.body,
-                  border: `1px solid ${on ? accent : C.border}`,
-                  background: on ? alpha(accent, 0.14) : "transparent",
-                  color: on ? accent : C.muted,
-                }}>{d.letter}</button>
-            );
-          })}
-        </div>
-        {days.length === 0 && (
-          <p style={{ color: C.red, fontSize: 11, margin: "8px 0 0" }}>Pick at least one day.</p>
+        {times ? (
+          <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
+            Hit it {times === 1 ? "once" : `${times} times`} a week, on whichever days suit you.
+            The week is what counts, so a rest day never breaks the streak.
+          </p>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 5 }}>
+              {WEEKDAYS.map((d) => {
+                const on = days.includes(d.key);
+                return (
+                  <button key={d.key}
+                    onClick={() => setDays((cur) => cur.includes(d.key) ? cur.filter((x) => x !== d.key) : [...cur, d.key])}
+                    style={{
+                      flex: 1, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 11.5, fontWeight: 600,
+                      fontFamily: F.body,
+                      border: `1px solid ${on ? accent : C.border}`,
+                      background: on ? alpha(accent, 0.14) : "transparent",
+                      color: on ? accent : C.muted,
+                    }}>{d.letter}</button>
+                );
+              })}
+            </div>
+            {days.length === 0 && (
+              <p style={{ color: C.red, fontSize: 11, margin: "8px 0 0" }}>Pick at least one day.</p>
+            )}
+          </>
         )}
 
         <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
@@ -389,7 +409,9 @@ function HabitCard({ task, kind, accent, dayLog, freezes, onOpen, onMenu }) {
   const streak = habitStreakProtected(task, dayLog, freezes);
   const dueToday = occursOn(task, todayStr());
   const doneToday = dueToday && isDone(task, todayStr(), dayLog);
-  const milestone = nextMilestone(streak);
+  const milestone = nextMilestoneFor(task, streak);
+  const flexible = isFlexible(task);
+  const week = flexible ? weekProgress(task, dayLog) : null;
   const reward = rewardProgress(task, streak);
   const pillar = task.pillarId ? P_BY_ID[task.pillarId] : null;
 
@@ -411,7 +433,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, onOpen, onMenu }) {
         </button>
         {streak > 0 && (
           <span style={{ ...styles.tag, color: C.gold, background: C.goldSoft }}>
-            <Flame size={9} /> {streak}
+            <Flame size={9} /> {streak}{flexible ? " wk" : ""}
           </span>
         )}
         {dueToday && (
@@ -432,6 +454,15 @@ function HabitCard({ task, kind, accent, dayLog, freezes, onOpen, onMenu }) {
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
         <span style={styles.tag}><Repeat size={9} /> {describeRecurrence(task.recurrence)}</span>
+        {week && (
+          <span style={{
+            ...styles.tag,
+            color: week.met ? C.green : C.muted,
+            background: week.met ? alpha(C.green, 0.13) : C.surface2,
+          }}>
+            <Target size={9} /> {week.done}/{week.target} this week
+          </span>
+        )}
         {task.time && (
           <span style={styles.tag}>
             {task.reminder === false ? <BellOff size={9} /> : <Bell size={9} />} {formatTime12(task.time)}
@@ -453,7 +484,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, onOpen, onMenu }) {
 
       {kind === "build" && (milestone || reward) && (
         <p style={{ color: C.faint, fontSize: 10.5, margin: "9px 0 0", lineHeight: 1.5 }}>
-          {milestone && streak > 0 && `${milestone - streak} to your ${milestone}-day mark`}
+          {milestone && streak > 0 && `${milestone - streak} to your ${milestone}-${flexible ? "week" : "day"} mark`}
           {milestone && streak > 0 && reward && " · "}
           {reward && (reward.ready
             ? <b style={{ color: C.gold }}>Reward ready: {reward.text}</b>

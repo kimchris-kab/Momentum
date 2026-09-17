@@ -1,12 +1,9 @@
-import { addDays, daysBetween, longDate, parseD, prettyDate, todayStr, weekdayKey } from "./date.js";
+import { addDays, daysBetween, longDate, parseD, prettyDate, todayStr, weekStartOf, weekdayKey } from "./date.js";
 import { isDone, tasksForDate } from "./tasks.js";
 
-// Weeks run Monday to Sunday and are keyed by their Monday, which keeps every lookup a
-// plain date string rather than ISO week arithmetic.
-export function weekStart(dateStr = todayStr()) {
-  const d = parseD(dateStr);
-  return addDays(dateStr, -((d.getDay() + 6) % 7));
-}
+// Weeks run Monday to Sunday and are keyed by their Monday. The arithmetic lives in date.js
+// so the task layer can reach it without importing this module back.
+export const weekStart = weekStartOf;
 export const weekEnd = (key) => addDays(key, 6);
 export const weekLabel = (key) => `${prettyDate(key)} – ${prettyDate(weekEnd(key))}`;
 export const isCurrentWeek = (key) => key === weekStart(todayStr());

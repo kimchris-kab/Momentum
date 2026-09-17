@@ -1,4 +1,4 @@
-import { addDays, daysBetween, dstr, parseD, todayStr, weekdayKey } from "./date.js";
+import { addDays, daysBetween, dstr, parseD, todayStr, weekStartOf, weekdayKey } from "./date.js";
 import { WK_ORDER } from "../data/constants.js";
 
 // A single Task shape backs all three kinds of thing the app tracks:
@@ -36,11 +36,38 @@ export const newTask = (patch = {}) => ({
 export const weeklyRule = (weekdays) => ({ freq: "weekly", interval: 1, weekdays, monthDay: null });
 export const dailyRule = (interval = 1) => ({ freq: "daily", interval, weekdays: [], monthDay: null });
 export const monthlyRule = (monthDay) => ({ freq: "monthly", interval: 1, weekdays: [], monthDay });
+// "3× a week" — a quota, not a set of days. The week is the unit of judgement, so which
+// days you use is up to you. Pinning it to fixed weekdays (as this app used to) reports a
+// kept habit as four missed days every week.
+export const weeklyCountRule = (timesPerWeek = 3) => ({
+  freq: "weeklyCount", interval: 1, weekdays: [], monthDay: null,
+  timesPerWeek: Math.max(1, Math.min(7, Math.round(timesPerWeek) || 3)),
+});
+
+export const isFlexible = (task) => task?.recurrence?.freq === "weeklyCount";
+export const weeklyTarget = (task) =>
+  Math.max(1, Math.min(7, task?.recurrence?.timesPerWeek || 3));
+export const streakUnit = (task) => (isFlexible(task) ? "week" : "day");
+
+// How far into this week's quota you are. `dateStr` can be any day in the week you're asking about.
+export function weekProgress(task, dayLog, dateStr = todayStr()) {
+  const target = weeklyTarget(task);
+  const start = weekStartOf(dateStr);
+  let done = 0;
+  for (let i = 0; i < 7; i++) {
+    if (dayLog?.[addDays(start, i)]?.[task.id]?.done) done++;
+  }
+  return { done, target, met: done >= target, remaining: Math.max(0, target - done), weekStart: start };
+}
 
 export function describeRecurrence(rec) {
   if (!rec) return null;
   if (rec.freq === "daily") return rec.interval > 1 ? `Every ${rec.interval} days` : "Every day";
   if (rec.freq === "monthly") return `Monthly on day ${rec.monthDay}`;
+  if (rec.freq === "weeklyCount") {
+    const n = Math.max(1, Math.min(7, rec.timesPerWeek || 3));
+    return n === 1 ? "Once a week" : n === 2 ? "Twice a week" : `${n}× a week`;
+  }
   const days = rec.weekdays || [];
   if (days.length === 7) return "Every day";
   if (days.length === 5 && ["mon", "tue", "wed", "thu", "fri"].every((d) => days.includes(d))) return "Weekdays";
@@ -57,6 +84,8 @@ export function occursOn(task, dateStr) {
   if (!rec) return task.dueDate === dateStr;
   const startsOn = task.startDate || dstr(new Date(task.createdAt || Date.now()));
   if (dateStr < startsOn) return false;
+  // A quota habit is available every day; the week decides whether you kept it.
+  if (rec.freq === "weeklyCount") return true;
   if (rec.freq === "daily") {
     const step = Math.max(1, rec.interval || 1);
     return daysBetween(startsOn, dateStr) % step === 0;
@@ -67,6 +96,18 @@ export function occursOn(task, dateStr) {
 
 export const tasksForDate = (tasks, dateStr, kind) =>
   tasks.filter((t) => (kind ? t.kind === kind : true) && occursOn(t, dateStr));
+
+// What a day still wants from you. A quota habit drops off once the week's target is met,
+// rather than sitting there asking for a tap it no longer needs.
+export const isOnAgenda = (task, dateStr, dayLog) => {
+  if (!occursOn(task, dateStr)) return false;
+  if (!isFlexible(task)) return true;
+  if (isDone(task, dateStr, dayLog)) return true;
+  return !weekProgress(task, dayLog, dateStr).met;
+};
+
+export const agendaForDate = (tasks, dateStr, dayLog, kind) =>
+  tasksForDate(tasks, dateStr, kind).filter((t) => isOnAgenda(t, dateStr, dayLog));
 
 // Recurring tasks record completion per date; one-off tasks carry it on the task itself.
 export const isDone = (task, dateStr, dayLog) =>
@@ -92,10 +133,16 @@ export const subtaskProgress = (task) => {
 };
 
 // ---- Day-level rollups ----
+// A quota habit is judged by its week, never by its day: it can add credit to a day but can
+// never make one look incomplete. Counting it as "scheduled" every day is what made "3× a
+// week" read as four misses a week.
+export const countsTowardDay = (task, dateStr, dayLog) =>
+  !isFlexible(task) || isDone(task, dateStr, dayLog);
+
 export function dayStats(tasks, dateStr, dayLog, kind = "build") {
-  const scheduled = tasksForDate(tasks, dateStr, kind);
-  const done = scheduled.filter((t) => isDone(t, dateStr, dayLog)).length;
-  return { total: scheduled.length, done, ratio: scheduled.length ? done / scheduled.length : null };
+  const counted = tasksForDate(tasks, dateStr, kind).filter((t) => countsTowardDay(t, dateStr, dayLog));
+  const done = counted.filter((t) => isDone(t, dateStr, dayLog)).length;
+  return { total: counted.length, done, ratio: counted.length ? done / counted.length : null };
 }
 
 // null = nothing was scheduled, so the day neither breaks nor extends a streak
@@ -118,9 +165,25 @@ export function computeStreak(tasks, dayLog, kind = "build") {
   return n;
 }
 
+// Consecutive weeks a quota habit hit its target. The current week only counts once the
+// quota is met — until then it's still in progress, not broken, so the streak is measured
+// from last week rather than reading as zero every Monday morning.
+export function weekStreak(task, dayLog, today = todayStr()) {
+  let cursor = weekStartOf(today);
+  if (!weekProgress(task, dayLog, cursor).met) cursor = addDays(cursor, -7);
+  let n = 0;
+  for (let i = 0; i < 260; i++) {
+    if (!weekProgress(task, dayLog, cursor).met) break;
+    n++;
+    cursor = addDays(cursor, -7);
+  }
+  return n;
+}
+
 // Consecutive completed occurrences of one recurring task, walking back through its own schedule
 export function habitStreak(task, tasks, dayLog) {
   if (!task.recurrence) return 0;
+  if (isFlexible(task)) return weekStreak(task, dayLog);
   let cursor = todayStr();
   let guard = 0;
   while (!occursOn(task, cursor) && guard < 400) { cursor = addDays(cursor, -1); guard++; }

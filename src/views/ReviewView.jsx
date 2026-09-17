@@ -5,7 +5,7 @@ import {
 import { C, F, R, alpha, styles } from "../theme.js";
 import { WEEKDAYS } from "../data/constants.js";
 import { longDate, todayStr } from "../lib/date.js";
-import { describeRecurrence } from "../lib/tasks.js";
+import { describeRecurrence, isFlexible, weeklyCountRule, weeklyTarget } from "../lib/tasks.js";
 import { VERDICTS, reviewHabits } from "../lib/habits.js";
 import { Card, EmptyState, ProgressBar, SectionLabel } from "../components/ui.jsx";
 
@@ -36,20 +36,30 @@ export default function ReviewView({ state, onUpdateTask, onFinish, onBack }) {
         applied.push({ taskId: task.id, text: task.text, action: "shrink" });
       }
       if (kind === "fewer") {
-        const days = task.recurrence?.weekdays || [];
-        const trimmed = days.length > 2 ? days.slice(0, Math.max(2, Math.ceil(days.length / 2))) : days;
-        onUpdateTask(task.id, { recurrence: { ...task.recurrence, weekdays: trimmed } });
-        applied.push({ taskId: task.id, text: task.text, action: "fewer days" });
+        // A quota habit has no weekdays to trim — the lever is the number itself.
+        if (isFlexible(task)) {
+          onUpdateTask(task.id, { recurrence: weeklyCountRule(Math.max(1, weeklyTarget(task) - 1)) });
+          applied.push({ taskId: task.id, text: task.text, action: "smaller weekly target" });
+        } else {
+          const days = task.recurrence?.weekdays || [];
+          const trimmed = days.length > 2 ? days.slice(0, Math.max(2, Math.ceil(days.length / 2))) : days;
+          onUpdateTask(task.id, { recurrence: { ...task.recurrence, weekdays: trimmed } });
+          applied.push({ taskId: task.id, text: task.text, action: "fewer days" });
+        }
       }
       if (kind === "pause") {
         onUpdateTask(task.id, { archivedAt: Date.now() });
         applied.push({ taskId: task.id, text: task.text, action: "paused" });
       }
       if (kind === "levelup") {
-        const days = task.recurrence?.weekdays || [];
-        const missing = WEEKDAYS.map((d) => d.key).filter((k) => !days.includes(k));
-        if (missing.length) {
-          onUpdateTask(task.id, { recurrence: { ...task.recurrence, weekdays: [...days, missing[0]] } });
+        if (isFlexible(task)) {
+          onUpdateTask(task.id, { recurrence: weeklyCountRule(Math.min(7, weeklyTarget(task) + 1)) });
+        } else {
+          const days = task.recurrence?.weekdays || [];
+          const missing = WEEKDAYS.map((d) => d.key).filter((k) => !days.includes(k));
+          if (missing.length) {
+            onUpdateTask(task.id, { recurrence: { ...task.recurrence, weekdays: [...days, missing[0]] } });
+          }
         }
         applied.push({ taskId: task.id, text: task.text, action: "levelled up" });
       }

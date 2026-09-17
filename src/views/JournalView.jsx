@@ -364,7 +364,9 @@ function Stat({ value, label, Icon }) {
 
 function DayCard({ item, open, onToggle, onOpenEntry, onToggleFavorite }) {
   const c = item.checkin;
-  const vals = c ? PILLARS.map((p) => c.scores[p.id]).filter((v) => typeof v === "number") : [];
+  // Same guard as everywhere else that reads a check-in: an older save may have no scores
+  // object, and an unguarded read here blanks the whole Journal tab.
+  const vals = c ? PILLARS.map((p) => c.scores?.[p.id]).filter((v) => typeof v === "number") : [];
   const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 
   return (
@@ -379,7 +381,7 @@ function DayCard({ item, open, onToggle, onOpenEntry, onToggleFavorite }) {
               {c && PILLARS.map((p) => (
                 <span key={p.id} title={p.name} style={{
                   width: 9, height: 9, borderRadius: 5, background: p.color,
-                  opacity: 0.25 + 0.15 * (c.scores[p.id] || 0),
+                  opacity: 0.25 + 0.15 * (c.scores?.[p.id] || 0),
                 }} />
               ))}
               {item.entries.length > 0 && (
@@ -424,7 +426,7 @@ function DayCard({ item, open, onToggle, onOpenEntry, onToggleFavorite }) {
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
               <p.Icon size={13} color={p.color} />
               <span style={{ color: C.muted, fontSize: 12.5, flex: 1 }}>{p.name}</span>
-              <span style={{ color: C.text, fontSize: 12.5 }}>{c.scores[p.id] ?? "–"}</span>
+              <span style={{ color: C.text, fontSize: 12.5 }}>{c.scores?.[p.id] ?? "–"}</span>
             </div>
           ))}
           {c && (c.energizers?.length > 0 || c.blockers?.length > 0) && (

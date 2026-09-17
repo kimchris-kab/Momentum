@@ -12,6 +12,7 @@ import {
   Card, EmptyState, IconButton, Pill, SegmentedControl, SectionLabel, Sheet,
 } from "../components/ui.jsx";
 import TaskRow from "../components/TaskRow.jsx";
+import QuickAdd from "../components/QuickAdd.jsx";
 
 const GROUP_ORDER = [
   { key: "overdue", label: "Overdue", color: C.red },
@@ -33,7 +34,6 @@ export default function TasksView({
   const [showCompleted, setShowCompleted] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [listsOpen, setListsOpen] = useState(false);
-  const [draft, setDraft] = useState("");
   const [newListName, setNewListName] = useState("");
 
   const sortMode = settings.sortMode || "manual";
@@ -54,16 +54,14 @@ export default function TasksView({
   const openCount = GROUP_ORDER.reduce((n, g) => n + groups[g.key].length, 0);
   const listById = Object.fromEntries(lists.map((l) => [l.id, l]));
 
-  const add = () => {
-    if (!draft.trim()) return;
-    onAdd({
-      text: draft.trim(),
-      kind: "todo",
-      listId: listId === "all" ? "inbox" : listId,
-      dueDate: today,
-    });
-    setDraft("");
-  };
+  // The parser hands back everything it understood; anything it didn't still lands on today,
+  // which is what the plain field used to do.
+  const add = (patch) => onAdd({
+    kind: "todo",
+    listId: listId === "all" ? "inbox" : listId,
+    ...patch,
+    dueDate: patch.recurrence ? null : (patch.dueDate ?? today),
+  });
 
   const renderRow = (t, siblings) => {
     const idx = siblings.indexOf(t.id);
@@ -122,14 +120,15 @@ export default function TasksView({
       </div>
 
       <Card>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input value={draft} onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add()}
-            placeholder="Add a task…" style={{ ...styles.input, flex: 1, fontSize: 13.5 }} />
-          <button onClick={add} style={styles.addBtn}><Plus size={18} /></button>
-        </div>
-        <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0" }}>
-          Lands on today by default — open it to set a date, repeat, subtasks or notes.
+        <QuickAdd
+          lists={lists}
+          defaultListId={listId === "all" ? "inbox" : listId}
+          onAdd={add}
+          onMore={(patch) => { const created = onAdd(patch); if (created) onOpenTask(created); }}
+        />
+        <p style={{ color: C.faint, fontSize: 11, margin: "8px 0 0", lineHeight: 1.5 }}>
+          Write the date, time and repeat straight into the line — "friday 6pm", "every day",
+          "3x a week". Anything it picks up shows as a chip you can take back.
         </p>
       </Card>
 

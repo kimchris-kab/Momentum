@@ -3,7 +3,7 @@ import {
   CalendarRange, ChevronLeft, ChevronRight, Flag, Gauge, Link2, Plus, Target, Trash2, X,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { PILLARS, P_BY_ID } from "../data/constants.js";
+import { NO_PILLAR, PILLARS, P_BY_ID } from "../data/constants.js";
 import { addDays, longDate, prettyDate, todayStr } from "../lib/date.js";
 import { isDone } from "../lib/tasks.js";
 import {
@@ -259,7 +259,7 @@ export default function PlanView({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {goals.map((g) => {
-            const p = P_BY_ID[g.pillar];
+            const p = P_BY_ID[g.pillar] || NO_PILLAR;
             const prog = goalProgress(g, tasks, dayLog);
             const horizon = goalHorizon(g);
             const isOpen = openGoal === g.id;

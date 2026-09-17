@@ -1,17 +1,17 @@
 import React from "react";
 import {
-  CalendarClock, ChevronDown, ChevronUp, Clock, Flame, ListTodo, Repeat, StickyNote, Star, Zap,
+  CalendarClock, ChevronDown, ChevronUp, Clock, Flame, ListTodo, Repeat, StickyNote, Star, Target, Zap,
 } from "lucide-react";
 import { C, R, alpha, styles } from "../theme.js";
 import { PRIORITY, P_BY_ID } from "../data/constants.js";
 import { formatTime12, isPastTime, relativeDateLabel, todayStr } from "../lib/date.js";
-import { describeRecurrence, subtaskProgress } from "../lib/tasks.js";
+import { describeRecurrence, isFlexible, subtaskProgress } from "../lib/tasks.js";
 import { Checkbox } from "./ui.jsx";
 
 const KIND_COLOR = { todo: C.gold, build: C.gold, break: C.red };
 
 export default function TaskRow({
-  task, date = todayStr(), done, streak = 0, listChip, onToggle, onOpen,
+  task, date = todayStr(), done, streak = 0, listChip, week = null, onToggle, onOpen,
   onToggleStar, onMoveUp, onMoveDown, showReorder,
 }) {
   const overdue = (!task.recurrence && task.dueDate && task.dueDate < todayStr() && !done)
@@ -32,7 +32,15 @@ export default function TaskRow({
   });
   if (subTotal > 0) chips.push({ key: "sub", Icon: ListTodo, text: `${subDone}/${subTotal}` });
   if (task.notes) chips.push({ key: "note", Icon: StickyNote, text: "Note" });
-  if (streak > 0) chips.push({ key: "streak", Icon: Flame, text: String(streak), gold: true });
+  // A quota habit's progress is the week, so show that rather than leaving the row silent
+  // on the only number that decides whether it was kept.
+  if (week) chips.push({
+    key: "week", Icon: Target, text: `${week.done}/${week.target} this week`,
+    color: week.met ? C.green : undefined,
+  });
+  if (streak > 0) chips.push({
+    key: "streak", Icon: Flame, text: isFlexible(task) ? `${streak} wk` : String(streak), gold: true,
+  });
   if (task.twoMin && !done) chips.push({ key: "2m", Icon: Zap, text: "2-min", gold: true });
   if (listChip) chips.push({ key: "list", dot: listChip.color, text: listChip.name });
   if (pillar) chips.push({ key: "pillar", Icon: pillar.Icon, text: pillar.name, color: pillar.color });
