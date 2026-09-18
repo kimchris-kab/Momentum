@@ -12,9 +12,11 @@ import {
 import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { newSession } from "./lib/focus.js";
 import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
+import { drainActions } from "./lib/actionQueue.js";
+import { publishWidget } from "./lib/widget.js";
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
-import { notificationPermission, scheduleReminders } from "./lib/notify.js";
+import { notificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx";
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
@@ -33,6 +35,7 @@ import CheckinView from "./views/CheckinView.jsx";
 import JournalView from "./views/JournalView.jsx";
 import MoneyView from "./views/MoneyView.jsx";
 import InsightsView from "./views/InsightsView.jsx";
+import SettingsView from "./views/SettingsView.jsx";
 
 const NAV = [
   { id: "today", label: "Today", Icon: Compass },
@@ -95,14 +98,60 @@ export default function Momentum() {
   useEffect(() => {
     if (!loaded) return undefined;
     const t = setTimeout(() => {
-      scheduleReminders(state.tasks, {
-        enabled: state.settings.reminders !== false,
-        dayLog: state.dayLog,
-        srbai: state.srbai,
+      scheduleNudges(state);
+      // Keep the home-screen widget in step with what the app knows. No-op off Android.
+      publishWidget({
+        ...state,
+        streak: protectedStreak(state.tasks, state.dayLog, state.freezes, "build"),
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, state.tasks, state.dayLog, state.srbai, state.settings.reminders]);
+  }, [loaded, state.tasks, state.dayLog, state.srbai, state.checkins, state.freezes, state.settings]);
+
+  // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
+  // one tapped while a tab is open arrives by postMessage. Both land here.
+  const applyNotificationAction = useCallback((payload) => setState((s) => {
+    if (!payload?.taskId || (payload.action !== "done" && payload.action !== "twoMin")) return s;
+    const task = s.tasks.find((t) => t.id === payload.taskId);
+    const date = payload.date || todayStr();
+    if (!task || isDone(task, date, s.dayLog)) return s;
+    const next = toggleDoneReducer(task, date, s.tasks, s.dayLog);
+    let dayLog = next.dayLog;
+    if (payload.action === "twoMin" && task.recurrence && dayLog[date]?.[task.id]?.done) {
+      dayLog = { ...dayLog, [date]: { ...dayLog[date], [task.id]: { ...dayLog[date][task.id], minimal: true } } };
+    }
+    return { ...s, tasks: next.tasks, dayLog };
+  }), []);
+
+  useEffect(() => {
+    if (!loaded) return undefined;
+    let cancelled = false;
+    drainActions().then((rows) => {
+      if (cancelled || !rows.length) return;
+      rows.forEach(applyNotificationAction);
+      show(`${rows.length} ticked off from ${rows.length === 1 ? "a notification" : "notifications"}`);
+    });
+    const onMessage = (e) => {
+      if (e.data?.type === "momentum:action") applyNotificationAction(e.data.payload);
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => {
+      cancelled = true;
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
+    };
+  }, [loaded, applyNotificationAction, show]);
+
+  // Native taps come back through the Capacitor plugin instead of a service worker.
+  useEffect(() => {
+    const plugin = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!loaded || !plugin?.addListener) return undefined;
+    let handle;
+    plugin.addListener("localNotificationActionPerformed", (e) => {
+      const extra = e?.notification?.extra || {};
+      applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date });
+    }).then((h) => { handle = h; }).catch(() => {});
+    return () => { handle?.remove?.(); };
+  }, [loaded, applyNotificationAction]);
 
   // Rent, salary and subscriptions post themselves for every occurrence that came due
   // while the app was closed, so the ledger is complete without anyone remembering.
@@ -491,6 +540,7 @@ export default function Momentum() {
                 onStartRitual={(t) => setRitual(t.id)} onOpenReview={() => setView("review")}
                 onStartFocus={(t) => setFocusId(t.id)} onSchedule={scheduleTask}
                 srbaiDue={srbaiDueTasks} onRateHabit={(t) => setRating(t.id)}
+                onOpenSettings={() => setView("settings")}
                 onOpenPlan={() => setView("plan")}
                 onRescheduleOverdue={rescheduleOverdue} onToggleFocus={toggleFocus}
               />
@@ -555,6 +605,13 @@ export default function Momentum() {
                 onSaveTx={saveTx} onDeleteTx={deleteTx}
                 onSaveRule={saveRule} onDeleteRule={deleteRule}
                 onSaveNetWorth={saveNetWorthSnapshot}
+              />
+            )}
+            {view === "settings" && (
+              <SettingsView
+                state={state} onBack={() => setView("today")}
+                onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
+                onUpdateTask={updateTask}
               />
             )}
             {view === "insights" && (

@@ -3,7 +3,7 @@ import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } fro
 import {
   Ban, CalendarCheck, CalendarDays, CalendarRange, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock4, Crosshair, Fingerprint, Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake,
-  Sparkles, Sun, Target,
+  Settings, Sparkles, Sun, Target,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, P_BY_ID } from "../data/constants.js";
@@ -20,12 +20,16 @@ import TaskRow from "../components/TaskRow.jsx";
 import RecoveryCard from "../components/RecoveryCard.jsx";
 import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
 import DayTimeline from "../components/DayTimeline.jsx";
+import {
+  AutomaticityCard, CueHealthCard, FocusTodayCard, WeekPulseCard,
+} from "../components/TodayCards.jsx";
 
 export default function TodayView({
   state, averages, overall, streak, breakStreak, tally, heatmap, needsRest,
   onToggleTask, onOpenTask, onToggleStar, onCheckin, onOpenHabits, onOpenIdentity, onOpenTasks,
   onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview, onOpenPlan,
   onRescheduleOverdue, onToggleFocus, onStartFocus, onSchedule, srbaiDue = [], onRateHabit,
+  onOpenSettings,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -102,8 +106,17 @@ export default function TodayView({
 
   return (
     <div style={styles.page}>
-      <p style={styles.eyebrow}>{greet}</p>
-      <h1 style={styles.h1}>Today</h1>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <p style={styles.eyebrow}>{greet}</p>
+          <h1 style={styles.h1}>Today</h1>
+        </div>
+        {onOpenSettings && (
+          <div style={{ paddingBottom: 18 }}>
+            <IconButton onClick={onOpenSettings} title="Settings"><Settings size={15} /></IconButton>
+          </div>
+        )}
+      </div>
 
       <Card flip style={{ ...styles.cardTall, display: "flex", alignItems: "center", gap: 16 }}>
         <ProgressRing pct={pct} size={78}>
@@ -383,6 +396,11 @@ export default function TodayView({
         onSchedule={onSchedule} onOpenTask={onOpenTask}
         onFocus={onStartFocus}
       />
+
+      <FocusTodayCard state={state} agenda={agendaOpen} onStartFocus={onStartFocus} />
+      <AutomaticityCard state={state} onOpenHabits={onOpenHabits} />
+      <CueHealthCard state={state} onOpenTask={onOpenTask} />
+      <WeekPulseCard state={state} heatmap={heatmap} />
 
       {/* Map */}
       <SectionLabel>Your map</SectionLabel>

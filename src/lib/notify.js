@@ -1,7 +1,4 @@
-import { isDone, tasksForDate } from "./tasks.js";
-import { todayStr } from "./date.js";
-import { reminderMode } from "./automaticity.js";
-import { cueOf } from "./cues.js";
+import { buildNudges, notifySettings } from "./nudges.js";
 
 // Reminders take the best route available:
 //   1. Capacitor LocalNotifications on the installed Android app — real OS alarms, survives
@@ -48,88 +45,65 @@ export async function requestNotificationPermission() {
   catch { return "denied"; }
 }
 
-const bodyFor = (task) => {
-  const bits = [];
-  if (task.kind === "break") {
-    if (task.trigger) bits.push(`Usual trigger: ${task.trigger}`);
-    return bits.join(" · ") || "This is the window. Ride it out.";
-  }
-  if (task.twoMin) bits.push(`Hard day? Just: ${task.twoMin}`);
-  else {
-    // Lead with the cue, not the clock — the anchor is what actually starts the behaviour.
-    const cue = cueOf(task);
-    if (cue && cue.type !== "time" && cue.detail) {
-      bits.push(cue.type === "routine" ? `After you ${cue.detail}` : `When you're ${cue.detail}`);
-    }
-  }
-  if (bits.length) return bits.join(" · ");
-  if (task.kind === "todo") {
-    const note = (task.notes || "").trim();
-    return note ? note.slice(0, 120) : "This is the time you set for it.";
-  }
-  return "Time to show up for this one.";
-};
-
-// A stable 31-bit id per habit+time, so rescheduling replaces rather than duplicates
-const idFor = (taskId, offsetDays) => {
-  let h = 0;
-  const s = `${taskId}:${offsetDays}`;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % 2000000000;
-};
-
-// Anything with a time on it earns a reminder — a one-off task, a habit you're building, or
-// a habit you're avoiding. Setting a time and getting nothing was the interface promising
-// something the scheduler never delivered.
-function occurrencesWithin(tasks, days, dayLog, srbai) {
-  const out = [];
-  for (let offset = 0; offset < days; offset++) {
-    const date = offset === 0 ? todayStr() : shiftISO(todayStr(), offset);
-    tasksForDate(tasks, date).forEach((t) => {
-      if (!t.time || t.reminder === false) return;
-      // A graduated habit's prompt is withdrawn. Stawarz et al. (2015) found reminders
-      // support repetition but hinder habit development — once the cue is doing the work,
-      // continuing to ping makes the app the cue again. keepReminder opts back in.
-      if (reminderMode(t, srbai) === "faded") return;
-      // don't nag about something already ticked off earlier in the day
-      if (isDone(t, date, dayLog)) return;
-      const at = new Date(`${date}T${t.time}:00`);
-      if (at.getTime() <= Date.now()) return;
-      out.push({ task: t, date, at, offset });
-    });
-  }
-  return out;
-}
-
-function shiftISO(dateStr, days) {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const dt = new Date(y, m - 1, d + days);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-}
-
+// Delivery. What to send is decided by buildNudges; this only gets it there, by the best
+// route the platform allows, and reports honestly which one that was.
 let pageTimers = [];
 const clearPageTimers = () => { pageTimers.forEach(clearTimeout); pageTimers = []; };
 
-export async function scheduleReminders(tasks, { enabled = true, daysAhead = 7, dayLog = {}, srbai = [] } = {}) {
-  clearPageTimers();
-  if (!enabled) { await cancelAllReminders(); return { scheduled: 0, via: "disabled" }; }
-  if ((await notificationPermission()) !== "granted") return { scheduled: 0, via: "unpermitted" };
+// A stable 31-bit id per nudge, so rescheduling replaces rather than duplicates.
+const idFor = (key) => {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return h % 2000000000;
+};
 
-  const items = occurrencesWithin(tasks, daysAhead, dayLog, srbai);
+// Native action types have to be registered once, up front, before any notification can
+// offer them.
+let actionTypesReady = false;
+async function ensureActionTypes() {
+  if (actionTypesReady || !isNative()) return;
+  try {
+    await native().registerActionTypes({
+      types: [
+        { id: "habit", actions: [
+          { id: "done", title: "Done" },
+          { id: "twoMin", title: "Just the tiny bit" },
+          { id: "snooze", title: "In 15 min" },
+        ] },
+        { id: "simple", actions: [{ id: "open", title: "Open" }] },
+      ],
+    });
+    actionTypesReady = true;
+  } catch { /* older plugin versions simply show no actions */ }
+}
+
+export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
+  clearPageTimers();
+  const notify = notifySettings(state.settings);
+  const enabled = state.settings?.reminders !== false;
+  if (!enabled) { await cancelAllReminders(); return { scheduled: 0, via: "disabled", next: null }; }
+
+  const permission = await notificationPermission();
+  if (permission !== "granted") return { scheduled: 0, via: "unpermitted", next: null, permission };
+
+  const items = buildNudges(state, { days: daysAhead });
+  const next = items[0] || null;
 
   if (isNative()) {
     try {
+      await ensureActionTypes();
       await cancelAllReminders();
       await native().schedule({
-        notifications: items.map((i) => ({
-          id: idFor(i.task.id, i.offset),
-          title: i.task.text,
-          body: bodyFor(i.task),
-          schedule: { at: i.at, allowWhileIdle: true },
-          extra: { taskId: i.task.id, date: i.date },
+        notifications: items.map((n) => ({
+          id: idFor(n.id),
+          title: n.title,
+          body: n.body,
+          schedule: { at: n.at, allowWhileIdle: true },
+          actionTypeId: n.kind === "habits" || n.kind === "comeback" ? "habit" : "simple",
+          extra: { taskId: n.taskId || null, date: n.date, kind: n.kind },
         })),
       });
-      return { scheduled: items.length, via: "native" };
+      return { scheduled: items.length, via: "native", next, permission };
     } catch { /* fall through to web */ }
   }
 
@@ -138,30 +112,72 @@ export async function scheduleReminders(tasks, { enabled = true, daysAhead = 7, 
       const reg = await navigator.serviceWorker?.ready;
       if (reg) {
         const existing = await reg.getNotifications({ includeTriggered: false });
-        existing.forEach((n) => n.tag?.startsWith("habit:") && n.close());
-        for (const i of items) {
-          await reg.showNotification(i.task.text, {
-            body: bodyFor(i.task),
-            tag: `habit:${i.task.id}:${i.date}`,
+        existing.forEach((n) => n.tag?.startsWith("mtm:") && n.close());
+        for (const n of items) {
+          await reg.showNotification(n.title, {
+            body: n.body,
+            tag: `mtm:${n.id}`,
+            actions: (n.actions || []).map((a) => ({ action: a.id, title: a.title })),
             // eslint-disable-next-line no-undef
-            showTrigger: new TimestampTrigger(i.at.getTime()),
-            data: { taskId: i.task.id, date: i.date },
+            showTrigger: new TimestampTrigger(n.at.getTime()),
+            data: { taskId: n.taskId || null, date: n.date, kind: n.kind },
           });
         }
-        return { scheduled: items.length, via: "triggers" };
+        return { scheduled: items.length, via: "triggers", next, permission };
       }
     } catch { /* fall through */ }
   }
 
-  // Foreground-only fallback: fire while this page stays open
-  const soon = items.filter((i) => i.at.getTime() - Date.now() < 12 * 3600 * 1000);
-  soon.forEach((i) => {
-    pageTimers.push(setTimeout(() => {
-      try { new Notification(i.task.text, { body: bodyFor(i.task), tag: `habit:${i.task.id}` }); }
-      catch { /* ignore */ }
-    }, Math.max(0, i.at.getTime() - Date.now())));
+  // Foreground-only fallback: fires while this page stays open, and only that.
+  const soon = items.filter((n) => n.at.getTime() - Date.now() < 12 * 3600 * 1000);
+  soon.forEach((n) => {
+    pageTimers.push(setTimeout(async () => {
+      try {
+        const reg = await navigator.serviceWorker?.ready;
+        if (reg) {
+          await reg.showNotification(n.title, {
+            body: n.body,
+            tag: `mtm:${n.id}`,
+            actions: (n.actions || []).map((a) => ({ action: a.id, title: a.title })),
+            data: { taskId: n.taskId || null, date: n.date, kind: n.kind },
+          });
+          return;
+        }
+        new Notification(n.title, { body: n.body, tag: `mtm:${n.id}` });
+      } catch { /* ignore */ }
+    }, Math.max(0, n.at.getTime() - Date.now())));
   });
-  return { scheduled: soon.length, via: "foreground" };
+  return { scheduled: soon.length, via: "foreground", next, permission, pending: items.length };
+}
+
+// Kept for callers that still pass a task list; the nudge model is the real entry point.
+export const scheduleReminders = (tasks, opts = {}) =>
+  scheduleNudges({
+    tasks,
+    dayLog: opts.dayLog || {},
+    srbai: opts.srbai || [],
+    checkins: opts.checkins || [],
+    freezes: opts.freezes || {},
+    settings: { reminders: opts.enabled !== false, notify: opts.notify },
+  }, { daysAhead: opts.daysAhead || 7 });
+
+/** What the user is actually getting, for the settings screen — no guessing. */
+export async function deliveryReport(state) {
+  const capability = reminderCapability();
+  const permission = await notificationPermission();
+  const notify = notifySettings(state.settings);
+  const items = state.settings?.reminders === false ? [] : buildNudges(state, { days: 7 });
+  return {
+    capability,
+    permission,
+    notify,
+    upcoming: items.slice(0, 5),
+    total: items.length,
+    blocked: state.settings?.reminders === false ? "off"
+      : permission !== "granted" ? "permission"
+      : capability.level === "none" ? "unsupported"
+      : null,
+  };
 }
 
 export async function cancelAllReminders() {

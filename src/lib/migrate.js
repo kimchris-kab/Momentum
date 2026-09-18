@@ -1,4 +1,5 @@
 import { newTask, weeklyRule, DEFAULT_LISTS } from "./tasks.js";
+import { DEFAULT_NOTIFY } from "./nudges.js";
 
 export const SCHEMA_VERSION = 2;
 
@@ -31,7 +32,7 @@ export const emptyState = () => ({
   savedViews: [],
   srbai: [],
   reviews: [],
-  settings: { sortMode: "manual", showCompleted: false, reminders: true },
+  settings: { sortMode: "manual", showCompleted: false, reminders: true, motion: true, notify: DEFAULT_NOTIFY },
 });
 
 // v1 kept habits as per-weekday template rows (routines / breakRoutines) plus a per-day copy of
@@ -172,7 +173,11 @@ export function loadState(raw) {
       ...base,
       ...d,
       lists: d.lists?.length ? d.lists : base.lists,
-      settings: { ...base.settings, ...(d.settings || {}) },
+      settings: {
+        ...base.settings,
+        ...(d.settings || {}),
+        notify: { ...base.settings.notify, ...(d.settings?.notify || {}) },
+      },
       netWorth: { ...base.netWorth, ...(d.netWorth || {}) },
       budgetSplit: { ...base.budgetSplit, ...(d.budgetSplit || {}) },
     };

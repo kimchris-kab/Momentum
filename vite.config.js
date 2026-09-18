@@ -14,7 +14,13 @@ export default defineConfig({
     react(),
     ...(preview ? [] : [
       VitePWA({
+        // injectManifest, not generateSW: notification actions need a click handler in the
+        // worker, and a generated worker has nowhere to put one.
+        strategies: "injectManifest",
+        srcDir: "src",
+        filename: "sw.js",
         registerType: "autoUpdate",
+        injectManifest: { globPatterns: ["**/*.{js,css,html,png,svg,woff2}"] },
         includeAssets: ["icons/*.png"],
         manifest: {
           name: "Momentum",
