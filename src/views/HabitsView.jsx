@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Ban, Bell, BellOff, ChevronDown, ChevronUp, Copy, Flame, MoreHorizontal, Pause, Pencil,
-  Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, Zap,
+  Clock, Gauge, Link2, Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import {
@@ -12,6 +12,8 @@ import {
   describeRecurrence, isDone, isFlexible, occursOn, weekProgress, weeklyCountRule, weeklyRule,
 } from "../lib/tasks.js";
 import { habitStreakProtected, nextMilestoneFor, rewardProgress, scopeCheck } from "../lib/habits.js";
+import { graduationStatus, srbaiDue } from "../lib/automaticity.js";
+import { contextStability, cueOf, stabilityBand } from "../lib/cues.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission, scheduleReminders,
   sendTestReminder,
@@ -26,9 +28,9 @@ const presetFor = (days, times) => (times
   : DAY_PRESETS.find((p) => !p.times && sameDays(p.days, days))?.id || "custom");
 
 export default function HabitsView({
-  state, onAdd, onOpenTask, onBack, onSetSetting, onDuplicate, onArchive, onDelete, onMove,
+  state, onAdd, onOpenTask, onBack, onSetSetting, onDuplicate, onArchive, onDelete, onMove, onRateHabit,
 }) {
-  const { tasks, dayLog, settings, freezes } = state;
+  const { tasks, dayLog, settings, freezes, srbai = [] } = state;
   const [kind, setKind] = useState("build");
   const [perm, setPerm] = useState("default");
   const [menuFor, setMenuFor] = useState(null);
@@ -349,6 +351,7 @@ export default function HabitsView({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {active.map((t) => (
             <HabitCard key={t.id} task={t} kind={kind} accent={accent} dayLog={dayLog} freezes={freezes}
+              srbai={srbai} onRateHabit={onRateHabit}
               onOpen={() => onOpenTask(t)} onMenu={() => setMenuFor(t.id)} />
           ))}
         </div>
@@ -454,11 +457,16 @@ export default function HabitsView({
   );
 }
 
-function HabitCard({ task, kind, accent, dayLog, freezes, onOpen, onMenu }) {
+function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], onOpen, onMenu, onRateHabit }) {
   const streak = habitStreakProtected(task, dayLog, freezes);
   const dueToday = occursOn(task, todayStr());
   const doneToday = dueToday && isDone(task, todayStr(), dayLog);
   const milestone = nextMilestoneFor(task, streak);
+  const auto = graduationStatus(task, srbai);
+  const cue = cueOf(task);
+  const stability = contextStability(task, dayLog);
+  const band = stabilityBand(stability.score);
+  const canRate = onRateHabit && srbaiDue(task, srbai, dayLog);
   const flexible = isFlexible(task);
   const week = flexible ? weekProgress(task, dayLog) : null;
   const reward = rewardProgress(task, streak);
@@ -503,6 +511,28 @@ function HabitCard({ task, kind, accent, dayLog, freezes, onOpen, onMenu }) {
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
         <span style={styles.tag}><Repeat size={9} /> {describeRecurrence(task.recurrence)}</span>
+        {auto.mean !== null && (
+          <span style={{
+            ...styles.tag,
+            color: auto.id === "graduated" ? C.green : C.muted,
+            background: auto.id === "graduated" ? alpha(C.green, 0.13) : C.surface2,
+          }}>
+            <Gauge size={9} /> {auto.mean}/7 {auto.id === "graduated" ? "· graduated" : ""}
+          </span>
+        )}
+        {cue && (
+          <span style={{ ...styles.tag, color: cue.type === "time" ? C.muted : C.blue,
+            background: cue.type === "time" ? C.surface2 : alpha(C.blue, 0.12) }}>
+            <Link2 size={9} /> {cue.type === "routine" ? `after ${cue.detail}`
+              : cue.type === "location" ? cue.detail : formatTime12(cue.detail) || cue.detail}
+          </span>
+        )}
+        {band && stability.score !== null && (
+          <span style={{ ...styles.tag, color: band.tone === "good" ? C.muted : C.orange,
+            background: band.tone === "good" ? C.surface2 : alpha(C.orange, 0.12) }}>
+            <Clock size={9} /> {band.label}
+          </span>
+        )}
         {week && (
           <span style={{
             ...styles.tag,
@@ -530,6 +560,28 @@ function HabitCard({ task, kind, accent, dayLog, freezes, onOpen, onMenu }) {
           </span>
         )}
       </div>
+
+      {kind === "build" && canRate && (
+        <button onClick={() => onRateHabit(task)} style={{
+          ...styles.ghostCta, height: 38, marginTop: 10, fontSize: 12,
+          color: C.gold, borderColor: alpha(C.gold, 0.3),
+        }}>
+          <Gauge size={13} /> How automatic is it now?
+        </button>
+      )}
+
+      {kind === "build" && auto.id === "graduated" && (
+        <p style={{ color: C.green, fontSize: 11, margin: "9px 0 0", lineHeight: 1.5 }}>
+          {auto.hint}
+        </p>
+      )}
+
+      {kind === "build" && !cue && (
+        <p style={{ color: C.orange, fontSize: 11, margin: "9px 0 0", lineHeight: 1.5 }}>
+          No cue set — this one is relying on you remembering. Open it and anchor it to
+          something that already happens.
+        </p>
+      )}
 
       {kind === "build" && (milestone || reward) && (
         <p style={{ color: C.faint, fontSize: 10.5, margin: "9px 0 0", lineHeight: 1.5 }}>

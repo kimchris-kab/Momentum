@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Bell, BellOff, CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus,
-  Repeat, Target, Timer, Trash2, X, Zap,
+  Repeat, Shuffle, Target, Timer, Trash2, X, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
 import { addDays, formatTime12, todayStr } from "../lib/date.js";
 import { dailyRule, describeRecurrence, monthlyRule, weeklyCountRule, weeklyRule } from "../lib/tasks.js";
+import {
+  CUE_BY_ID, CUE_TYPES, COMPETING_RESPONSE_HELP, DEFAULT_CUE, cueOf, frictionPrompt,
+  implementationIntention,
+} from "../lib/cues.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission,
 } from "../lib/notify.js";
@@ -50,6 +54,16 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
 
   const set = (patch) => onChange(task.id, patch);
   const repeatMode = repeatModeOf(task.recurrence);
+  const cue = cueOf(task);
+  const cueType = task.cueType || cue?.type || DEFAULT_CUE;
+  const composed = implementationIntention({ ...task, cueType, cueDetail: task.cueDetail ?? cue?.detail });
+  // Changing the anchor type shouldn't silently carry the old detail across — "after I brew
+  // coffee" is not a place. A time cue also writes through to `time`, which reminders and
+  // the day timeline already read.
+  const setCueType = (type) => set({ cueType: type, cueDetail: type === cueType ? task.cueDetail : "" });
+  const setCueDetail = (detail) => set(
+    cueType === "time" ? { cueDetail: detail, time: detail || null } : { cueDetail: detail },
+  );
   const weeklyShape = task.recurrence?.freq === "weeklyCount" ? "count" : "days";
 
   // A reminder needs permission, and the place someone asks for one is right here — not in a
@@ -239,6 +253,57 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
           )}
         </Field>
 
+        {task.kind !== "todo" && (
+          <Field label="Cue — what will set this off?">
+            <SegmentedControl
+              options={CUE_TYPES.map((c) => ({ id: c.id, label: c.tab }))}
+              value={cueType}
+              onChange={setCueType}
+            />
+            <div style={{ ...styles.fieldShell, marginTop: 10 }}>
+              {cueType === "routine" ? <Link2 size={13} color={C.muted} />
+                : cueType === "location" ? <MapPin size={13} color={C.muted} />
+                : <Clock size={13} color={C.muted} />}
+              <span style={{ color: C.muted, fontSize: 12.5, flexShrink: 0 }}>{CUE_BY_ID[cueType].prompt}</span>
+              {cueType === "time" ? (
+                <input type="time" value={task.cueDetail || task.time || ""}
+                  onChange={(e) => setCueDetail(e.target.value)}
+                  style={{ ...styles.bareInput, marginLeft: "auto" }} />
+              ) : (
+                <input value={task.cueDetail ?? (cue?.legacy ? cue.detail : "")}
+                  onChange={(e) => setCueDetail(e.target.value)}
+                  placeholder={CUE_BY_ID[cueType].placeholder}
+                  style={{ ...styles.bareInput, flex: 1 }} />
+              )}
+            </div>
+            <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "8px 0 0" }}>
+              {CUE_BY_ID[cueType].help}
+            </p>
+
+            {composed && (
+              <div style={{
+                marginTop: 10, padding: "11px 13px", borderRadius: R.md,
+                background: C.goldSoft, border: `1px solid ${alpha(C.gold, 0.28)}`,
+              }}>
+                <p style={{
+                  color: C.gold, fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase", margin: "0 0 5px",
+                }}>
+                  Your plan
+                </p>
+                <input
+                  value={task.intention ?? composed}
+                  onChange={(e) => set({ intention: e.target.value })}
+                  aria-label="Implementation intention"
+                  style={{
+                    ...styles.bareInput, width: "100%", color: C.text, fontSize: 13,
+                    fontFamily: F.display, fontStyle: "italic", padding: 0,
+                  }}
+                />
+              </div>
+            )}
+          </Field>
+        )}
+
         <Field label="List">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {lists.map((l) => (
@@ -383,20 +448,18 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
 
         <button onClick={() => setAdvanced((a) => !a)} style={styles.linkBtn}>
           {advanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          Advanced — implementation intention, stacking, bundling
+          Advanced — friction, bundling, the tiny version
         </button>
 
         {advanced && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Friction is the master lever (Wood): take steps out of what you want, put
+                steps into what you don't. */}
             <div style={styles.fieldShell}>
-              <MapPin size={13} color={C.muted} />
-              <input value={task.location || ""} onChange={(e) => set({ location: e.target.value || null })}
-                placeholder="Where will you do it?" style={{ ...styles.bareInput, flex: 1 }} />
-            </div>
-            <div style={styles.fieldShell}>
-              <Link2 size={13} color={C.muted} />
-              <input value={task.stackAfter || ""} onChange={(e) => set({ stackAfter: e.target.value || null })}
-                placeholder="Stack after… (e.g. brushing teeth)" style={{ ...styles.bareInput, flex: 1 }} />
+              <Shuffle size={13} color={task.kind === "break" ? C.red : C.muted} />
+              <input value={task.friction || ""} onChange={(e) => set({ friction: e.target.value || null })}
+                placeholder={frictionPrompt(task.kind).placeholder}
+                style={{ ...styles.bareInput, flex: 1 }} />
             </div>
             <div style={styles.fieldShell}>
               <Gift size={13} color={C.muted} />
@@ -409,11 +472,22 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
                 placeholder="2-minute version for hard days" style={{ ...styles.bareInput, flex: 1 }} />
             </div>
             {task.kind === "break" && (
-              <div style={styles.fieldShell}>
-                <Zap size={13} color={C.red} />
-                <input value={task.trigger || ""} onChange={(e) => set({ trigger: e.target.value || null })}
-                  placeholder="What usually triggers it?" style={{ ...styles.bareInput, flex: 1 }} />
-              </div>
+              <>
+                <div style={styles.fieldShell}>
+                  <Zap size={13} color={C.red} />
+                  <input value={task.trigger || ""} onChange={(e) => set({ trigger: e.target.value || null })}
+                    placeholder="What usually triggers it?" style={{ ...styles.bareInput, flex: 1 }} />
+                </div>
+                <div style={styles.fieldShell}>
+                  <Repeat size={13} color={C.green} />
+                  <input value={task.competingResponse || ""}
+                    onChange={(e) => set({ competingResponse: e.target.value || null })}
+                    placeholder="Instead, I will…" style={{ ...styles.bareInput, flex: 1 }} />
+                </div>
+                <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "2px 0 0" }}>
+                  {COMPETING_RESPONSE_HELP}
+                </p>
+              </>
             )}
           </div>
         )}

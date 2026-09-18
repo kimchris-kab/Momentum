@@ -29,6 +29,7 @@ export const emptyState = () => ({
   milestones: [],
   focusSessions: [],
   savedViews: [],
+  srbai: [],
   reviews: [],
   settings: { sortMode: "manual", showCompleted: false, reminders: true },
 });

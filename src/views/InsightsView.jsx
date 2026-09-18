@@ -11,6 +11,7 @@ import { C, F, R, alpha, styles } from "../theme.js";
 import { NO_PILLAR, PILLARS, P_BY_ID } from "../data/constants.js";
 import { fmtDuration, focusTotals } from "../lib/focus.js";
 import { goalProgress } from "../lib/planning.js";
+import { automaticityReport } from "../lib/automaticity.js";
 import { addDays, prettyDate, todayStr } from "../lib/date.js";
 import { dayStats, isDone } from "../lib/tasks.js";
 import {
@@ -85,6 +86,80 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
         <Patterns state={state} range={range} findings={findings} />
       )}
     </div>
+  );
+}
+
+// The one comparison this app can make that a streak cannot: how reliably you do a thing
+// against how automatic it actually feels. They diverge, and the divergence is the point —
+// 93% completion at 3/7 automaticity means it is still costing you something every time.
+function AutomaticityBreakdown({ state }) {
+  const rows = useMemo(
+    () => automaticityReport(state.tasks, state.srbai || [], state.dayLog),
+    [state.tasks, state.srbai, state.dayLog]);
+  const measured = rows.filter((r) => r.mean !== null);
+  if (!measured.length) return null;
+
+  const graduated = measured.filter((r) => r.status.id === "graduated");
+  const effortful = measured.filter((r) => r.effortfulButKept);
+
+  return (
+    <>
+      <SectionLabel>Doing it vs. not deciding to</SectionLabel>
+      <Card>
+        <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.55, margin: "0 0 14px" }}>
+          The left number is how often you do it. The right is how automatic it feels, on the
+          SRBAI. A habit is finished when the second one catches up with the first.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {measured.map((r) => {
+            const grad = r.status.id === "graduated";
+            return (
+              <div key={r.task.id}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
+                  <span style={{
+                    flex: 1, minWidth: 0, color: C.text, fontSize: 12.5, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {r.task.text}
+                  </span>
+                  <span style={{ color: C.muted, fontSize: 11.5 }}>{r.pct ?? "—"}%</span>
+                  <span style={{ color: grad ? C.green : C.gold, fontSize: 11.5, minWidth: 30, textAlign: "right" }}>
+                    {r.mean}/7
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 3, height: 5 }}>
+                  <span style={{ flex: 1, background: C.surface3, borderRadius: 3, overflow: "hidden" }}>
+                    <span style={{ display: "block", height: "100%", width: `${r.pct ?? 0}%`, background: C.muted }} />
+                  </span>
+                  <span style={{ flex: 1, background: C.surface3, borderRadius: 3, overflow: "hidden" }}>
+                    <span style={{
+                      display: "block", height: "100%",
+                      width: `${Math.round((r.mean / 7) * 100)}%`,
+                      background: grad ? C.green : C.gold,
+                    }} />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {effortful.length > 0 && (
+          <p style={{ color: C.orange, fontSize: 11.5, lineHeight: 1.55, margin: "14px 0 0" }}>
+            {effortful.length === 1
+              ? `“${effortful[0].task.text}” is getting done but still costs you something every time.`
+              : `${effortful.length} habits are getting done but still cost you something every time.`}
+            {" "}Kept by effort, not by cue — worth anchoring better rather than pushing harder.
+          </p>
+        )}
+        {graduated.length > 0 && (
+          <p style={{ color: C.green, fontSize: 11.5, lineHeight: 1.55, margin: "10px 0 0" }}>
+            {graduated.length} graduated — prompts and rewards have come off those.
+          </p>
+        )}
+      </Card>
+    </>
   );
 }
 
@@ -215,6 +290,8 @@ function Overview({
         {cur.milestones > 0 && <Metric label="Milestones" value={cur.milestones} Icon={Trophy} />}
         {cur.freezesUsed > 0 && <Metric label="Freezes" value={cur.freezesUsed} Icon={Snowflake} />}
       </div>
+
+      <AutomaticityBreakdown state={state} />
 
       <FocusBreakdown state={state} range={range} />
 

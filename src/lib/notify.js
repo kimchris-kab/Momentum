@@ -1,5 +1,7 @@
 import { isDone, tasksForDate } from "./tasks.js";
 import { todayStr } from "./date.js";
+import { reminderMode } from "./automaticity.js";
+import { cueOf } from "./cues.js";
 
 // Reminders take the best route available:
 //   1. Capacitor LocalNotifications on the installed Android app — real OS alarms, survives
@@ -53,8 +55,13 @@ const bodyFor = (task) => {
     return bits.join(" · ") || "This is the window. Ride it out.";
   }
   if (task.twoMin) bits.push(`Hard day? Just: ${task.twoMin}`);
-  else if (task.stackAfter) bits.push(`After ${task.stackAfter}`);
-  if (task.location) bits.push(`in ${task.location}`);
+  else {
+    // Lead with the cue, not the clock — the anchor is what actually starts the behaviour.
+    const cue = cueOf(task);
+    if (cue && cue.type !== "time" && cue.detail) {
+      bits.push(cue.type === "routine" ? `After you ${cue.detail}` : `When you're ${cue.detail}`);
+    }
+  }
   if (bits.length) return bits.join(" · ");
   if (task.kind === "todo") {
     const note = (task.notes || "").trim();
@@ -74,12 +81,16 @@ const idFor = (taskId, offsetDays) => {
 // Anything with a time on it earns a reminder — a one-off task, a habit you're building, or
 // a habit you're avoiding. Setting a time and getting nothing was the interface promising
 // something the scheduler never delivered.
-function occurrencesWithin(tasks, days, dayLog) {
+function occurrencesWithin(tasks, days, dayLog, srbai) {
   const out = [];
   for (let offset = 0; offset < days; offset++) {
     const date = offset === 0 ? todayStr() : shiftISO(todayStr(), offset);
     tasksForDate(tasks, date).forEach((t) => {
       if (!t.time || t.reminder === false) return;
+      // A graduated habit's prompt is withdrawn. Stawarz et al. (2015) found reminders
+      // support repetition but hinder habit development — once the cue is doing the work,
+      // continuing to ping makes the app the cue again. keepReminder opts back in.
+      if (reminderMode(t, srbai) === "faded") return;
       // don't nag about something already ticked off earlier in the day
       if (isDone(t, date, dayLog)) return;
       const at = new Date(`${date}T${t.time}:00`);
@@ -99,12 +110,12 @@ function shiftISO(dateStr, days) {
 let pageTimers = [];
 const clearPageTimers = () => { pageTimers.forEach(clearTimeout); pageTimers = []; };
 
-export async function scheduleReminders(tasks, { enabled = true, daysAhead = 7, dayLog = {} } = {}) {
+export async function scheduleReminders(tasks, { enabled = true, daysAhead = 7, dayLog = {}, srbai = [] } = {}) {
   clearPageTimers();
   if (!enabled) { await cancelAllReminders(); return { scheduled: 0, via: "disabled" }; }
   if ((await notificationPermission()) !== "granted") return { scheduled: 0, via: "unpermitted" };
 
-  const items = occurrencesWithin(tasks, daysAhead, dayLog);
+  const items = occurrencesWithin(tasks, daysAhead, dayLog, srbai);
 
   if (isNative()) {
     try {

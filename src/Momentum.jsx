@@ -11,6 +11,7 @@ import {
 } from "./lib/habits.js";
 import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { newSession } from "./lib/focus.js";
+import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { notificationPermission, scheduleReminders } from "./lib/notify.js";
@@ -18,6 +19,7 @@ import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx"
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
+import SrbaiSheet from "./components/SrbaiSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
 import Celebration from "./components/Celebration.jsx";
 import CaptureSheet from "./components/CaptureSheet.jsx";
@@ -48,6 +50,7 @@ export default function Momentum() {
   const [editing, setEditing] = useState(null);
   const [ritual, setRitual] = useState(null);
   const [focusId, setFocusId] = useState(null);
+  const [rating, setRating] = useState(null);
   const [celebration, setCelebration] = useState(null);
   const [capturing, setCapturing] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
@@ -95,10 +98,11 @@ export default function Momentum() {
       scheduleReminders(state.tasks, {
         enabled: state.settings.reminders !== false,
         dayLog: state.dayLog,
+        srbai: state.srbai,
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, state.tasks, state.dayLog, state.settings.reminders]);
+  }, [loaded, state.tasks, state.dayLog, state.srbai, state.settings.reminders]);
 
   // Rent, salary and subscriptions post themselves for every occurrence that came due
   // while the app was closed, so the ledger is complete without anyone remembering.
@@ -397,6 +401,10 @@ export default function Momentum() {
   const editingTask = editing ? state.tasks.find((t) => t.id === editing) : null;
   const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
   const focusTask = focusId ? state.tasks.find((t) => t.id === focusId) : null;
+  const ratingTask = rating ? state.tasks.find((t) => t.id === rating) : null;
+  const srbaiDueTasks = useMemo(
+    () => (loaded ? dueForSrbai(state.tasks, state.srbai, state.dayLog) : []),
+    [loaded, state.tasks, state.srbai, state.dayLog]);
 
   const saveCheckin = (entry) => {
     setState((s) => ({ ...s, checkins: [...s.checkins.filter((c) => c.date !== entry.date), entry] }));
@@ -413,6 +421,21 @@ export default function Momentum() {
   const logFocus = useCallback((entry) => setState((s) => ({
     ...s, focusSessions: [...(s.focusSessions || []), newSession(entry)],
   })), []);
+
+  const logSrbai = useCallback((task, scores) => setState((s) => {
+    const next = { ...s, srbai: [...(s.srbai || []), newSrbaiEntry({ taskId: task.id, scores })] };
+    const before = graduationStatus(task, s.srbai || []);
+    const after = graduationStatus(task, next.srbai);
+    if (before.id !== "graduated" && after.id === "graduated") {
+      // Graduation is the point of measuring: the scaffolding comes off and the cue takes
+      // over. Said out loud, because otherwise a prompt just quietly stops arriving.
+      setTimeout(() => show(`"${task.text}" has graduated — prompts off`, "Keep them", () =>
+        setState((cur) => ({
+          ...cur, tasks: cur.tasks.map((t) => (t.id === task.id ? { ...t, keepReminder: true } : t)),
+        }))), 240);
+    }
+    return next;
+  }), [show]);
 
   const saveView = useCallback((view) => setState((s) => ({
     ...s, savedViews: [...(s.savedViews || []), view],
@@ -467,6 +490,7 @@ export default function Momentum() {
                 onFreeze={freezeYesterday} onRepair={repairDay}
                 onStartRitual={(t) => setRitual(t.id)} onOpenReview={() => setView("review")}
                 onStartFocus={(t) => setFocusId(t.id)} onSchedule={scheduleTask}
+                srbaiDue={srbaiDueTasks} onRateHabit={(t) => setRating(t.id)}
                 onOpenPlan={() => setView("plan")}
                 onRescheduleOverdue={rescheduleOverdue} onToggleFocus={toggleFocus}
               />
@@ -500,7 +524,7 @@ export default function Momentum() {
                 onBack={() => setView("today")}
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
                 onDuplicate={duplicateTask} onArchive={setArchived} onDelete={removeTask}
-                onMove={moveTask} />
+                onMove={moveTask} onRateHabit={(t) => setRating(t.id)} />
             )}
             {view === "identity" && (
               <IdentityView state={state} tally={tally} onPatch={patch} onBack={() => setView("today")} />
@@ -588,6 +612,12 @@ export default function Momentum() {
             if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr(), { minimal });
             setRitual(null);
           }}
+        />
+
+        <SrbaiSheet
+          open={!!ratingTask} task={ratingTask}
+          onClose={() => setRating(null)}
+          onSubmit={(t, scores) => { logSrbai(t, scores); setRating(null); }}
         />
 
         <FocusSheet

@@ -18,13 +18,14 @@ import {
 import { Card, Checkbox, EmptyState, IconButton, ProgressRing, SectionLabel } from "../components/ui.jsx";
 import TaskRow from "../components/TaskRow.jsx";
 import RecoveryCard from "../components/RecoveryCard.jsx";
+import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
 import DayTimeline from "../components/DayTimeline.jsx";
 
 export default function TodayView({
   state, averages, overall, streak, breakStreak, tally, heatmap, needsRest,
   onToggleTask, onOpenTask, onToggleStar, onCheckin, onOpenHabits, onOpenIdentity, onOpenTasks,
   onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview, onOpenPlan,
-  onRescheduleOverdue, onToggleFocus, onStartFocus, onSchedule,
+  onRescheduleOverdue, onToggleFocus, onStartFocus, onSchedule, srbaiDue = [], onRateHabit,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -147,6 +148,10 @@ export default function TodayView({
           ) : null}
         </div>
       </Card>
+
+      {srbaiDue.length > 0 && onRateHabit && (
+        <SrbaiPrompt tasks={srbaiDue} onRate={onRateHabit} />
+      )}
 
       <RecoveryCard
         missed={missed} freezes={freezes} streak={streak}
