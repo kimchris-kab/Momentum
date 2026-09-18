@@ -12,7 +12,7 @@ import { Checkbox } from "./ui.jsx";
 const KIND_COLOR = { todo: C.gold, build: C.gold, break: C.red };
 
 export default function TaskRow({
-  task, date = todayStr(), done, streak = 0, listChip, week = null, onToggle, onOpen,
+  task, date = todayStr(), done, streak = 0, listChip, week = null, goal = null, onToggle, onOpen,
   onToggleStar, onFocus, onMoveUp, onMoveDown, showReorder,
 }) {
   const overdue = (!task.recurrence && task.dueDate && task.dueDate < todayStr() && !done)
@@ -44,6 +44,8 @@ export default function TaskRow({
   });
   if (task.twoMin && !done) chips.push({ key: "2m", Icon: Zap, text: "2-min", gold: true });
   if (listChip) chips.push({ key: "list", dot: listChip.color, text: listChip.name });
+  // Linking a task to a goal is only worth doing if you can see it where the work happens.
+  if (goal) chips.push({ key: "goal", Icon: Target, text: goal.text, color: C.gold });
   if (pillar) chips.push({ key: "pillar", Icon: pillar.Icon, text: pillar.name, color: pillar.color });
 
   return (

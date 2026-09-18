@@ -163,6 +163,34 @@ export function reviewHabits(tasks, dayLog, days = 28) {
     .sort((a, b) => (a.pct ?? 101) - (b.pct ?? 101));
 }
 
+
+// Streaks caps you at 24 habits. That number is arbitrary — the honest version of the same
+// idea is to say nothing until your own data shows a split, then show the split rather than
+// a rule. No claim is made that the count caused it; the two averages are just stated.
+export const SCOPE_MIN_HABITS = 5;
+const SCOPE_MIN_SPREAD = 30;   // percentage points between the halves
+const SCOPE_BOTTOM_MAX = 50;   // the weaker half has to actually be struggling
+
+export function scopeCheck(tasks, dayLog, days = 28) {
+  const rows = reviewHabits(tasks, dayLog, days)
+    .filter((r) => r.pct !== null && r.scheduled >= 3);
+  if (rows.length < SCOPE_MIN_HABITS) return null;
+
+  const sorted = [...rows].sort((a, b) => b.pct - a.pct);
+  const half = Math.floor(sorted.length / 2);
+  const top = sorted.slice(0, half);
+  const bottom = sorted.slice(half);
+  if (!top.length || !bottom.length) return null;
+
+  const mean = (list) => Math.round(list.reduce((a, r) => a + r.pct, 0) / list.length);
+  const topAvg = mean(top);
+  const bottomAvg = mean(bottom);
+  if (bottomAvg > SCOPE_BOTTOM_MAX) return null;
+  if (topAvg - bottomAvg < SCOPE_MIN_SPREAD) return null;
+
+  return { total: rows.length, top, topAvg, bottom, bottomAvg, days };
+}
+
 export const lastReviewDate = (reviews) =>
   (reviews || []).map((r) => r.date).sort().slice(-1)[0] || null;
 

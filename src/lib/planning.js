@@ -1,5 +1,7 @@
 import { addDays, daysBetween, longDate, parseD, prettyDate, todayStr, weekStartOf, weekdayKey } from "./date.js";
 import { isDone, tasksForDate } from "./tasks.js";
+// planning -> habits -> tasks; habits never imports this file back, so there is no cycle.
+import { habitReliability } from "./habits.js";
 
 // Weeks run Monday to Sunday and are keyed by their Monday. The arithmetic lives in date.js
 // so the task layer can reach it without importing this module back.
@@ -65,17 +67,17 @@ export function goalProgress(goal, tasks, dayLog) {
   const habits = linked.filter((t) => t.kind === "build" && t.recurrence);
   const doneTodos = todos.filter((t) => t.done).length;
 
-  // A habit contributes how reliably it's been kept over the last fortnight
+  // A habit contributes how reliably it's been kept over the last fortnight. habitReliability
+  // already knows that a quota habit's denominator is its target × weeks rather than the
+  // seven days a week it shows up on — counting days here would understate every "3× a week"
+  // habit attached to a goal by more than half.
   let habitPct = null;
   if (habits.length) {
     let done = 0, scheduled = 0;
     habits.forEach((h) => {
-      for (let i = 0; i < 14; i++) {
-        const d = addDays(todayStr(), -i);
-        if (!tasksForDate([h], d, "build").length) continue;
-        scheduled++;
-        if (isDone(h, d, dayLog)) done++;
-      }
+      const r = habitReliability(h, dayLog, 14);
+      done += r.done;
+      scheduled += r.scheduled;
     });
     habitPct = scheduled ? Math.round((done / scheduled) * 100) : null;
   }

@@ -10,6 +10,7 @@ import {
 import { C, F, R, alpha, styles } from "../theme.js";
 import { NO_PILLAR, PILLARS, P_BY_ID } from "../data/constants.js";
 import { fmtDuration, focusTotals } from "../lib/focus.js";
+import { goalProgress } from "../lib/planning.js";
 import { addDays, prettyDate, todayStr } from "../lib/date.js";
 import { dayStats, isDone } from "../lib/tasks.js";
 import {
@@ -293,6 +294,7 @@ function Overview({
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           {state.goals.map((g) => {
             const p = P_BY_ID[g.pillar] || NO_PILLAR;
+            const prog = goalProgress(g, state.tasks, state.dayLog);
             return (
               <Card key={g.id} style={{ marginBottom: 0, padding: "13px 14px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -303,10 +305,26 @@ function Overview({
                       color: g.done ? C.faint : C.text, fontSize: 14,
                       textDecoration: g.done ? "line-through" : "none",
                     }}>{g.text}</span>
-                    <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                    <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                       <span style={{ width: 7, height: 7, borderRadius: 4, background: p.color }} />
                       <span style={{ color: C.faint, fontSize: 11 }}>{p.name}</span>
+                      {prog.linked > 0 && (
+                        <span style={{ color: C.faint, fontSize: 11 }}>
+                          · {prog.todos > 0 ? `${prog.doneTodos}/${prog.todos} tasks` : null}
+                          {prog.todos > 0 && prog.habits > 0 ? " · " : null}
+                          {prog.habits > 0 ? `${prog.habits} habit${prog.habits === 1 ? "" : "s"}` : null}
+                        </span>
+                      )}
                     </div>
+                    {/* Progress earned from linked work, not a number anyone typed in. */}
+                    {prog.linked > 0 && !g.done && (
+                      <div style={{ marginTop: 8 }}>
+                        <ProgressBar pct={prog.pct} color={p.color} height={5} />
+                        <span style={{ color: C.faint, fontSize: 10.5, marginTop: 4, display: "block" }}>
+                          {prog.pct}% from work you've actually finished
+                        </span>
+                      </div>
+                    )}
                     <input value={g.notes || ""} placeholder="Add a note…"
                       onChange={(e) => onUpdateGoal(g.id, { notes: e.target.value })}
                       style={{

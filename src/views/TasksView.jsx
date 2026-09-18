@@ -1,13 +1,17 @@
 import React, { useMemo, useState } from "react";
 import {
-  ArrowUpDown, ChevronDown, ChevronUp, ListTodo, Plus, Search, Settings2, Star, Trash2, X,
+  ArrowUpDown, Bookmark, ChevronDown, ChevronUp, ListTodo, Plus, Search, Settings2,
+  SlidersHorizontal, Star, Target, Trash2, X,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { LIST_COLORS, PRIORITY } from "../data/constants.js";
+import { LIST_COLORS, PILLARS, PRIORITY } from "../data/constants.js";
 import { todayStr } from "../lib/date.js";
 import {
-  SORT_MODES, groupTasks, habitStreak, isDone, searchTasks, sortTasks,
+  SORT_MODES, groupTasks, habitStreak, isDone, sortTasks,
 } from "../lib/tasks.js";
+import {
+  EMPTY_FILTERS, activeCount, applyFilters, describeFilters, newView, sameFilters,
+} from "../lib/views.js";
 import {
   Card, EmptyState, IconButton, Pill, SegmentedControl, SectionLabel, Sheet,
 } from "../components/ui.jsx";
@@ -23,14 +27,28 @@ const GROUP_ORDER = [
   { key: "noDate", label: "No date" },
 ];
 
+function FilterGroup({ label, children }) {
+  return (
+    <div>
+      <p style={{
+        color: C.muted, fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase", margin: "0 0 7px",
+      }}>
+        {label}
+      </p>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{children}</div>
+    </div>
+  );
+}
+
 export default function TasksView({
   state, onAdd, onToggleTask, onOpenTask, onToggleStar, onMove, onAddList, onRenameList, onDeleteList,
-  onSetSetting, onStartFocus,
+  onSetSetting, onStartFocus, onSaveView, onDeleteView,
 }) {
-  const { tasks, dayLog, lists, settings } = state;
-  const [listId, setListId] = useState("all");
-  const [query, setQuery] = useState("");
+  const { tasks, dayLog, lists, settings, goals = [], savedViews = [] } = state;
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [searching, setSearching] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [listsOpen, setListsOpen] = useState(false);
@@ -38,12 +56,18 @@ export default function TasksView({
 
   const sortMode = settings.sortMode || "manual";
   const today = todayStr();
+  const listId = filters.listId;
+  const query = filters.query;
+  const setFilter = (patch) => setFilters((f) => ({ ...f, ...patch }));
+  const setListId = (id) => setFilter({ listId: id });
+  const setQuery = (q) => setFilter({ query: q });
+  const filterCount = activeCount(filters);
+  const goalById = Object.fromEntries(goals.map((g) => [g.id, g]));
 
   const scoped = useMemo(() => {
     const todos = tasks.filter((t) => t.kind === "todo" && !t.archivedAt);
-    const inList = listId === "all" ? todos : todos.filter((t) => t.listId === listId);
-    return searchTasks(inList, query);
-  }, [tasks, listId, query]);
+    return applyFilters(todos, filters, today);
+  }, [tasks, filters, today]);
 
   const groups = useMemo(() => {
     const g = groupTasks(scoped);
@@ -71,6 +95,7 @@ export default function TasksView({
         key={t.id} task={t} date={today} done={isDone(t, today, dayLog)}
         streak={t.recurrence ? habitStreak(t, tasks, dayLog) : 0}
         listChip={listId === "all" && t.listId !== "inbox" ? listById[t.listId] : null}
+        goal={t.goalId ? goalById[t.goalId] : null}
         onToggle={() => onToggleTask(t)}
         onOpen={() => onOpenTask(t)}
         onToggleStar={() => onToggleStar(t)}
@@ -92,6 +117,9 @@ export default function TasksView({
         <div style={{ display: "flex", gap: 6, paddingBottom: 18 }}>
           <IconButton onClick={() => setSearching((s) => !s)} active={searching} title="Search">
             <Search size={15} />
+          </IconButton>
+          <IconButton onClick={() => setFilterOpen(true)} active={filterCount > 0} title="Filter">
+            <SlidersHorizontal size={15} />
           </IconButton>
           <IconButton onClick={() => setSortOpen(true)} title="Sort"><ArrowUpDown size={15} /></IconButton>
           <IconButton onClick={() => setListsOpen(true)} title="Lists"><Settings2 size={15} /></IconButton>
@@ -119,6 +147,34 @@ export default function TasksView({
           </Pill>
         ))}
       </div>
+
+      {savedViews.length > 0 && (
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", margin: "0 -18px", padding: "0 18px 12px" }}>
+          {savedViews.map((v) => (
+            <Pill key={v.id} on={sameFilters(v.filters, filters)} color={C.purple}
+              onClick={() => setFilters(sameFilters(v.filters, filters) ? EMPTY_FILTERS : v.filters)}>
+              <Bookmark size={10} style={{ verticalAlign: -1, marginRight: 4 }} />{v.name}
+            </Pill>
+          ))}
+        </div>
+      )}
+
+      {filterCount > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "9px 12px",
+          background: alpha(C.gold, 0.08), border: `1px solid ${alpha(C.gold, 0.25)}`, borderRadius: R.md,
+        }}>
+          <SlidersHorizontal size={13} color={C.gold} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, color: C.gold, fontSize: 12 }}>
+            {describeFilters(filters, { lists, pillars: PILLARS })}
+          </span>
+          <button onClick={() => setFilters({ ...EMPTY_FILTERS, listId, query })} title="Clear filters" style={{
+            background: "none", border: "none", cursor: "pointer", color: C.gold, padding: 0, display: "flex",
+          }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <Card>
         <QuickAdd
@@ -173,6 +229,89 @@ export default function TasksView({
         </div>
       )}
 
+      <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <FilterGroup label="Show only">
+            <Pill on={filters.starred} onClick={() => setFilter({ starred: !filters.starred })}>
+              <Star size={10} style={{ verticalAlign: -1, marginRight: 4 }} />Starred
+            </Pill>
+            <Pill on={filters.overdue} color={C.red} onClick={() => setFilter({ overdue: !filters.overdue })}>
+              Overdue
+            </Pill>
+          </FilterGroup>
+
+          <FilterGroup label="Due">
+            {[["today", "Today"], ["week", "This week"], ["none", "No date"]].map(([k, label]) => (
+              <Pill key={k} on={filters.due === k} onClick={() => setFilter({ due: filters.due === k ? null : k })}>
+                {label}
+              </Pill>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="Priority">
+            {Object.entries(PRIORITY).map(([k, p]) => (
+              <Pill key={k} on={filters.priority === k} color={p.color}
+                onClick={() => setFilter({ priority: filters.priority === k ? null : k })}>
+                {p.label}
+              </Pill>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="Pillar">
+            {PILLARS.map((p) => (
+              <Pill key={p.id} on={filters.pillarId === p.id} color={p.color}
+                onClick={() => setFilter({ pillarId: filters.pillarId === p.id ? null : p.id })}>
+                {p.name}
+              </Pill>
+            ))}
+          </FilterGroup>
+
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+            {/* Counts what the list will actually show. scoped includes completed tasks, which
+                are hidden unless you ask for them, so quoting that number reads as a bug. */}
+            <p style={{ color: C.muted, fontSize: 12.5, margin: "0 0 4px" }}>
+              {openCount} open task{openCount === 1 ? "" : "s"} match
+            </p>
+            <p style={{ color: C.faint, fontSize: 11.5, margin: 0, lineHeight: 1.5 }}>
+              {describeFilters(filters, { lists, pillars: PILLARS })}
+            </p>
+          </div>
+
+          {filterCount > 0 && onSaveView && (
+            <div>
+              <div style={styles.fieldShell}>
+                <Bookmark size={13} color={C.muted} />
+                <input
+                  value={saveName} onChange={(e) => setSaveName(e.target.value)}
+                  placeholder={describeFilters(filters, { lists, pillars: PILLARS })}
+                  style={{ ...styles.bareInput, flex: 1, fontSize: 13 }}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  onSaveView(newView(filters, saveName || describeFilters(filters, { lists, pillars: PILLARS })));
+                  setSaveName("");
+                  setFilterOpen(false);
+                }}
+                style={{ ...styles.ghostCta, height: 42, marginTop: 8, fontSize: 13 }}
+              >
+                <Bookmark size={14} /> Save as a view
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setFilters({ ...EMPTY_FILTERS, listId, query })}
+              style={{ ...styles.ghostCta, height: 44, flex: 1, fontSize: 13 }}>
+              Clear
+            </button>
+            <button onClick={() => setFilterOpen(false)} style={{ ...styles.cta, flex: 1, marginTop: 0 }}>
+              Done
+            </button>
+          </div>
+        </div>
+      </Sheet>
+
       <Sheet open={sortOpen} onClose={() => setSortOpen(false)} title="Sort by">
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {SORT_MODES.map((m) => (
@@ -194,6 +333,35 @@ export default function TasksView({
       </Sheet>
 
       <Sheet open={listsOpen} onClose={() => setListsOpen(false)} title="Your lists">
+        {savedViews.length > 0 && onDeleteView && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ color: C.muted, fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase", margin: "0 0 8px" }}>
+              Saved views
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {savedViews.map((v) => (
+                <div key={v.id} style={{
+                  display: "flex", alignItems: "center", gap: 9, background: C.surface,
+                  border: `1px solid ${C.border}`, borderRadius: R.md, padding: "10px 12px",
+                }}>
+                  <Bookmark size={13} color={C.purple} style={{ flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", color: C.text, fontSize: 13 }}>{v.name}</span>
+                    <span style={{ display: "block", color: C.faint, fontSize: 10.5, marginTop: 2 }}>
+                      {describeFilters(v.filters, { lists, pillars: PILLARS })}
+                    </span>
+                  </div>
+                  <button onClick={() => onDeleteView(v.id)} title={`Delete ${v.name}`} style={{
+                    background: "none", border: "none", cursor: "pointer", color: C.faint, padding: 2,
+                  }}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {lists.map((l) => (
             <div key={l.id} style={{

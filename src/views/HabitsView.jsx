@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Ban, Bell, BellOff, ChevronDown, ChevronUp, Copy, Flame, MoreHorizontal, Pause, Pencil,
-  Play, Plus, Repeat, Sparkles, Sprout, Target, Timer, Trash2, Zap,
+  Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import {
@@ -11,7 +11,7 @@ import { formatTime12, todayStr } from "../lib/date.js";
 import {
   describeRecurrence, isDone, isFlexible, occursOn, weekProgress, weeklyCountRule, weeklyRule,
 } from "../lib/tasks.js";
-import { habitStreakProtected, nextMilestoneFor, rewardProgress } from "../lib/habits.js";
+import { habitStreakProtected, nextMilestoneFor, rewardProgress, scopeCheck } from "../lib/habits.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission, scheduleReminders,
   sendTestReminder,
@@ -69,6 +69,8 @@ export default function HabitsView({
     [tasks, kind]);
 
   const accent = kind === "break" ? C.red : C.gold;
+  // Says nothing until the person's own data shows a split worth acting on.
+  const scope = useMemo(() => (kind === "build" ? scopeCheck(tasks, dayLog) : null), [kind, tasks, dayLog]);
   const templates = kind === "break" ? BREAK_TEMPLATES : HABIT_TEMPLATES;
   const preset = presetFor(days, times);
 
@@ -281,6 +283,53 @@ export default function HabitsView({
       </Card>
 
       {/* ---- Active habits ---- */}
+      {kind === "build" && scope && (
+        <>
+          <SectionLabel>Worth a decision</SectionLabel>
+          <Card style={{ borderColor: alpha(C.orange, 0.28) }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <Scale size={16} color={C.orange} style={{ flexShrink: 0, marginTop: 2 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>
+                  You're tracking {scope.total}, but not evenly
+                </p>
+                <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 0" }}>
+                  Over the last {scope.days} days your strongest {scope.top.length} ran at{" "}
+                  <b style={{ color: C.green }}>{scope.topAvg}%</b>. The other {scope.bottom.length} ran at{" "}
+                  <b style={{ color: C.orange }}>{scope.bottomAvg}%</b>. Carrying the weaker ones costs
+                  attention the stronger ones could use — parking one is a decision, not a failure.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+              {scope.bottom.map((r) => (
+                <div key={r.task.id} style={{
+                  display: "flex", alignItems: "center", gap: 9, background: C.surface2,
+                  border: `1px solid ${C.border}`, borderRadius: R.md, padding: "9px 11px",
+                }}>
+                  <span style={{ flex: 1, minWidth: 0, color: C.text, fontSize: 12.5, overflow: "hidden",
+                    textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {r.task.text}
+                  </span>
+                  <span style={{ color: C.orange, fontSize: 11.5 }}>{r.pct}%</span>
+                  <button onClick={() => onArchive(r.task.id, true)} title={`Park ${r.task.text}`} style={{
+                    background: "none", border: `1px solid ${C.border}`, borderRadius: R.sm,
+                    padding: "4px 9px", cursor: "pointer", color: C.muted, fontSize: 11,
+                    fontFamily: F.body, flexShrink: 0,
+                  }}>
+                    Park it
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p style={{ color: C.faint, fontSize: 10.5, margin: "10px 0 0", lineHeight: 1.5 }}>
+              Parking keeps the history — you can bring it back from Archived whenever you want it.
+            </p>
+          </Card>
+        </>
+      )}
+
       <SectionLabel>{kind === "build" ? "Building" : "Avoiding"} · {active.length}</SectionLabel>
 
       {active.length === 0 ? (

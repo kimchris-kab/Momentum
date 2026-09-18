@@ -414,6 +414,13 @@ export default function Momentum() {
     ...s, focusSessions: [...(s.focusSessions || []), newSession(entry)],
   })), []);
 
+  const saveView = useCallback((view) => setState((s) => ({
+    ...s, savedViews: [...(s.savedViews || []), view],
+  })), []);
+  const deleteView = useCallback((id) => setState((s) => ({
+    ...s, savedViews: (s.savedViews || []).filter((v) => v.id !== id),
+  })), []);
+
   const scheduleTask = useCallback((task, time) => {
     updateTask(task.id, { time, dueDate: task.recurrence ? task.dueDate : (task.dueDate || todayStr()) });
     show(`${task.text} at ${formatTime12(time)}`);
@@ -485,6 +492,7 @@ export default function Momentum() {
                 onAddList={addList} onRenameList={renameList} onDeleteList={deleteList}
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
                 onStartFocus={(t) => setFocusId(t.id)}
+                onSaveView={saveView} onDeleteView={deleteView}
               />
             )}
             {view === "habits" && (
