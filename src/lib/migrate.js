@@ -31,6 +31,8 @@ export const emptyState = () => ({
   focusSessions: [],
   savedViews: [],
   srbai: [],
+  freshStarts: [],
+  comebacksSeen: [],
   reviews: [],
   settings: { sortMode: "manual", showCompleted: false, reminders: true, motion: true, notify: DEFAULT_NOTIFY },
 });

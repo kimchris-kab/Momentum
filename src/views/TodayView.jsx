@@ -19,6 +19,10 @@ import { Card, Checkbox, EmptyState, IconButton, ProgressRing, SectionLabel } fr
 import TaskRow from "../components/TaskRow.jsx";
 import RecoveryCard from "../components/RecoveryCard.jsx";
 import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
+import {
+  ComebackCard, FreshStartCard, StartSmallCard, WoopPrompt,
+} from "../components/WoopSheet.jsx";
+import { OnboardingPrompt } from "./OnboardingView.jsx";
 import DayTimeline from "../components/DayTimeline.jsx";
 import {
   AutomaticityCard, CueHealthCard, FocusTodayCard, WeekPulseCard,
@@ -29,7 +33,9 @@ export default function TodayView({
   onToggleTask, onOpenTask, onToggleStar, onCheckin, onOpenHabits, onOpenIdentity, onOpenTasks,
   onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview, onOpenPlan,
   onRescheduleOverdue, onToggleFocus, onStartFocus, onSchedule, srbaiDue = [], onRateHabit,
-  onOpenSettings,
+  onOpenSettings, freshStart: fresh, onAcceptFreshStart, onDismissFreshStart,
+  comebacks = [], onAckComebacks, startSmall, woopNeeded = [], onStartWoop,
+  onboarding, onStartOnboarding, onDismissOnboarding,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -161,6 +167,26 @@ export default function TodayView({
           ) : null}
         </div>
       </Card>
+
+      {comebacks.length > 0 && (
+        <ComebackCard comebacks={comebacks} onDismiss={() => onAckComebacks(comebacks)} />
+      )}
+
+      {fresh && (
+        <FreshStartCard
+          prompt={fresh}
+          onAccept={() => { onAcceptFreshStart(fresh); onOpenHabits(); }}
+          onDismiss={() => onDismissFreshStart(fresh)}
+        />
+      )}
+
+      {onboarding && !onboarding.complete && !onboarding.dismissed && onStartOnboarding && (
+        <OnboardingPrompt onStart={onStartOnboarding} onDismiss={onDismissOnboarding} />
+      )}
+
+      {woopNeeded.length > 0 && onStartWoop && (
+        <WoopPrompt goals={woopNeeded} onStart={onStartWoop} />
+      )}
 
       {srbaiDue.length > 0 && onRateHabit && (
         <SrbaiPrompt tasks={srbaiDue} onRate={onRateHabit} />
@@ -401,6 +427,7 @@ export default function TodayView({
       <AutomaticityCard state={state} onOpenHabits={onOpenHabits} />
       <CueHealthCard state={state} onOpenTask={onOpenTask} />
       <WeekPulseCard state={state} heatmap={heatmap} />
+      <StartSmallCard check={startSmall} onOpenHabits={onOpenHabits} />
 
       {/* Map */}
       <SectionLabel>Your map</SectionLabel>

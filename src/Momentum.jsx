@@ -14,6 +14,8 @@ import { newSession } from "./lib/focus.js";
 import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
 import { drainActions } from "./lib/actionQueue.js";
 import { publishWidget } from "./lib/widget.js";
+import { comebacksToday, freshStart } from "./lib/rewards.js";
+import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
@@ -22,6 +24,7 @@ import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
 import SrbaiSheet from "./components/SrbaiSheet.jsx";
+import WoopSheet from "./components/WoopSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
 import Celebration from "./components/Celebration.jsx";
 import CaptureSheet from "./components/CaptureSheet.jsx";
@@ -36,6 +39,7 @@ import JournalView from "./views/JournalView.jsx";
 import MoneyView from "./views/MoneyView.jsx";
 import InsightsView from "./views/InsightsView.jsx";
 import SettingsView from "./views/SettingsView.jsx";
+import OnboardingView from "./views/OnboardingView.jsx";
 
 const NAV = [
   { id: "today", label: "Today", Icon: Compass },
@@ -54,6 +58,8 @@ export default function Momentum() {
   const [ritual, setRitual] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [rating, setRating] = useState(null);
+  const [woopGoal, setWoopGoal] = useState(null);
+  const [comebackSeen, setComebackSeen] = useState(false);
   const [celebration, setCelebration] = useState(null);
   const [capturing, setCapturing] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
@@ -451,6 +457,18 @@ export default function Momentum() {
   const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
   const focusTask = focusId ? state.tasks.find((t) => t.id === focusId) : null;
   const ratingTask = rating ? state.tasks.find((t) => t.id === rating) : null;
+  const fresh = useMemo(() => (loaded ? freshStart(state) : null), [loaded, state]);
+  const comebacks = useMemo(
+    () => (loaded && !comebackSeen
+      ? comebacksToday(state.tasks, state.dayLog, state.freezes)
+        .filter((c) => !(state.comebacksSeen || []).includes(`${c.task.id}:${c.date}`))
+      : []),
+    [loaded, comebackSeen, state.tasks, state.dayLog, state.freezes, state.comebacksSeen]);
+  const smallCheck = useMemo(() => (loaded ? startSmallCheck(state) : null), [loaded, state]);
+  const woopNeeded = useMemo(
+    () => (loaded ? goalsNeedingWoop(state.goals) : []), [loaded, state.goals]);
+  const onboarding = useMemo(() => (loaded ? onboardingState(state) : null), [loaded, state]);
+
   const srbaiDueTasks = useMemo(
     () => (loaded ? dueForSrbai(state.tasks, state.srbai, state.dayLog) : []),
     [loaded, state.tasks, state.srbai, state.dayLog]);
@@ -485,6 +503,23 @@ export default function Momentum() {
     }
     return next;
   }), [show]);
+
+  const saveWoop = useCallback((goalId, woop) => setState((s) => ({
+    ...s, goals: s.goals.map((g) => (g.id === goalId ? { ...g, woop } : g)),
+  })), []);
+
+  // A dismissed fresh start is recorded so the same landmark never asks twice.
+  const dismissFreshStart = useCallback((prompt) => setState((s) => ({
+    ...s, freshStarts: [...(s.freshStarts || []), { id: prompt.id, date: prompt.date, at: Date.now() }],
+  })), []);
+
+  const ackComebacks = useCallback((list) => {
+    setComebackSeen(true);
+    setState((s) => ({
+      ...s,
+      comebacksSeen: [...(s.comebacksSeen || []), ...list.map((c) => `${c.task.id}:${c.date}`)],
+    }));
+  }, []);
 
   const saveView = useCallback((view) => setState((s) => ({
     ...s, savedViews: [...(s.savedViews || []), view],
@@ -541,6 +576,11 @@ export default function Momentum() {
                 onStartFocus={(t) => setFocusId(t.id)} onSchedule={scheduleTask}
                 srbaiDue={srbaiDueTasks} onRateHabit={(t) => setRating(t.id)}
                 onOpenSettings={() => setView("settings")}
+                freshStart={fresh} onAcceptFreshStart={dismissFreshStart} onDismissFreshStart={dismissFreshStart}
+                comebacks={comebacks} onAckComebacks={ackComebacks}
+                startSmall={smallCheck} woopNeeded={woopNeeded} onStartWoop={setWoopGoal}
+                onboarding={onboarding} onStartOnboarding={() => setView("onboarding")}
+                onDismissOnboarding={() => patch({ settings: { ...state.settings, onboarded: true } })}
                 onOpenPlan={() => setView("plan")}
                 onRescheduleOverdue={rescheduleOverdue} onToggleFocus={toggleFocus}
               />
@@ -607,6 +647,14 @@ export default function Momentum() {
                 onSaveNetWorth={saveNetWorthSnapshot}
               />
             )}
+            {view === "onboarding" && (
+              <OnboardingView
+                state={state} onBack={() => setView("today")}
+                onSetIdentity={(pillarId, text) => patch({ identities: { ...state.identities, [pillarId]: text } })}
+                onAddHabit={addTask}
+                onDone={() => { patch({ settings: { ...state.settings, onboarded: true } }); setView("today"); }}
+              />
+            )}
             {view === "settings" && (
               <SettingsView
                 state={state} onBack={() => setView("today")}
@@ -669,6 +717,12 @@ export default function Momentum() {
             if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr(), { minimal });
             setRitual(null);
           }}
+        />
+
+        <WoopSheet
+          open={!!woopGoal} goal={woopGoal}
+          onClose={() => setWoopGoal(null)}
+          onSave={saveWoop}
         />
 
         <SrbaiSheet

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Bell, BellOff, CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus,
-  Repeat, Shuffle, Target, Timer, Trash2, X, Zap,
+  Handshake, Repeat, Shuffle, Target, Timer, Trash2, X, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
@@ -11,6 +11,8 @@ import {
   CUE_BY_ID, CUE_TYPES, COMPETING_RESPONSE_HELP, DEFAULT_CUE, cueOf, frictionPrompt,
   implementationIntention,
 } from "../lib/cues.js";
+import { defaultCueFor, expectation, typeOf, typesFor } from "../lib/habitTypes.js";
+import { REWARD_BY_ID, REWARD_TYPES, rewardTypeOf } from "../lib/rewards.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission,
 } from "../lib/notify.js";
@@ -254,6 +256,33 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
         </Field>
 
         {task.kind !== "todo" && (
+          <Field label="What kind of habit is this?">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {typesFor(task.kind).map((t) => (
+                <Pill key={t.id} on={task.habitType === t.id}
+                  onClick={() => set({
+                    habitType: task.habitType === t.id ? null : t.id,
+                    // Let the type pick a sensible anchor when none has been chosen yet.
+                    ...(task.habitType !== t.id && !task.cueType ? { cueType: defaultCueFor(t.id) } : {}),
+                  })}>
+                  {t.label}
+                </Pill>
+              ))}
+            </div>
+            {typeOf(task) && (
+              <>
+                <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.55, margin: "8px 0 0" }}>
+                  {typeOf(task).note}
+                </p>
+                <p style={{ color: C.muted, fontSize: 11, lineHeight: 1.5, margin: "6px 0 0" }}>
+                  {expectation(task).text}
+                </p>
+              </>
+            )}
+          </Field>
+        )}
+
+        {task.kind !== "todo" && (
           <Field label="Cue — what will set this off?">
             <SegmentedControl
               options={CUE_TYPES.map((c) => ({ id: c.id, label: c.tab }))}
@@ -461,10 +490,30 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
                 placeholder={frictionPrompt(task.kind).placeholder}
                 style={{ ...styles.bareInput, flex: 1 }} />
             </div>
+            <div>
+              <p style={{ color: C.muted, fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase", margin: "0 0 7px" }}>
+                What keeps you coming back?
+              </p>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {REWARD_TYPES.map((r) => (
+                  <Pill key={r.id} on={rewardTypeOf(task) === r.id} onClick={() => set({ rewardType: r.id })}>
+                    {r.label}
+                  </Pill>
+                ))}
+              </div>
+              <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "7px 0 0" }}>
+                {REWARD_BY_ID[rewardTypeOf(task)].help}
+              </p>
+            </div>
             <div style={styles.fieldShell}>
               <Gift size={13} color={C.muted} />
               <input value={task.bundle || ""} onChange={(e) => set({ bundle: e.target.value || null })}
                 placeholder="Bundle with something you enjoy" style={{ ...styles.bareInput, flex: 1 }} />
+            </div>
+            <div style={styles.fieldShell}>
+              <Handshake size={13} color={C.muted} />
+              <input value={task.commitment || ""} onChange={(e) => set({ commitment: e.target.value || null })}
+                placeholder="Who have you told? (optional)" style={{ ...styles.bareInput, flex: 1 }} />
             </div>
             <div style={styles.fieldShell}>
               <Zap size={13} color={C.muted} />
