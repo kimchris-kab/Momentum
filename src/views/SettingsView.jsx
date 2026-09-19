@@ -1,9 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell, BellOff, CheckCircle2, Clock, Gauge, Moon, Send, TriangleAlert, Volume2,
+  Bell, BellOff, CheckCircle2, Clock, Download, Gauge, Moon, RotateCcw, Send, ShieldAlert,
+  TriangleAlert, Upload, Volume2,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { formatTime12 } from "../lib/date.js";
+import { formatTime12, prettyDate } from "../lib/date.js";
+import {
+  backupFilename, downloadJson, exportPayload, inspectImport, stateFromImport,
+} from "../lib/backup.js";
 import { NUDGE_KINDS, WEEKDAY_OPTIONS, notifySettings } from "../lib/nudges.js";
 import {
   deliveryReport, notificationPermission, requestNotificationPermission, scheduleNudges,
@@ -59,12 +63,15 @@ const TimeInput = ({ value, onChange, label }) => (
   </div>
 );
 
-export default function SettingsView({ state, onBack, onSetSetting, onUpdateTask }) {
+export default function SettingsView({ state, onBack, onSetSetting, onUpdateTask, onRestore }) {
   const { tasks, settings, srbai = [] } = state;
   const notify = useMemo(() => notifySettings(settings), [settings]);
   const [perm, setPerm] = useState("default");
   const [report, setReport] = useState(null);
   const [testing, setTesting] = useState(null);
+  const [exported, setExported] = useState(false);
+  const [pending, setPending] = useState(null);
+  const fileRef = useRef(null);
 
   const refresh = async () => {
     setPerm(await notificationPermission());
@@ -89,6 +96,21 @@ export default function SettingsView({ state, onBack, onSetSetting, onUpdateTask
     const ok = await sendTestReminder("Momentum", "This is what a nudge will look like.");
     setTesting(ok === false ? "failed" : "sent");
     setTimeout(() => setTesting(null), 4000);
+  };
+
+  const exportNow = () => {
+    downloadJson(backupFilename(), exportPayload(state));
+    setExported(true);
+    setTimeout(() => setExported(false), 4000);
+  };
+
+  const pickFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so choosing the same file twice still fires
+    if (!file) return;
+    let raw = "";
+    try { raw = await file.text(); } catch { setPending({ ok: false, error: "That file couldn't be read." }); return; }
+    setPending({ ...inspectImport(raw), name: file.name });
   };
 
   const on = settings.reminders !== false && perm === "granted";
@@ -294,6 +316,87 @@ export default function SettingsView({ state, onBack, onSetSetting, onUpdateTask
           )}
         </>
       )}
+
+      {/* ---- Backup and restore ---- */}
+      <SectionLabel>Your data</SectionLabel>
+      <Card>
+        <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "0 0 13px" }}>
+          Everything Momentum knows lives in this browser and nowhere else — habits, the
+          completion log, journal entries, money records. Clearing site data or switching phone
+          loses all of it. A backup is one plain JSON file you keep yourself.
+        </p>
+        <button onClick={exportNow} style={{ ...styles.cta, height: 46, fontSize: 14 }}>
+          {exported ? <CheckCircle2 size={17} color={C.green} /> : <Download size={17} />}
+          {exported ? "Saved to your downloads" : "Export a backup"}
+        </button>
+
+        <input ref={fileRef} type="file" accept="application/json,.json" onChange={pickFile}
+          aria-label="Backup file" style={{ display: "none" }} />
+        <button onClick={() => fileRef.current?.click()}
+          style={{ ...styles.ghostCta, height: 42, marginTop: 9, fontSize: 13 }}>
+          <Upload size={14} /> Restore from a file
+        </button>
+
+        {pending && !pending.ok && (
+          <div style={{
+            background: alpha(C.red, 0.08), border: `1px solid ${alpha(C.red, 0.3)}`,
+            borderRadius: R.md, padding: "11px 13px", marginTop: 11,
+          }}>
+            <p style={{ color: C.red, fontSize: 12.5, lineHeight: 1.55, margin: 0 }}>
+              <TriangleAlert size={12} style={{ verticalAlign: -1, marginRight: 5 }} />
+              {pending.error}
+            </p>
+            <button onClick={() => setPending(null)} style={{ ...styles.linkBtn, color: C.muted, marginTop: 8 }}>
+              Close
+            </button>
+          </div>
+        )}
+
+        {pending?.ok && (
+          <div style={{
+            background: C.surface2, border: `1px solid ${alpha(C.gold, 0.32)}`,
+            borderRadius: R.md, padding: "13px 14px", marginTop: 11,
+          }}>
+            <p style={{ color: C.text, fontSize: 13, fontWeight: 600, margin: 0 }}>
+              {pending.name}
+            </p>
+            <p style={{ color: C.faint, fontSize: 11, margin: "3px 0 10px" }}>
+              {pending.exportedAt
+                ? `Exported ${prettyDate(pending.exportedAt.slice(0, 10))}`
+                : "No export date in this file"}
+              {pending.schema != null && ` · schema v${pending.schema}`}
+            </p>
+            {pending.summary.length === 0 ? (
+              <p style={{ color: C.orange, fontSize: 12, lineHeight: 1.55, margin: "0 0 10px" }}>
+                This backup is readable but empty. Restoring it would leave you with nothing.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 11 }}>
+                {pending.summary.map(([label, n]) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: C.muted, fontSize: 12 }}>{label}</span>
+                    <span style={{ color: C.text, fontSize: 12, fontWeight: 600 }}>{n}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p style={{ color: C.orange, fontSize: 11.5, lineHeight: 1.55, margin: "0 0 11px" }}>
+              <ShieldAlert size={12} style={{ verticalAlign: -1, marginRight: 5 }} />
+              This replaces everything currently in the app. Export what's here first if you
+              aren't sure.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { onRestore(stateFromImport(pending.data)); setPending(null); }}
+                style={{ ...styles.cta, height: 42, fontSize: 13, flex: 1 }}>
+                <RotateCcw size={15} /> Replace everything
+              </button>
+              <button onClick={() => setPending(null)} style={{ ...styles.ghostCta, height: 42, fontSize: 13, width: 92 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       <SectionLabel>In the app</SectionLabel>
       <Card>

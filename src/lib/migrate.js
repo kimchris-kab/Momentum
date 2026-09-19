@@ -22,6 +22,8 @@ export const emptyState = () => ({
   recurring: [],
   monthlyIncome: "",
   budgetSplit: { needs: 50, wants: 30, savings: 20 },
+  categoryBudgets: {},
+  dismissedSubs: [],
   mantraIdxByDate: {},
   journalDraft: null,
   weekPlans: {},

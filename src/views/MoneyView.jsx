@@ -21,6 +21,10 @@ import {
   Card, Checkbox, EmptyState, IconButton, Pill, ProgressBar, SegmentedControl, SectionLabel,
 } from "../components/ui.jsx";
 import TxSheet from "../components/TxSheet.jsx";
+import {
+  BudgetSheet, CategoryBudgets, SafeToSpendCard, SubscriptionRadar,
+} from "../components/BudgetCards.jsx";
+import { ruleFromSubscription } from "../lib/subscriptions.js";
 
 const blankTx = () => ({
   type: "expense", catId: "groceries", category: "needs", amount: 0,
@@ -54,6 +58,8 @@ export default function MoneyView({
   const [target, setTarget] = useState("");
   const [openGoal, setOpenGoal] = useState(null);
   const [subDraft, setSubDraft] = useState("");
+  // undefined = closed; null = new budget; a catId = editing that one.
+  const [budgetFor, setBudgetFor] = useState(undefined);
 
   const totals = useMemo(() => monthTotals(transactions, mKey), [transactions, mKey]);
   const flowData = useMemo(() => monthsFlow(transactions, 6, mKey), [transactions, mKey]);
@@ -135,6 +141,8 @@ export default function MoneyView({
 
       {tab === "flow" && (
         <>
+          <SafeToSpendCard state={state} mKey={mKey} today={todayStr()} />
+
           <Card flip style={styles.cardTall}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.7 }}>
@@ -195,6 +203,8 @@ export default function MoneyView({
               </Card>
             </>
           )}
+
+          <CategoryBudgets state={state} mKey={mKey} today={todayStr()} onEdit={setBudgetFor} />
 
           <SectionLabel>Six months to {monthTitle(mKey).split(" ")[0]}</SectionLabel>
           <Card style={{ height: 215, padding: "16px 6px 4px" }}>
@@ -433,6 +443,13 @@ export default function MoneyView({
               <Repeat size={14} /> Add a recurring entry
             </button>
           </Card>
+
+          <SubscriptionRadar
+            state={state} today={todayStr()}
+            onDeclare={(sub) => onSaveRule(ruleFromSubscription(sub))}
+            onDismiss={(key) => onPatch({ dismissedSubs: [...(state.dismissedSubs || []), key] })}
+            onUndismiss={() => onPatch({ dismissedSubs: [] })}
+          />
         </>
       )}
 
@@ -641,6 +658,16 @@ export default function MoneyView({
         onClose={() => setEditing(null)}
         onSave={() => { onSaveTx(editing); setEditing(null); }}
         onDelete={editing?.id ? () => { onDeleteTx(editing.id); setEditing(null); } : null}
+      />
+      <BudgetSheet
+        open={budgetFor !== undefined} catId={budgetFor} state={state} today={todayStr()}
+        onClose={() => setBudgetFor(undefined)}
+        onSave={(catId, amount) => {
+          const next = { ...(state.categoryBudgets || {}) };
+          // Zero means "stop tracking this", so the key goes rather than sitting at 0.
+          if (amount > 0) next[catId] = amount; else delete next[catId];
+          onPatch({ categoryBudgets: next });
+        }}
       />
       <TxSheet
         open={!!editingRule} tx={editingRule} mode="rule" transactions={transactions}

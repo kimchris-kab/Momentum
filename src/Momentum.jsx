@@ -172,6 +172,13 @@ export default function Momentum() {
 
   const patch = useCallback((p) => setState((s) => ({ ...s, ...p })), []);
 
+  // A restore replaces the whole state rather than merging into it: a backup is a complete
+  // picture, and merging would leave the app holding half of each.
+  const restoreState = useCallback((next) => {
+    setState(next);
+    show("Backup restored");
+  }, [show]);
+
   // ---- Task actions ----
   const addTask = useCallback((patchObj) => {
     const task = newTask({ ...patchObj, order: Date.now() });
@@ -660,6 +667,7 @@ export default function Momentum() {
                 state={state} onBack={() => setView("today")}
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
                 onUpdateTask={updateTask}
+                onRestore={restoreState}
               />
             )}
             {view === "insights" && (
