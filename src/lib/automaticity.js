@@ -97,10 +97,16 @@ export function graduationStatus(task, entries) {
   const mean = latest.mean;
 
   if (mean < GRADUATION_MEAN) {
-    const rising = h.length >= 2 && mean - h[h.length - 2].mean >= PLATEAU_DELTA;
+    const prevMean = h.length >= 2 ? h[h.length - 2].mean : null;
+    const rising = prevMean !== null && mean - prevMean >= PLATEAU_DELTA;
+    // A habit that has dropped materially is not "getting automatic" whatever its level —
+    // telling someone to leave the scaffolding alone while it comes apart is the wrong
+    // advice at the worst moment.
+    const falling = prevMean !== null && prevMean - mean >= PLATEAU_DELTA;
+    const climbing = !falling && (mean >= GRADUATION_MEAN - 1.5 || rising);
     return {
-      ...(mean >= GRADUATION_MEAN - 1.5 || rising ? STATUS.strengthening : STATUS.building),
-      mean, history: h, plateaued: false,
+      ...(climbing ? STATUS.strengthening : STATUS.building),
+      mean, history: h, plateaued: false, falling,
     };
   }
 

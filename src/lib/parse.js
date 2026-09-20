@@ -111,8 +111,18 @@ function collect(input, { today, lists, pillars }) {
       (o) => { o.recurrence = weeklyRule(ordered); o.dueDate = null; });
   });
 
-  scan(/\bevery\s+month\b|\bmonthly(?:\s+on\s+the\s+(\d{1,2}))?\b/i, (m) => {
-    const day = m[1] ? Number(m[1]) : parseD(today).getDate();
+  // Both orders, with or without an ordinal suffix: "monthly on the 1st", "on the 1st
+  // monthly", "on the 1st of every month". Requiring a bare digit meant the app's own
+  // example silently fell back to today's date, which is the exact failure this parser
+  // exists to avoid.
+  scan(new RegExp(
+    "\\bevery\\s+month\\b"
+    + "|\\bmonthly\\b(?:\\s+on\\s+the\\s+(\\d{1,2})(?:st|nd|rd|th)?)?"
+    + "|\\bon\\s+the\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:every\\s+month|monthly)\\b",
+    "i"), (m) => {
+    const stated = m[1] || m[2];
+    const day = stated ? Number(stated) : parseD(today).getDate();
+    if (day < 1 || day > 31) return;
     push(m, "repeat", `Monthly on day ${day}`,
       (o) => { o.recurrence = monthlyRule(day); o.dueDate = null; });
   });
