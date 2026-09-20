@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Compass, ListTodo, Plus, TrendingUp, Wallet } from "lucide-react";
 import { C, MOTION_CSS, styles } from "./theme.js";
 import { MANTRAS, PILLARS } from "./data/constants.js";
@@ -36,10 +36,18 @@ import HabitsView from "./views/HabitsView.jsx";
 import IdentityView from "./views/IdentityView.jsx";
 import CheckinView from "./views/CheckinView.jsx";
 import JournalView from "./views/JournalView.jsx";
-import MoneyView from "./views/MoneyView.jsx";
-import InsightsView from "./views/InsightsView.jsx";
 import SettingsView from "./views/SettingsView.jsx";
 import OnboardingView from "./views/OnboardingView.jsx";
+
+// Money and Insights are the two chart-heavy views, and between them they account for most
+// of what recharts costs. Neither is where the app opens, so they load when they're first
+// opened instead of before anything is on screen.
+const MoneyView = lazy(() => import("./views/MoneyView.jsx"));
+const InsightsView = lazy(() => import("./views/InsightsView.jsx"));
+
+const ViewLoading = () => (
+  <div style={{ ...styles.page, color: C.faint, fontSize: 12.5 }}>Loading…</div>
+);
 
 const NAV = [
   { id: "today", label: "Today", Icon: Compass },
@@ -570,6 +578,7 @@ export default function Momentum() {
 
         <div style={styles.scroll}>
           <div key={view} className="mtm-view-flip">
+            <Suspense fallback={<ViewLoading />}>
             {view === "today" && (
               <TodayView
                 state={state} averages={averages} overall={overall} streak={streak} breakStreak={breakStreak}
@@ -678,6 +687,7 @@ export default function Momentum() {
                 onRemoveGoal={(id) => patch({ goals: state.goals.filter((x) => x.id !== id) })}
               />
             )}
+            </Suspense>
           </div>
         </div>
 

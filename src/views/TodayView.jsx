@@ -1,5 +1,4 @@
-import React, { useMemo, useState } from "react";
-import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
+import React, { Suspense, lazy, useMemo, useState } from "react";
 import {
   Ban, CalendarCheck, CalendarDays, CalendarRange, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock4, Crosshair, Fingerprint, Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake,
@@ -27,6 +26,18 @@ import DayTimeline from "../components/DayTimeline.jsx";
 import {
   AutomaticityCard, CueHealthCard, FocusTodayCard, WeekPulseCard,
 } from "../components/TodayCards.jsx";
+
+// recharts is about half the bundle and the only thing on this view that needs it, so it
+// loads after the page does rather than blocking the first thing anyone sees.
+const PillarRadar = lazy(() => import("../components/PillarRadar.jsx"));
+const ChartPlaceholder = () => (
+  <div style={{
+    height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+    color: C.faint, fontSize: 11.5,
+  }}>
+    Drawing your map…
+  </div>
+);
 
 export default function TodayView({
   state, averages, overall, streak, breakStreak, tally, heatmap, needsRest,
@@ -432,6 +443,8 @@ export default function TodayView({
       {/* Map */}
       <SectionLabel>Your map</SectionLabel>
       <Card style={styles.cardTall}>
+        {/* The chart arrives a moment after the rest of the page, so its box is held open at
+            the final height — nothing below it jumps when it lands. */}
         {count === 0 ? (
           <EmptyState
             Icon={Sparkles}
@@ -440,20 +453,9 @@ export default function TodayView({
           />
         ) : (
           <div style={{ height: 250, margin: "0 -6px" }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData} outerRadius="70%">
-                <defs>
-                  <radialGradient id="mapfill" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor={C.gold} stopOpacity={0.42} />
-                    <stop offset="100%" stopColor={C.gold} stopOpacity={0.08} />
-                  </radialGradient>
-                </defs>
-                <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                <PolarAngleAxis dataKey="pillar" tick={{ fill: C.muted, fontSize: 10.5 }} />
-                <Radar dataKey="value" stroke={C.gold} strokeWidth={2} fill="url(#mapfill)"
-                  dot={{ r: 3, fill: C.gold, strokeWidth: 0 }} />
-              </RadarChart>
-            </ResponsiveContainer>
+            <Suspense fallback={<ChartPlaceholder />}>
+              <PillarRadar data={radarData} />
+            </Suspense>
           </div>
         )}
         <div style={{
