@@ -23,6 +23,7 @@ import {
 } from "../components/WoopSheet.jsx";
 import { OnboardingPrompt } from "./OnboardingView.jsx";
 import DayTimeline from "../components/DayTimeline.jsx";
+import ChunkBoundary from "../components/ChunkBoundary.jsx";
 import {
   AutomaticityCard, CueHealthCard, FocusTodayCard, WeekPulseCard,
 } from "../components/TodayCards.jsx";
@@ -51,6 +52,7 @@ export default function TodayView({
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
   const [showCompleted, setShowCompleted] = useState(false);
+
 
   const hour = new Date().getHours();
   const greet = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -456,9 +458,12 @@ export default function TodayView({
           />
         ) : (
           <div style={{ height: 250, margin: "0 -6px" }}>
-            <Suspense fallback={<ChartPlaceholder />}>
-              <PillarRadar data={radarData} />
-            </Suspense>
+            {/* A chart that fails to arrive shouldn't take the day's plan down with it. */}
+            <ChunkBoundary resetKey="radar">
+              <Suspense fallback={<ChartPlaceholder />}>
+                <PillarRadar data={radarData} />
+              </Suspense>
+            </ChunkBoundary>
           </div>
         )}
         <div style={{

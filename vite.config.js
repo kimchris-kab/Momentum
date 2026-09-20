@@ -9,7 +9,12 @@ const preview = process.env.PREVIEW === "1";
 
 export default defineConfig({
   base: preview ? "./" : "/",
-  build: preview ? { outDir: "dist-preview" } : {},
+  build: preview ? {
+    outDir: "dist-preview",
+    // The preview is published under a fixed filename, and the lazy chunks import back into
+    // the entry by name — rename it afterwards and every one of them 404s at runtime.
+    rollupOptions: { output: { entryFileNames: "assets/momentum.js" } },
+  } : {},
   plugins: [
     react(),
     ...(preview ? [] : [

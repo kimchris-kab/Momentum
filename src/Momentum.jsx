@@ -39,6 +39,7 @@ import JournalView from "./views/JournalView.jsx";
 import SettingsView from "./views/SettingsView.jsx";
 import OnboardingView from "./views/OnboardingView.jsx";
 import SearchView from "./views/SearchView.jsx";
+import ChunkBoundary from "./components/ChunkBoundary.jsx";
 
 // Money and Insights are the two chart-heavy views, and between them they account for most
 // of what recharts costs. Neither is where the app opens, so they load when they're first
@@ -75,6 +76,7 @@ export default function Momentum() {
   // Set when Money is opened from a search result, so the ledger lands on the entry rather
   // than on this month's summary with the search forgotten.
   const [moneyJump, setMoneyJump] = useState(null);
+
   const { toast, show, dismiss, act } = useToast();
 
   useEffect(() => {
@@ -582,6 +584,7 @@ export default function Momentum() {
 
         <div style={styles.scroll}>
           <div key={view} className="mtm-view-flip">
+            <ChunkBoundary resetKey={view}>
             <Suspense fallback={<ViewLoading />}>
             {view === "today" && (
               <TodayView
@@ -724,6 +727,7 @@ export default function Momentum() {
               />
             )}
             </Suspense>
+            </ChunkBoundary>
           </div>
         </div>
 
