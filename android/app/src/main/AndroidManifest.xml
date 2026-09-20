@@ -24,9 +24,12 @@
 
         </activity>
 
+        <!-- A widget provider is driven by broadcasts from the launcher, which is another
+             app: exported="false" means those never arrive and the widget never appears in
+             the picker at all. -->
         <receiver
             android:name=".MomentumWidget"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

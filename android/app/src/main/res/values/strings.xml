@@ -4,5 +4,8 @@
     <string name="title_activity_main">Momentum</string>
     <string name="package_name">com.momentum.app</string>
     <string name="custom_url_scheme">com.momentum.app</string>
-    <string name="widget_description">Today's habits at a glance</string>
+    <string name="widget_description">Today\'s habits at a glance</string>
+    <!-- Shown before the app has written its first snapshot. -->
+    <string name="widget_placeholder">—</string>
+    <string name="widget_empty">Nothing scheduled today</string>
 </resources>

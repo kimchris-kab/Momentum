@@ -21,7 +21,9 @@ import org.json.JSONObject;
  *
  * NOT VERIFIED: this was written without a working Android toolchain (the sandbox cannot
  * reach dl.google.com), so it has never been compiled, installed or run. Treat it as a
- * starting point to build locally, not as working code.
+ * starting point to build locally, not as working code. A later review of it by hand did
+ * find and fix three things that would have stopped it working at all — an unexported
+ * receiver, an unbound XML namespace, and a missing Preferences plugin — so expect more.
  */
 public class MomentumWidget extends AppWidgetProvider {
 
@@ -84,9 +86,10 @@ public class MomentumWidget extends AppWidgetProvider {
             }
         }
 
-        views.setTextViewText(R.id.widget_progress, total > 0 ? done + " / " + total : "—");
+        views.setTextViewText(R.id.widget_progress,
+                total > 0 ? done + " / " + total : context.getString(R.string.widget_placeholder));
         views.setTextViewText(R.id.widget_subtitle,
-                total == 0 ? "Nothing scheduled today" : streakText);
+                total == 0 ? context.getString(R.string.widget_empty) : streakText);
 
         // Tapping anywhere opens the app.
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
