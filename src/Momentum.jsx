@@ -38,6 +38,7 @@ import CheckinView from "./views/CheckinView.jsx";
 import JournalView from "./views/JournalView.jsx";
 import SettingsView from "./views/SettingsView.jsx";
 import OnboardingView from "./views/OnboardingView.jsx";
+import SearchView from "./views/SearchView.jsx";
 
 // Money and Insights are the two chart-heavy views, and between them they account for most
 // of what recharts costs. Neither is where the app opens, so they load when they're first
@@ -71,6 +72,9 @@ export default function Momentum() {
   const [celebration, setCelebration] = useState(null);
   const [capturing, setCapturing] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
+  // Set when Money is opened from a search result, so the ledger lands on the entry rather
+  // than on this month's summary with the search forgotten.
+  const [moneyJump, setMoneyJump] = useState(null);
   const { toast, show, dismiss, act } = useToast();
 
   useEffect(() => {
@@ -592,6 +596,7 @@ export default function Momentum() {
                 onStartFocus={(t) => setFocusId(t.id)} onSchedule={scheduleTask}
                 srbaiDue={srbaiDueTasks} onRateHabit={(t) => setRating(t.id)}
                 onOpenSettings={() => setView("settings")}
+                onOpenSearch={() => setView("search")}
                 freshStart={fresh} onAcceptFreshStart={dismissFreshStart} onDismissFreshStart={dismissFreshStart}
                 comebacks={comebacks} onAckComebacks={ackComebacks}
                 startSmall={smallCheck} woopNeeded={woopNeeded} onStartWoop={setWoopGoal}
@@ -652,6 +657,8 @@ export default function Momentum() {
             )}
             {view === "money" && (
               <MoneyView
+                key={moneyJump ? `jump-${moneyJump.query}-${moneyJump.mKey}` : "money"}
+                jumpTo={moneyJump}
                 state={state} onPatch={patch}
                 onAddStrategy={(s) => patch({ strategies: [...state.strategies, s] })}
                 onUpdateStrategy={(id, p) => patch({
@@ -661,6 +668,35 @@ export default function Momentum() {
                 onSaveTx={saveTx} onDeleteTx={deleteTx}
                 onSaveRule={saveRule} onDeleteRule={deleteRule}
                 onSaveNetWorth={saveNetWorthSnapshot}
+              />
+            )}
+            {view === "search" && (
+              <SearchView
+                state={state}
+                onBack={() => setView("today")}
+                onOpen={(item) => {
+                  if (item.kind === "task" || item.kind === "habit") {
+                    setView(item.kind === "habit" ? "habits" : "tasks");
+                    setEditing(item.id);
+                  } else if (item.kind === "journal") {
+                    setView("journal");
+                    setEditingEntry(item.entry);
+                  } else if (item.kind === "money") {
+                    // The ledger's own filters do the last step, so the entry is on screen
+                    // in its own context rather than ripped out of it.
+                    setMoneyJump({
+                      query: item.tx.payee || item.tx.note || "",
+                      mKey: item.tx.date.slice(0, 7),
+                      tab: "records",
+                    });
+                    setView("money");
+                  } else if (item.strategy) {
+                    setMoneyJump({ query: "", mKey: null, tab: "goals" });
+                    setView("money");
+                  } else {
+                    setView("insights");
+                  }
+                }}
               />
             )}
             {view === "onboarding" && (
@@ -709,7 +745,12 @@ export default function Momentum() {
           {NAV.map((t) => {
             const active = view === t.id || (isSubView && t.id === "today");
             return (
-              <button key={t.id} onClick={() => setView(t.id)} style={{
+              <button key={t.id} onClick={() => {
+                // Tapping Money in the nav means "take me to Money", not "take me back to
+                // whatever a search result pointed at an hour ago".
+                setMoneyJump(null);
+                setView(t.id);
+              }} style={{
                 ...styles.navBtn, color: active ? C.gold : C.faint,
               }}>
                 <t.Icon size={20} strokeWidth={active ? 2.4 : 1.9} className={active ? "mtm-glow-pulse" : undefined} />

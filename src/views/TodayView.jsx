@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useMemo, useState } from "react";
 import {
   Ban, CalendarCheck, CalendarDays, CalendarRange, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock4, Crosshair, Fingerprint, Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake,
-  Settings, Sparkles, Sun, Target,
+  Search, Settings, Sparkles, Sun, Target,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, P_BY_ID } from "../data/constants.js";
@@ -44,7 +44,7 @@ export default function TodayView({
   onToggleTask, onOpenTask, onToggleStar, onCheckin, onOpenHabits, onOpenIdentity, onOpenTasks,
   onRerollMantra, onFreeze, onRepair, onStartRitual, onOpenReview, onOpenPlan,
   onRescheduleOverdue, onToggleFocus, onStartFocus, onSchedule, srbaiDue = [], onRateHabit,
-  onOpenSettings, freshStart: fresh, onAcceptFreshStart, onDismissFreshStart,
+  onOpenSettings, onOpenSearch, freshStart: fresh, onAcceptFreshStart, onDismissFreshStart,
   comebacks = [], onAckComebacks, startSmall, woopNeeded = [], onStartWoop,
   onboarding, onStartOnboarding, onDismissOnboarding,
 }) {
@@ -128,11 +128,14 @@ export default function TodayView({
           <p style={styles.eyebrow}>{greet}</p>
           <h1 style={styles.h1}>Today</h1>
         </div>
-        {onOpenSettings && (
-          <div style={{ paddingBottom: 18 }}>
+        <div style={{ paddingBottom: 18, display: "flex", gap: 8 }}>
+          {onOpenSearch && (
+            <IconButton onClick={onOpenSearch} title="Search"><Search size={15} /></IconButton>
+          )}
+          {onOpenSettings && (
             <IconButton onClick={onOpenSettings} title="Settings"><Settings size={15} /></IconButton>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <Card flip style={{ ...styles.cardTall, display: "flex", alignItems: "center", gap: 16 }}>

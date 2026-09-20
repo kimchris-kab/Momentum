@@ -38,18 +38,20 @@ const blankRule = () => ({
 
 export default function MoneyView({
   state, onPatch, onAddStrategy, onUpdateStrategy, onRemoveStrategy,
-  onSaveTx, onDeleteTx, onSaveRule, onDeleteRule, onSaveNetWorth,
+  onSaveTx, onDeleteTx, onSaveRule, onDeleteRule, onSaveNetWorth, jumpTo = null,
 }) {
   const {
     strategies, moneyPrinciples, moneyIdeas, netWorth, netWorthLog, transactions, recurring,
     monthlyIncome, budgetSplit,
   } = state;
 
-  const [tab, setTab] = useState("flow");
+  // Opened from a search result, this view starts pointed at the entry that was found:
+  // right month, right tab, search already filled in.
+  const [tab, setTab] = useState(jumpTo?.tab || "flow");
   const [learnTab, setLearnTab] = useState("playbook");
-  const [mKey, setMKey] = useState(monthKeyNow());
-  const [query, setQuery] = useState("");
-  const [searching, setSearching] = useState(false);
+  const [mKey, setMKey] = useState(jumpTo?.mKey || monthKeyNow());
+  const [query, setQuery] = useState(jumpTo?.query || "");
+  const [searching, setSearching] = useState(!!jumpTo?.query);
   const [filterType, setFilterType] = useState("all");
   const [filterBucket, setFilterBucket] = useState("all");
   const [editing, setEditing] = useState(null);

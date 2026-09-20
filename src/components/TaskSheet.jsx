@@ -133,6 +133,7 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
           value={task.text}
           onChange={(e) => set({ text: e.target.value })}
           placeholder="Task name"
+          aria-label="Task name"
           style={{ ...styles.input, fontSize: 16, fontFamily: F.display, padding: "14px 15px" }}
         />
 
