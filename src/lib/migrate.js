@@ -1,7 +1,7 @@
 import { newTask, weeklyRule, DEFAULT_LISTS } from "./tasks.js";
 import { DEFAULT_NOTIFY } from "./nudges.js";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const emptyState = () => ({
   version: SCHEMA_VERSION,
@@ -37,6 +37,12 @@ export const emptyState = () => ({
   comebacksSeen: [],
   reviews: [],
   settings: { sortMode: "manual", showCompleted: false, reminders: true, motion: true, notify: DEFAULT_NOTIFY },
+  // v3. Deleting a record has to leave a mark, or merging two devices hands it straight back:
+  // one side has no idea the other meant to remove it. Pruned once it can't matter.
+  graveyard: {},
+  // When this copy was last written, which is what decides the winner when the same setting
+  // was changed on two devices.
+  savedAt: 0,
 });
 
 // v1 kept habits as per-weekday template rows (routines / breakRoutines) plus a per-day copy of
@@ -171,7 +177,9 @@ export function loadState(raw) {
   let d;
   try { d = JSON.parse(raw); } catch { return emptyState(); }
   if (!d || typeof d !== "object") return emptyState();
-  if (d.version === SCHEMA_VERSION) {
+  // v2 and v3 differ only by two fields that default cleanly, so a v2 save is read as v3
+  // rather than migrated: there is nothing to convert.
+  if (d.version === SCHEMA_VERSION || d.version === 2) {
     const base = emptyState();
     return {
       ...base,
@@ -189,4 +197,7 @@ export function loadState(raw) {
   return migrateV1(d);
 }
 
-export const serializeState = (state) => JSON.stringify({ ...state, version: SCHEMA_VERSION });
+// savedAt is stamped here rather than by each caller, so there is exactly one place that can
+// forget to do it — and a merge decides which device's settings win by this number.
+export const serializeState = (state) =>
+  JSON.stringify({ ...state, version: SCHEMA_VERSION, savedAt: Date.now() });

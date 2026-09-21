@@ -20,6 +20,7 @@ import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
+import { bury, unbury } from "./lib/merge.js";
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
@@ -36,7 +37,6 @@ import HabitsView from "./views/HabitsView.jsx";
 import IdentityView from "./views/IdentityView.jsx";
 import CheckinView from "./views/CheckinView.jsx";
 import JournalView from "./views/JournalView.jsx";
-import SettingsView from "./views/SettingsView.jsx";
 import OnboardingView from "./views/OnboardingView.jsx";
 import SearchView from "./views/SearchView.jsx";
 import ChunkBoundary from "./components/ChunkBoundary.jsx";
@@ -51,6 +51,10 @@ import { pushBackup, validSession } from "./lib/supabase.js";
 // opened instead of before anything is on screen.
 const MoneyView = lazy(() => import("./views/MoneyView.jsx"));
 const InsightsView = lazy(() => import("./views/InsightsView.jsx"));
+// Settings drags the whole cloud stack behind it — the Supabase client, the backup format,
+// the update channel, the merge. None of it is needed to draw Today, and all of it was
+// sitting in the chunk that has to arrive before anything appears.
+const SettingsView = lazy(() => import("./views/SettingsView.jsx"));
 
 const ViewLoading = () => (
   <div style={{ ...styles.page, color: C.faint, fontSize: 12.5 }}>Loading…</div>
@@ -264,18 +268,23 @@ export default function Momentum() {
     return task;
   }, []);
 
+  // Every edit is stamped. Merging two devices resolves a record edited on both by which
+  // edit came last, so an unstamped write is one a merge has to guess about.
   const updateTask = useCallback((id, p) => setState((s) => ({
-    ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...p } : t)),
+    ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...p, updatedAt: Date.now() } : t)),
   })), []);
 
   const removeTask = useCallback((id) => {
     setState((s) => {
       const victim = s.tasks.find((t) => t.id === id);
       if (victim) {
+        // An undone delete never happened, so the tombstone goes with it — otherwise the
+        // next merge would delete the task again on the strength of a record of a deletion
+        // that was taken back.
         show("Task deleted", "Undo", () =>
-          setState((cur) => ({ ...cur, tasks: [...cur.tasks, victim] })));
+          setState((cur) => ({ ...cur, tasks: [...cur.tasks, victim], graveyard: unbury(cur.graveyard, id) })));
       }
-      return { ...s, tasks: s.tasks.filter((t) => t.id !== id) };
+      return { ...s, tasks: s.tasks.filter((t) => t.id !== id), graveyard: bury(s.graveyard, id) };
     });
   }, [show]);
 
@@ -343,11 +352,12 @@ export default function Momentum() {
     const task = s.tasks.find((t) => t.id === id);
     show(archived ? `Paused "${task?.text}"` : `Resumed "${task?.text}"`, archived ? "Undo" : null,
       archived ? () => setState((cur) => ({
-        ...cur, tasks: cur.tasks.map((t) => (t.id === id ? { ...t, archivedAt: null } : t)),
+        ...cur, tasks: cur.tasks.map((t) => (t.id === id ? { ...t, archivedAt: null, updatedAt: Date.now() } : t)),
       })) : null);
     return {
       ...s,
-      tasks: s.tasks.map((t) => (t.id === id ? { ...t, archivedAt: archived ? Date.now() : null } : t)),
+      tasks: s.tasks.map((t) => (t.id === id
+        ? { ...t, archivedAt: archived ? Date.now() : null, updatedAt: Date.now() } : t)),
     };
   }), [show]);
 
@@ -442,25 +452,38 @@ export default function Momentum() {
   const removeEntry = useCallback((id) => setState((s) => {
     const victim = s.journalEntries.find((e) => e.id === id);
     if (victim) {
-      show("Entry deleted", "Undo", () =>
-        setState((cur) => ({ ...cur, journalEntries: [...cur.journalEntries, victim] })));
+      show("Entry deleted", "Undo", () => setState((cur) => ({
+        ...cur, journalEntries: [...cur.journalEntries, victim], graveyard: unbury(cur.graveyard, id),
+      })));
     }
-    return { ...s, journalEntries: s.journalEntries.filter((e) => e.id !== id) };
+    return {
+      ...s,
+      journalEntries: s.journalEntries.filter((e) => e.id !== id),
+      graveyard: bury(s.graveyard, id),
+    };
   }), [show]);
 
   // ---- Money records ----
   const saveTx = useCallback((tx) => setState((s) => {
     if (!tx.id) return { ...s, transactions: [...s.transactions, { ...tx, id: Date.now(), createdAt: Date.now() }] };
-    return { ...s, transactions: s.transactions.map((t) => (t.id === tx.id ? { ...t, ...tx } : t)) };
+    return {
+      ...s,
+      transactions: s.transactions.map((t) => (t.id === tx.id ? { ...t, ...tx, updatedAt: Date.now() } : t)),
+    };
   }), []);
 
   const deleteTx = useCallback((id) => setState((s) => {
     const victim = s.transactions.find((t) => t.id === id);
     if (victim) {
-      show("Entry deleted", "Undo", () =>
-        setState((cur) => ({ ...cur, transactions: [...cur.transactions, victim] })));
+      show("Entry deleted", "Undo", () => setState((cur) => ({
+        ...cur, transactions: [...cur.transactions, victim], graveyard: unbury(cur.graveyard, id),
+      })));
     }
-    return { ...s, transactions: s.transactions.filter((t) => t.id !== id) };
+    return {
+      ...s,
+      transactions: s.transactions.filter((t) => t.id !== id),
+      graveyard: bury(s.graveyard, id),
+    };
   }), [show]);
 
   const saveRule = useCallback((rule) => setState((s) => {

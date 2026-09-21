@@ -4,8 +4,15 @@ Momentum keeps everything on the device. This adds one more copy, in a Supabase 
 own, so losing the phone doesn't lose the data.
 
 It is a **backup, not sync**: one row per account, replaced wholesale, and the newest device
-to back up wins. If you edit on two devices between backups, one of those edits goes. The app
-says so where you turn it on.
+to back up wins. Restoring replaces what is on the device — that is the simple, explicable
+behaviour and it stays the default.
+
+Where two devices have diverged, restoring also offers to **merge** instead, and says how
+much it would bring back before you choose. A merge never loses a record: everything either
+side knows about survives. What it cannot do is reconcile the *same* record edited in both
+places — one of those edits wins, by the later clock — and the app says so on the button
+rather than leaving you to find out. Deleting is remembered for 90 days so a merge doesn't
+hand back what you removed; undoing a delete forgets it again.
 
 > None of this has been run against a live Supabase project. It was written without one —
 > there was no project or key in the environment — so every call was tested against a stub of
@@ -51,7 +58,7 @@ stay on that device.
 - Backs up automatically after changes settle, at most once every 45 seconds.
 - Shows when the last backup happened and from which device.
 - Restores on demand, always behind a preview of what the backup holds and what restoring
-  would replace.
+  would replace — with the option to merge rather than replace when the two have diverged.
 
 Two guards exist because an automatic backup can destroy data as easily as save it:
 

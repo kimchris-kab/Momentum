@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Check, CloudOff, CloudUpload, Database, Download, LogOut, RefreshCw, ShieldAlert, TriangleAlert,
+  Check, CloudOff, CloudUpload, Database, Download, GitMerge, LogOut, RefreshCw, ShieldAlert,
+  TriangleAlert,
 } from "lucide-react";
 import { C, R, alpha, styles } from "../theme.js";
 import {
@@ -10,6 +11,7 @@ import {
 import {
   checkProject, headBackup, pullBackup, pushBackup, signIn, signUp, signOut, validSession,
 } from "../lib/supabase.js";
+import { mergePreview } from "../lib/merge.js";
 import { SectionLabel } from "./ui.jsx";
 
 // The one place a person can see whether their data exists anywhere but this phone.
@@ -116,6 +118,16 @@ export default function CloudBackup({
     onRestore(stateFromCloud(preview.data));
     setPreview(null);
     setNotice("Restored from the cloud copy.");
+  };
+
+  // Replacing is the safe, explicable option and stays the default. Merging is offered only
+  // when it would actually bring something back, because "merge (0 new things)" is a button
+  // that does nothing but sound reassuring.
+  const merge = preview ? mergePreview(state, stateFromCloud(preview.data)) : null;
+  const doMerge = () => {
+    onRestore(merge.merged);
+    setPreview(null);
+    setNotice(`Merged — ${merge.total} thing${merge.total === 1 ? "" : "s"} came back.`);
   };
 
   // Keep the status line honest without asking the server on every render.
@@ -284,6 +296,26 @@ export default function CloudBackup({
                 ? `This replaces everything on this device — ${preview.losing} more things are here than in the backup. Export a file first if you're unsure.`
                 : "This replaces everything currently on this device."}
             </p>
+            {merge?.total > 0 && (
+              <div style={{
+                background: alpha(C.green, 0.07), border: `1px solid ${alpha(C.green, 0.25)}`,
+                borderRadius: R.md, padding: "11px 12px", margin: "0 0 11px",
+              }}>
+                <p style={{ color: C.text, fontSize: 12.5, fontWeight: 600, margin: 0 }}>
+                  <GitMerge size={12} style={{ verticalAlign: -1, marginRight: 6 }} />
+                  Or keep both: {merge.total} thing{merge.total === 1 ? "" : "s"} only in the backup
+                </p>
+                <p style={{ color: C.muted, fontSize: 11.5, lineHeight: 1.55, margin: "6px 0 0" }}>
+                  Merging adds what this device is missing and keeps what it has. If the same
+                  thing was edited in both places, the later edit wins — that part a merge
+                  cannot do for you.
+                </p>
+                <button onClick={doMerge}
+                  style={{ ...styles.ghostCta, height: 38, fontSize: 12.5, width: "100%", marginTop: 9 }}>
+                  <GitMerge size={14} /> Merge instead
+                </button>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={doRestore} style={{ ...styles.cta, height: 40, fontSize: 13, flex: 1 }}>
                 <Check size={15} /> Replace what's here
