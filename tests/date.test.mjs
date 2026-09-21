@@ -1,7 +1,7 @@
 import { atDate, suite } from "./harness.mjs";
 import {
   addDays, daysBetween, formatTime12, hashIdx, isPastTime, money, moneyPrecise, monthKeyOf,
-  parseD, relativeDateLabel, todayStr, weekStartOf, weekdayKey,
+  msUntilMidnight, parseD, relativeDateLabel, todayStr, weekStartOf, weekdayKey,
 } from "../src/lib/date.js";
 
 const t = suite("date");
@@ -73,4 +73,17 @@ t.group("stable hashing");
     const idx = hashIdx(`mantra-${i}`, 7);
     return Number.isInteger(idx) && idx >= 0 && idx < 7;
   }));
+}
+
+t.group("how long until the day turns");
+{
+  const at = (iso) => msUntilMidnight(new Date(iso));
+  t.eq("two minutes to midnight", at("2026-09-21T23:58:00"), 2 * 60_000);
+  t.eq("a whole day just after it", at("2026-09-21T00:00:00"), 24 * 60 * 60_000);
+  t.eq("half past eleven in the morning", at("2026-09-21T11:30:00"), 12.5 * 60 * 60_000);
+  t.ok("never zero or negative, or the check would spin",
+    ["2026-09-21T23:59:59", "2026-09-21T00:00:00", "2026-09-21T12:00:00"].every((s) => at(s) > 0));
+  // The last day of a month and of a year are the cases a naive +1 to the date gets wrong.
+  t.eq("the last night of a month still turns at midnight", at("2026-09-30T23:00:00"), 60 * 60_000);
+  t.eq("...and so does the last night of a year", at("2026-12-31T23:00:00"), 60 * 60_000);
 }

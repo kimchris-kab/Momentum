@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, X } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
+import { msUntilMidnight, todayStr } from "../lib/date.js";
 
 export function Card({ children, style, flip, ...rest }) {
   return (
@@ -258,6 +259,56 @@ function SparkleGlyph({ s }) {
       <path d="M12 0l2.4 8.2L22 12l-7.6 3.8L12 24l-2.4-8.2L2 12l7.6-3.8z" />
     </svg>
   );
+}
+
+// A ceiling on how long to sleep between checks, so a timer the browser throttled, or one
+// that drifted while the machine was suspended, still corrects itself within the minute.
+const MAX_SLEEP_MS = 60_000;
+
+/**
+ * Today's date, as a string that changes when the day actually does.
+ *
+ * Everything in the app reads todayStr() while rendering, which is only correct if something
+ * re-renders when the day turns. Nothing did. Left open overnight the app kept yesterday's
+ * date on screen, wrote habit ticks into yesterday's log, and never scheduled the new day's
+ * reminders — all of it silent.
+ *
+ * A timer on its own doesn't fix it: a phone freezes timers the moment the screen goes off,
+ * which is precisely the case that matters. So the day is re-checked when the page becomes
+ * visible and when it regains focus as well. Every path runs the same string compare and
+ * returns the current value unchanged when the day hasn't moved, so the usual outcome is no
+ * re-render at all.
+ */
+export function useToday() {
+  const [today, setToday] = useState(todayStr);
+
+  useEffect(() => {
+    let timer;
+    const check = () => {
+      setToday((cur) => {
+        const now = todayStr();
+        return now === cur ? cur : now;
+      });
+      clearTimeout(timer);
+      // Land just past the turn rather than exactly on it, so a fast clock can't wake the
+      // check a millisecond early and go back to sleep for another whole day.
+      timer = setTimeout(check, Math.min(msUntilMidnight() + 1000, MAX_SLEEP_MS));
+    };
+    check();
+
+    const onWake = () => { if (!document.hidden) check(); };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("pageshow", onWake);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
+    };
+  }, []);
+
+  return today;
 }
 
 export function useToast() {

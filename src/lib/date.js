@@ -40,6 +40,13 @@ export const formatTime12 = (t) => {
   return `${hh}:${pad(m)} ${period}`;
 };
 
+// Milliseconds until the local day turns. Computed from a real Date rather than by
+// arithmetic on 86,400,000 because the day a clock change falls on is 23 or 25 hours long,
+// and a habit tracker that turns over an hour early on that day is wrong in the way people
+// notice.
+export const msUntilMidnight = (now = new Date()) =>
+  new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0) - now;
+
 export const relativeDateLabel = (dateStr) => {
   if (!dateStr) return null;
   const today = todayStr();

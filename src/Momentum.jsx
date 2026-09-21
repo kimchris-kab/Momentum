@@ -19,7 +19,7 @@ import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.j
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
-import { AmbientOrbs, SparkleField, Toast, useToast } from "./components/ui.jsx";
+import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
@@ -97,6 +97,10 @@ export default function Momentum() {
   const [moneyJump, setMoneyJump] = useState(null);
 
   const { toast, show, dismiss, act } = useToast();
+  // The views all read todayStr() themselves; this is what makes them do it again when the
+  // day turns under an app that was left open. It also gates the two effects below, which
+  // are about the day rather than about the data.
+  const today = useToday();
 
   // ---- Cloud backup ----
   const [cloudConfig, setCloudConfig] = useState(() =>
@@ -152,7 +156,7 @@ export default function Momentum() {
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, state.tasks, state.dayLog, state.srbai, state.checkins, state.freezes, state.settings]);
+  }, [loaded, today, state.tasks, state.dayLog, state.srbai, state.checkins, state.freezes, state.settings]);
 
   // An automatic backup can destroy data as easily as save it, so the decision of whether to
   // push at all lives in cloud.js with its guards, and this only carries it out.
@@ -240,7 +244,9 @@ export default function Momentum() {
       if (!posted) return s;
       return { ...s, recurring: posted.recurring, transactions: posted.transactions };
     });
-  }, [loaded]);
+    // Keyed on the day as well as on startup: rent that falls due at midnight should post
+    // itself for someone who never closed the app, not wait for the next cold start.
+  }, [loaded, today]);
 
   const patch = useCallback((p) => setState((s) => ({ ...s, ...p })), []);
 
