@@ -70,3 +70,65 @@ a few times a day. The row has a 2 MB ceiling in the schema so a bug can't fill 
 Sign out in Settings. That clears the session on the device and leaves the backup in place.
 To remove the data as well, delete the row in the Supabase table editor, or delete the
 project — the `on delete cascade` on the account takes the backup with it.
+
+---
+
+# Shipping updates from Supabase Storage
+
+The same project can host the built app, so a new version reaches an installed copy without
+you emailing anyone a file.
+
+## 1. Make a public bucket
+
+**Storage → New bucket**, name it `app`, and mark it **public**. Public means anyone with the
+URL can read the files in it — which is what hosting an app means. Nothing private goes in
+this bucket; the data lives in the table behind row-level security, not here.
+
+## 2. Deploy
+
+```
+npm run build
+SUPABASE_URL=https://<something>.supabase.co \
+SUPABASE_SERVICE_KEY=<service role key> \
+node scripts/deploy-supabase.mjs --notes "What changed"
+```
+
+`--dry-run` prints what it would upload, with the content type and cache header for each
+file, and uploads nothing.
+
+The **service role key** bypasses row-level security entirely. It belongs in your terminal
+and nowhere else — never in the app, never in the repo, never in a build. The script reads it
+from the environment and never writes it anywhere.
+
+Two details in the script matter more than they look:
+
+- Hashed asset filenames (`index-DU_mhLXy.js`) are cached for a year; `index.html`, `sw.js`
+  and `version.json` are marked `no-cache`. Get that backwards and a browser serves last
+  week's app forever, however often it checks for updates.
+- `version.json` is uploaded **last**, so it never announces a build whose files haven't all
+  arrived yet.
+
+## 3. What the app does with it
+
+Settings shows the running build. It checks the manifest at most every six hours, and on
+demand. It is deliberately unwilling to claim an update: a manifest that's missing,
+malformed, for another app, or not actually newer all mean "nothing to do", and an automatic
+check that finds nothing says nothing at all.
+
+What "apply it" means depends on where it's running, and the app says which:
+
+| Where | What happens |
+| --- | --- |
+| Browser or installed PWA | Reload. The service worker has already fetched the new files. |
+| Preview link | Reload. |
+| The Android APK | **Nothing.** The code ships inside the APK, so a new version has to be installed the way the old one was. The app says so rather than offering a button that can't work. |
+
+Making the Android app update itself needs a native live-update mechanism (Capacitor's, or
+your own unzip-and-swap). That isn't implemented here, and pretending otherwise would be
+worse than not offering it.
+
+> As with the backup, none of this has run against a real Supabase project. The deploy
+> script's request shapes follow the published Storage API; the app's half was driven
+> end-to-end in a browser against a stand-in server. One thing that stand-in got wrong the
+> first time is instructive: it demanded an API key for a *public* object, which real
+> Supabase does not.

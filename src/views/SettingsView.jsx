@@ -9,6 +9,7 @@ import {
   backupFilename, downloadJson, exportPayload, inspectImport, stateFromImport,
 } from "../lib/backup.js";
 import CloudBackup from "../components/CloudBackup.jsx";
+import UpdateCheck from "../components/UpdateCheck.jsx";
 import { NUDGE_KINDS, WEEKDAY_OPTIONS, notifySettings } from "../lib/nudges.js";
 import {
   deliveryReport, notificationPermission, requestNotificationPermission, scheduleNudges,
@@ -414,6 +415,8 @@ export default function SettingsView({
           onRestore={onRestore}
         />
       )}
+
+      <UpdateCheck config={cloud?.config} />
 
       <SectionLabel>In the app</SectionLabel>
       <Card>
