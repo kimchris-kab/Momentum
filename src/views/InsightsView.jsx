@@ -19,6 +19,7 @@ import {
   habitMoodLink, habitTrends, metricsFor, moodCounts, narrative, periodRange, pillarMovement,
   weekdayBalance, weekdayPattern,
 } from "../lib/insights.js";
+import { moneyFindings } from "../lib/moneyInsights.js";
 import {
   Card, Checkbox, EmptyState, Pill, ProgressBar, SegmentedControl, SectionLabel,
 } from "../components/ui.jsx";
@@ -38,6 +39,9 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
   const cur = useMemo(() => metricsFor(state, range.from, range.to), [state, range]);
   const prev = useMemo(() => metricsFor(state, range.prevFrom, range.prevTo), [state, range]);
   const findings = useMemo(() => buildFindings(state, range), [state, range]);
+  // The money half of the app was invisible here, while the ledger sat in the same state
+  // object the habit findings already read.
+  const money = useMemo(() => moneyFindings(state), [state]);
   const pillars = useMemo(
     () => pillarMovement(state.checkins, range.from, range.to, range.prevFrom, range.prevTo),
     [state.checkins, range]);
@@ -48,7 +52,9 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
     () => habitTrends(state, range.from, range.to, range.prevFrom, range.prevTo),
     [state, range]);
 
-  const hasAnything = cur.logged > 0 || cur.habitScheduled > 0 || cur.tasksDone > 0;
+  // Money counts as something to analyse. Someone who only uses the ledger was told there
+  // was nothing here while six months of it sat in the same state object.
+  const hasAnything = cur.logged > 0 || cur.habitScheduled > 0 || cur.tasksDone > 0 || money.length > 0;
 
   return (
     <div style={styles.page}>
@@ -83,7 +89,7 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
       ) : tab === "habits" ? (
         <Habits state={state} cur={cur} prev={prev} range={range} weekdays={weekdays} habits={habits} />
       ) : (
-        <Patterns state={state} range={range} findings={findings} />
+        <Patterns state={state} range={range} findings={findings} money={money} />
       )}
     </div>
   );
@@ -544,7 +550,30 @@ function Habits({ state, cur, prev, range, weekdays, habits }) {
 }
 
 /* ---------------- Patterns ---------------- */
-function Patterns({ state, range, findings }) {
+/** One finding, however it was arrived at — habits, mood or money all read the same. */
+function FindingCard({ finding: f }) {
+  const color = f.tone === "good" ? C.green : C.red;
+  return (
+    <Card style={{
+      marginBottom: 0,
+      borderColor: alpha(color, 0.25),
+      background: `linear-gradient(135deg, ${alpha(color, 0.06)}, ${C.surface})`,
+    }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <Lightbulb size={15} color={color} style={{ flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <p style={{
+            color, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase",
+            margin: 0, fontWeight: 600,
+          }}>{f.label}</p>
+          <p style={{ color: C.text, fontSize: 13, lineHeight: 1.6, margin: "5px 0 0" }}>{f.text}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function Patterns({ state, range, findings, money = [] }) {
   const cs = useMemo(() => checkinsIn(state.checkins, range.from, range.to), [state.checkins, range]);
   const energizers = useMemo(() => energizerImpact(cs), [cs]);
   const blockers = useMemo(() => blockerImpact(cs), [cs]);
@@ -556,6 +585,17 @@ function Patterns({ state, range, findings }) {
 
   return (
     <>
+      {money.length > 0 && (
+        <>
+          <SectionLabel>Money</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 18 }}>
+            {money.map((f, i) => (
+              <FindingCard key={`money-${i}`} finding={f} />
+            ))}
+          </div>
+        </>
+      )}
+
       <SectionLabel>What your data says</SectionLabel>
       {findings.length === 0 ? (
         <Card>
@@ -568,23 +608,7 @@ function Patterns({ state, range, findings }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           {findings.map((f, i) => (
-            <Card key={i} style={{
-              marginBottom: 0,
-              borderColor: alpha(f.tone === "good" ? C.green : C.red, 0.25),
-              background: `linear-gradient(135deg, ${alpha(f.tone === "good" ? C.green : C.red, 0.06)}, ${C.surface})`,
-            }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                <Lightbulb size={15} color={f.tone === "good" ? C.green : C.red}
-                  style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <p style={{
-                    color: f.tone === "good" ? C.green : C.red, fontSize: 11,
-                    letterSpacing: 0.5, textTransform: "uppercase", margin: 0, fontWeight: 600,
-                  }}>{f.label}</p>
-                  <p style={{ color: C.text, fontSize: 13, lineHeight: 1.6, margin: "5px 0 0" }}>{f.text}</p>
-                </div>
-              </div>
-            </Card>
+            <FindingCard key={i} finding={f} />
           ))}
         </div>
       )}
