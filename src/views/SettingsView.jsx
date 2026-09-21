@@ -8,6 +8,7 @@ import { formatTime12, prettyDate } from "../lib/date.js";
 import {
   backupFilename, downloadJson, exportPayload, inspectImport, stateFromImport,
 } from "../lib/backup.js";
+import CloudBackup from "../components/CloudBackup.jsx";
 import { NUDGE_KINDS, WEEKDAY_OPTIONS, notifySettings } from "../lib/nudges.js";
 import {
   deliveryReport, notificationPermission, requestNotificationPermission, scheduleNudges,
@@ -63,7 +64,9 @@ const TimeInput = ({ value, onChange, label }) => (
   </div>
 );
 
-export default function SettingsView({ state, onBack, onSetSetting, onUpdateTask, onRestore }) {
+export default function SettingsView({
+  state, onBack, onSetSetting, onUpdateTask, onRestore, cloud,
+}) {
   const { tasks, settings, srbai = [] } = state;
   const notify = useMemo(() => notifySettings(settings), [settings]);
   const [perm, setPerm] = useState("default");
@@ -397,6 +400,20 @@ export default function SettingsView({ state, onBack, onSetSetting, onUpdateTask
           </div>
         )}
       </Card>
+
+      {cloud && (
+        <CloudBackup
+          state={state}
+          config={cloud.config}
+          session={cloud.session}
+          meta={cloud.meta}
+          lastPush={cloud.lastPush}
+          onSaveConfig={cloud.onSaveConfig}
+          onSession={cloud.onSession}
+          onMeta={cloud.onMeta}
+          onRestore={onRestore}
+        />
+      )}
 
       <SectionLabel>In the app</SectionLabel>
       <Card>

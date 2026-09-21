@@ -40,6 +40,11 @@ import SettingsView from "./views/SettingsView.jsx";
 import OnboardingView from "./views/OnboardingView.jsx";
 import SearchView from "./views/SearchView.jsx";
 import ChunkBoundary from "./components/ChunkBoundary.jsx";
+import {
+  CONFIG_KEY, PUSH_DEBOUNCE_MS, backupBody, deviceName, isConfigured, pushDecision,
+  readConfig, remoteFacts, weigh,
+} from "./lib/cloud.js";
+import { pushBackup, validSession } from "./lib/supabase.js";
 
 // Money and Insights are the two chart-heavy views, and between them they account for most
 // of what recharts costs. Neither is where the app opens, so they load when they're first
@@ -50,6 +55,20 @@ const InsightsView = lazy(() => import("./views/InsightsView.jsx"));
 const ViewLoading = () => (
   <div style={{ ...styles.page, color: C.faint, fontSize: 12.5 }}>Loading…</div>
 );
+
+const SESSION_KEY = "momentum:supabase:session";
+// The config and session live outside the app's own state on purpose: they aren't the
+// person's data, they must not end up inside a backup, and a restore must not be able to
+// swap out the account it was restored from.
+const readLocal = (key) => {
+  try { return JSON.parse(window.localStorage.getItem(key) || "null"); } catch { return null; }
+};
+const writeLocal = (key, value) => {
+  try {
+    if (value) window.localStorage.setItem(key, JSON.stringify(value));
+    else window.localStorage.removeItem(key);
+  } catch { /* private window, blocked storage — the app still works, just not across reloads */ }
+};
 
 const NAV = [
   { id: "today", label: "Today", Icon: Compass },
@@ -78,6 +97,13 @@ export default function Momentum() {
   const [moneyJump, setMoneyJump] = useState(null);
 
   const { toast, show, dismiss, act } = useToast();
+
+  // ---- Cloud backup ----
+  const [cloudConfig, setCloudConfig] = useState(() =>
+    readConfig(import.meta.env || {}, readLocal(CONFIG_KEY)));
+  const [cloudSession, setCloudSession] = useState(() => readLocal(SESSION_KEY));
+  const [cloudMeta, setCloudMeta] = useState(null);
+  const [lastPush, setLastPush] = useState(null);
 
   useEffect(() => {
     const l = document.createElement("link");
@@ -127,6 +153,38 @@ export default function Momentum() {
     }, 800);
     return () => clearTimeout(t);
   }, [loaded, state.tasks, state.dayLog, state.srbai, state.checkins, state.freezes, state.settings]);
+
+  // An automatic backup can destroy data as easily as save it, so the decision of whether to
+  // push at all lives in cloud.js with its guards, and this only carries it out.
+  useEffect(() => {
+    if (!loaded || !isConfigured(cloudConfig) || !cloudSession?.user?.id) return undefined;
+    const timer = setTimeout(async () => {
+      const decision = pushDecision({ state, lastPush, remote: remoteFacts(cloudMeta) });
+      if (!decision.push) return;
+      try {
+        const live = await validSession(cloudConfig, cloudSession);
+        if (live !== cloudSession) setCloudSession(live);
+        const row = await pushBackup(cloudConfig, live, {
+          payload: backupBody(state),
+          device: deviceName(navigator.userAgent),
+          schema: state.version,
+          items: weigh(state),
+        });
+        setCloudMeta(row);
+        setLastPush({ fingerprint: decision.fingerprint, at: Date.now() });
+      } catch (e) {
+        // A failed backup is not worth interrupting anyone over — the data is still here,
+        // and Settings shows the real state of things.
+        if (e?.kind === "auth") {
+          setCloudSession(null);
+          show("Cloud backup signed out — sign in again in Settings");
+        }
+      }
+    }, PUSH_DEBOUNCE_MS / 3);
+    return () => clearTimeout(timer);
+  }, [loaded, state, cloudConfig, cloudSession, cloudMeta, lastPush, show]);
+
+  useEffect(() => { writeLocal(SESSION_KEY, cloudSession); }, [cloudSession]);
 
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
@@ -716,6 +774,19 @@ export default function Momentum() {
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
                 onUpdateTask={updateTask}
                 onRestore={restoreState}
+                cloud={{
+                  config: cloudConfig,
+                  session: cloudSession,
+                  meta: cloudMeta,
+                  lastPush,
+                  onSaveConfig: (next) => {
+                    writeLocal(CONFIG_KEY, next.url ? next : null);
+                    setCloudConfig(readConfig(import.meta.env || {}, next.url ? next : null));
+                    if (!next.url) setCloudSession(null);
+                  },
+                  onSession: setCloudSession,
+                  onMeta: setCloudMeta,
+                }}
               />
             )}
             {view === "insights" && (
