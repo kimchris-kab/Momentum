@@ -108,7 +108,7 @@ export function CueHealthCard({ state, onOpenTask }) {
       .map((t) => {
         const cue = cueOf(t);
         const stability = contextStability(t, state.dayLog);
-        const band = stabilityBand(stability.score);
+        const band = stabilityBand(stability);
         if (!cue) return { task: t, reason: "no cue at all" };
         if (band?.id === "scattered") return { task: t, reason: "happens at a different time every day" };
         return null;

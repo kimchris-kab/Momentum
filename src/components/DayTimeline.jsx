@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { CalendarClock, ChevronDown, ChevronUp, Clock, Plus, Timer } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { P_BY_ID } from "../data/constants.js";
+import { pillarOf } from "../data/constants.js";
 import { formatTime12 } from "../lib/date.js";
 import {
   buildTimeline, fmtGap, suggestSlots, taskDuration, timeOf,
@@ -72,7 +72,7 @@ export default function DayTimeline({ tasks, date, dayLog, onSchedule, onOpenTas
                 );
               }
               const t = item.task;
-              const pillar = t.pillarId ? P_BY_ID[t.pillarId] : null;
+              const pillar = pillarOf(t.pillarId);
               const color = item.done ? C.green : pillar?.color || C.gold;
               return (
                 <div key={t.id} style={{ display: "flex", alignItems: "stretch", gap: 8, margin: "5px 0" }}>

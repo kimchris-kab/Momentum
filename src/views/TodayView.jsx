@@ -5,7 +5,7 @@ import {
   Search, Settings, Sparkles, Sun, Target,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { MANTRAS, NO_PILLAR, PILLARS, P_BY_ID } from "../data/constants.js";
+import { MANTRAS, PILLARS, pillarOf } from "../data/constants.js";
 import { hashIdx, longDate, todayStr } from "../lib/date.js";
 import { agendaForDate, dayStats, isDone, isFlexible, tasksForDate, weekProgress } from "../lib/tasks.js";
 import {
@@ -86,9 +86,8 @@ export default function TodayView({
   const topPillarId = Object.keys(tally).length
     ? Object.entries(tally).sort((a, b) => b[1] - a[1])[0][0] : null;
   // The tally is keyed by whatever pillar ids the saved tasks carry, and a migrated v1 save
-  // or a restored backup can hold one this build no longer has. Looking that up blind took
-  // the whole of Today down — the same fault NO_PILLAR was added for, still live here.
-  const topPillar = topPillarId ? (P_BY_ID[topPillarId] || NO_PILLAR) : null;
+  // or a restored backup can hold one this build no longer has.
+  const topPillar = pillarOf(topPillarId);
 
   const weeks = [];
   for (let i = 0; i < heatmap.length; i += 7) weeks.push(heatmap.slice(i, i + 7));

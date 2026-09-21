@@ -19,6 +19,15 @@ export const P_BY_ID = Object.fromEntries(PILLARS.map((p) => [p.id, p]));
 // this is better than the undefined lookup, which used to take the whole screen down.
 export const NO_PILLAR = { id: null, name: "No pillar", color: C.muted, Icon: Circle, prompt: "" };
 
+/**
+ * The pillar for an id: null when there isn't one, and a neutral stand-in when there is one
+ * this build doesn't recognise. Looking P_BY_ID up directly returns undefined for an id from
+ * a migrated save or a restored backup, which either crashed on the next property access or
+ * silently dropped the pillar from the row — the task still had one, the screen just stopped
+ * saying so.
+ */
+export const pillarOf = (id) => (id ? P_BY_ID[id] || NO_PILLAR : null);
+
 export const WEEKDAYS = [
   { key: "mon", label: "Monday",    short: "Mon", letter: "M" },
   { key: "tue", label: "Tuesday",   short: "Tue", letter: "T" },

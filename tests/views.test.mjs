@@ -3,6 +3,7 @@ import {
   EMPTY_FILTERS, activeCount, applyFilters, describeFilters, isFiltered, newView, sameFilters,
 } from "../src/lib/views.js";
 import { newTask, weeklyRule } from "../src/lib/tasks.js";
+import { pillarOf } from "../src/data/constants.js";
 
 const t = suite("views");
 
@@ -83,4 +84,16 @@ t.group("saved views");
   t.ok("same chips, same view", sameFilters(a.filters, { starred: true, due: "today" }));
   t.ok("a different chip makes a different view", !sameFilters(a.filters, { starred: true }));
   t.ok("an absent value and a null are the same thing", sameFilters({}, EMPTY_FILTERS));
+}
+
+t.group("looking up a pillar that may not exist");
+{
+  t.eq("a known id resolves", pillarOf("health").name, "Health");
+  t.eq("no id at all is no pillar, not a stand-in", pillarOf(null), null);
+  t.eq("...and neither is an empty one", pillarOf(""), null);
+  // The shape a migrated v1 save or a restored backup arrives in. Looking this up directly
+  // returns undefined, which crashed on the next property access.
+  t.eq("an id this build doesn't have falls back", pillarOf("telepathy").name, "No pillar");
+  t.ok("...to something safe to render",
+    !!pillarOf("telepathy").color && !!pillarOf("telepathy").Icon);
 }

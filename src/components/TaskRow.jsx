@@ -4,7 +4,7 @@ import {
   Timer, Zap,
 } from "lucide-react";
 import { C, R, alpha, styles } from "../theme.js";
-import { PRIORITY, P_BY_ID } from "../data/constants.js";
+import { PRIORITY, pillarOf } from "../data/constants.js";
 import { formatTime12, isPastTime, relativeDateLabel, todayStr } from "../lib/date.js";
 import { describeRecurrence, isFlexible, subtaskProgress } from "../lib/tasks.js";
 import { Checkbox } from "./ui.jsx";
@@ -20,7 +20,7 @@ export default function TaskRow({
   const { done: subDone, total: subTotal } = subtaskProgress(task);
   const repeat = describeRecurrence(task.recurrence);
   const dateLabel = task.recurrence ? null : relativeDateLabel(task.dueDate);
-  const pillar = task.pillarId ? P_BY_ID[task.pillarId] : null;
+  const pillar = pillarOf(task.pillarId);
   const accent = KIND_COLOR[task.kind] || C.gold;
 
   const chips = [];

@@ -221,6 +221,17 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 textarea, input { font-family: Inter, system-ui, sans-serif; }
 ::-webkit-scrollbar { width: 0; height: 0; }
 
+/* Everything here is drawn with inline styles and most controls are bare buttons with their
+   own background, which stripped the browser's focus ring without replacing it: tabbing
+   through the app moved an invisible cursor. :focus-visible rather than :focus, so this is
+   shown to someone navigating by keyboard and never on a tap. */
+:focus-visible {
+  outline: 2px solid #E8B75D;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .mtm-sparkle, .mtm-orb, .mtm-view-flip, .mtm-card-flip, .mtm-row-in,
   .mtm-shimmer::after, .mtm-glow-pulse, .mtm-sheet, .mtm-backdrop, .mtm-toast, .mtm-pop,

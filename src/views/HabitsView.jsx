@@ -4,9 +4,7 @@ import {
   Clock, Gauge, Link2, Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import {
-  BREAK_TEMPLATES, DAY_PRESETS, HABIT_TEMPLATES, PILLARS, PRIORITY, P_BY_ID, WEEKDAYS,
-} from "../data/constants.js";
+import { BREAK_TEMPLATES, DAY_PRESETS, HABIT_TEMPLATES, PILLARS, PRIORITY, WEEKDAYS, pillarOf } from "../data/constants.js";
 import { formatTime12, todayStr } from "../lib/date.js";
 import {
   describeRecurrence, isDone, isFlexible, occursOn, weekProgress, weeklyCountRule, weeklyRule,
@@ -402,7 +400,7 @@ export default function HabitsView({
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {templates.map((tpl) => {
-            const p = tpl.pillarId ? P_BY_ID[tpl.pillarId] : null;
+            const p = pillarOf(tpl.pillarId);
             const exists = tasks.some((t) => t.kind === kind && t.text.toLowerCase() === tpl.text.toLowerCase());
             return (
               <button key={tpl.text} disabled={exists} onClick={() => addTemplate(tpl)} style={{
@@ -465,12 +463,12 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], onOpen, on
   const auto = graduationStatus(task, srbai);
   const cue = cueOf(task);
   const stability = contextStability(task, dayLog);
-  const band = stabilityBand(stability.score);
+  const band = stabilityBand(stability);
   const canRate = onRateHabit && srbaiDue(task, srbai, dayLog);
   const flexible = isFlexible(task);
   const week = flexible ? weekProgress(task, dayLog) : null;
   const reward = rewardProgress(task, streak);
-  const pillar = task.pillarId ? P_BY_ID[task.pillarId] : null;
+  const pillar = pillarOf(task.pillarId);
 
   return (
     <div style={{
@@ -527,7 +525,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], onOpen, on
               : cue.type === "location" ? cue.detail : formatTime12(cue.detail) || cue.detail}
           </span>
         )}
-        {band && stability.score !== null && (
+        {band && (
           <span style={{ ...styles.tag, color: band.tone === "good" ? C.muted : C.orange,
             background: band.tone === "good" ? C.surface2 : alpha(C.orange, 0.12) }}>
             <Clock size={9} /> {band.label}

@@ -51,19 +51,24 @@ export function buildTimeline(tasks, dateStr, dayLog, now = null) {
   let busyMinutes = 0;
   let freeMinutes = 0;
 
-  timed.forEach((block, i) => {
-    const prev = timed[i - 1];
-    if (prev) {
-      const gap = block.start - prev.end;
+  // Measured against the furthest any earlier block reaches, not against the one immediately
+  // before. Sorting by start time doesn't sort by end time: a short block nested inside a long
+  // one leaves the long one still running, and comparing against the short one invented free
+  // time in the middle of it — "1h free" printed over the top of a three-hour block.
+  let reach = null;
+  timed.forEach((block) => {
+    if (reach !== null) {
+      const gap = block.start - reach;
       if (gap >= MIN_GAP_MIN) {
-        items.push({ kind: "gap", start: prev.end, end: block.start, minutes: gap });
+        items.push({ kind: "gap", start: reach, end: block.start, minutes: gap });
         freeMinutes += gap;
       }
     }
     // Two things pinned to overlapping times is a planning error worth showing, not hiding.
-    const overlap = !!prev && block.start < prev.end;
+    const overlap = reach !== null && block.start < reach;
     items.push({ kind: "task", ...block, overlap });
     busyMinutes += block.duration;
+    reach = reach === null ? block.end : Math.max(reach, block.end);
   });
 
   // The now-marker only belongs on the day you're actually living.
@@ -124,7 +129,10 @@ export function suggestSlots(tasks, dateStr, duration = DEFAULT_BLOCK_MIN, now =
   const blocks = [...scheduled].sort((a, b) => a.start - b.start);
 
   for (const b of blocks) {
-    if (cursor + duration <= b.start) {
+    // The evening ceiling applies to slots found between bookings too, not only to the open
+    // end of the day. Without it, one thing pinned late at night was enough to make the same
+    // request that is refused on an empty evening come back with a slot finishing at 22:45.
+    if (cursor + duration <= Math.min(b.start, latest)) {
       out.push({ start: cursor, time: timeOf(cursor), label: formatTime12(timeOf(cursor)) });
       if (out.length >= limit) return out;
     }

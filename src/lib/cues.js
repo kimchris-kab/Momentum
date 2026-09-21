@@ -140,13 +140,25 @@ export function contextStability(task, dayLog) {
   };
 }
 
+// Banded on the spread in minutes rather than on R, because R's relationship to clock time
+// is not remotely intuitive and banding on it directly got this badly wrong: R ≥ 0.85 reads
+// as "nearly perfect" and is in fact a six-hour spread, so a habit done anywhere between
+// 4am and 10am was being reported as happening at the same moment each time — and the
+// "running on memory" card, which keys off `scattered`, almost never fired.
 export const STABILITY_BANDS = [
-  { min: 0.85, id: "tight", label: "Same moment each time", tone: "good" },
-  { min: 0.6, id: "loose", label: "Roughly the same window", tone: "good" },
-  { min: 0, id: "scattered", label: "All over the day", tone: "warn" },
+  { maxSpread: 30, id: "tight", label: "Same moment each time", tone: "good" },
+  { maxSpread: 90, id: "loose", label: "Roughly the same window", tone: "good" },
+  { maxSpread: Infinity, id: "scattered", label: "All over the day", tone: "warn" },
 ];
-export const stabilityBand = (score) =>
-  (score === null || score === undefined ? null : STABILITY_BANDS.find((b) => score >= b.min));
+
+/** The band for a contextStability result, or null when there isn't enough to judge. */
+export const stabilityBand = (stability) => {
+  if (stability?.score === null || stability?.score === undefined) return null;
+  // A null spread means R collapsed to zero — the times cancel out entirely, which is as
+  // scattered as it gets rather than as unknown.
+  const spread = stability.spreadMinutes === null ? Infinity : stability.spreadMinutes;
+  return STABILITY_BANDS.find((b) => spread <= b.maxSpread);
+};
 
 // ---- Friction (spec item 7: "friction is the master lever") ----
 // Wood's stairs-vs-elevator work: reduce steps for the behaviour you want, add steps to the

@@ -4,10 +4,7 @@ import {
   Sparkles, Star, X,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import {
-  BLOCKERS, ENERGIZERS, FEEL_LEVELS, JOURNAL_MOODS, JOURNAL_PROMPTS, PILLARS, P_BY_ID,
-  RECHARGE_LEVELS,
-} from "../data/constants.js";
+import { BLOCKERS, ENERGIZERS, FEEL_LEVELS, JOURNAL_MOODS, JOURNAL_PROMPTS, PILLARS, P_BY_ID, RECHARGE_LEVELS, pillarOf } from "../data/constants.js";
 import { hashIdx, longDate, prettyDate, todayStr } from "../lib/date.js";
 import {
   downloadText, entryText, filterEntries, groupByMonth, journalStats, onThisDay, toMarkdown,
@@ -465,7 +462,7 @@ function DayCard({ item, open, onToggle, onOpenEntry, onToggleFavorite }) {
                 </div>
               )}
               {item.entries.map((e) => {
-                const pillar = e.pillarId ? P_BY_ID[e.pillarId] : null;
+                const pillar = pillarOf(e.pillarId);
                 return (
                   <div key={e.id}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

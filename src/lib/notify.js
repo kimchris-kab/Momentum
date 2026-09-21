@@ -50,6 +50,12 @@ export async function requestNotificationPermission() {
 let pageTimers = [];
 const clearPageTimers = () => { pageTimers.forEach(clearTimeout); pageTimers = []; };
 
+// Reminders are tagged "mtm:"; "habit:" is what earlier builds used and what
+// sendTestReminder still uses. Cancelling has to close both, or it doesn't cancel: every
+// nudge goes out tagged "mtm:" while cancelAllReminders was only closing "habit:", so
+// turning reminders off left every pending web trigger in place and they fired anyway.
+export const isOurTag = (tag) => !!tag && (tag.startsWith("mtm:") || tag.startsWith("habit:"));
+
 // A stable 31-bit id per nudge, so rescheduling replaces rather than duplicates.
 const idFor = (key) => {
   let h = 0;
@@ -112,7 +118,7 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
       const reg = await navigator.serviceWorker?.ready;
       if (reg) {
         const existing = await reg.getNotifications({ includeTriggered: false });
-        existing.forEach((n) => n.tag?.startsWith("mtm:") && n.close());
+        existing.forEach((n) => isOurTag(n.tag) && n.close());
         for (const n of items) {
           await reg.showNotification(n.title, {
             body: n.body,
@@ -192,7 +198,7 @@ export async function cancelAllReminders() {
   try {
     const reg = await navigator.serviceWorker?.ready;
     const existing = await reg?.getNotifications({ includeTriggered: true });
-    existing?.forEach((n) => n.tag?.startsWith("habit:") && n.close());
+    existing?.forEach((n) => isOurTag(n.tag) && n.close());
   } catch { /* ignore */ }
 }
 

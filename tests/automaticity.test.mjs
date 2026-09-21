@@ -189,7 +189,7 @@ t.group("context stability");
     [days[3], "23:00"], [days[4], "09:00"], [days[5], "15:00"],
   ]));
   t.ok("all over the day scores low", scattered.score < 0.3, scattered);
-  t.eq("...and is called what it is", stabilityBand(scattered.score).id, "scattered");
+  t.eq("...and is called what it is", stabilityBand(scattered).id, "scattered");
 
   // The case linear arithmetic gets badly wrong: 23:50 and 00:10 are twenty minutes apart,
   // not twenty-three hours, so a steady bedtime habit must not read as the least stable
@@ -201,6 +201,6 @@ t.group("context stability");
   t.ok("a habit that straddles midnight is steady, not scattered", midnight.score > 0.95, midnight);
   t.ok("...with a mean around midnight",
     ["23:59", "00:00", "00:01"].includes(midnight.meanTime), midnight.meanTime);
-  t.eq("...and is called tight", stabilityBand(midnight.score).id, "tight");
+  t.eq("...and is called tight", stabilityBand(midnight).id, "tight");
   t.eq("no score, no band", stabilityBand(null), null);
 }

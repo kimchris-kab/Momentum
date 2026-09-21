@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Check, Flame, Pause, Pencil, Play, RotateCcw, Sparkles, Zap } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { P_BY_ID } from "../data/constants.js";
+import { pillarOf } from "../data/constants.js";
 import { formatTime12 } from "../lib/date.js";
 import { nextMilestoneFor, rewardProgress } from "../lib/habits.js";
 import { shouldLog } from "../lib/focus.js";
@@ -20,7 +20,7 @@ function RitualBody({ task, streak, identity, onClose, onComplete, onEdit, onLog
   const total = Math.max(1, task.timerMinutes || 2) * 60;
   const timer = useTimer({ totalSecs: total, resetKey: task.id });
 
-  const pillar = task.pillarId ? P_BY_ID[task.pillarId] : null;
+  const pillar = pillarOf(task.pillarId);
   const identityLine = pillar && identity?.[pillar.id];
   const upcoming = nextMilestoneFor(task, streak);
   const reward = rewardProgress(task, streak);

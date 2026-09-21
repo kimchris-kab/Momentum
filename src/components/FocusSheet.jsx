@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Check, Pause, Play, RotateCcw, Timer as TimerIcon } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
-import { P_BY_ID } from "../data/constants.js";
+import { pillarOf } from "../data/constants.js";
 import { fmtDuration, shouldLog } from "../lib/focus.js";
 import { TimerRing, useTimer } from "./Timer.jsx";
 import { Pill, Sheet } from "./ui.jsx";
@@ -21,7 +21,7 @@ function FocusBody({ task, onClose, onLog, onComplete }) {
   const [countUp, setCountUp] = useState(false);
   const total = minutes * 60;
   const timer = useTimer({ totalSecs: total, countUp, resetKey: `${minutes}:${countUp}` });
-  const pillar = task.pillarId ? P_BY_ID[task.pillarId] : null;
+  const pillar = pillarOf(task.pillarId);
   const accent = pillar?.color || C.gold;
 
   // Whatever route you leave by, the time you actually spent is what gets recorded.
