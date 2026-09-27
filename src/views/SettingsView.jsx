@@ -412,6 +412,7 @@ export default function SettingsView({
           onSaveConfig={cloud.onSaveConfig}
           onSession={cloud.onSession}
           onMeta={cloud.onMeta}
+          onPushed={cloud.onPushed}
           onRestore={onRestore}
         />
       )}

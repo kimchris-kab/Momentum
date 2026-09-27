@@ -130,15 +130,20 @@ t.group("when to push");
   // The guards have to work on a device that has just signed in and knows nothing but the
   // row's metadata — that is the case they exist for.
   t.eq("a row's own count is what's compared against",
-    remoteFacts({ item_count: 12, updated_at: "x" }), { exists: true, weight: 12 });
-  t.eq("no row at all", remoteFacts(null), { exists: false, weight: null });
+    remoteFacts({ item_count: 12, updated_at: "x" }), { exists: true, weight: 12, stamp: "x" });
+  t.eq("no row at all", remoteFacts(null), { exists: false, weight: null, stamp: null });
   t.eq("a row of unknown size is known to exist, at least",
-    remoteFacts({ updated_at: "x" }), { exists: true, weight: null });
+    remoteFacts({ updated_at: "x" }), { exists: true, weight: null, stamp: "x" });
   const unknownSize = pushDecision({ state: emptyState(), remote: remoteFacts({ updated_at: "x" }), now });
   t.eq("an empty device still refuses to overwrite a backup of unknown size",
     unknownSize.reason, "empty-local");
+  // Against a row this device has already seen, so the only thing that could block it is the
+  // shrink guard — which must not fire on a size it doesn't know.
   t.ok("...but an ordinary edit isn't blocked just because the size is unknown",
-    pushDecision({ state: busy, remote: remoteFacts({ updated_at: "x" }), now }).push);
+    pushDecision({
+      state: busy, now, lastPush: { fingerprint: "stale", at: 0, remoteStamp: "x" },
+      remote: remoteFacts({ updated_at: "x" }),
+    }).push);
 }
 
 t.group("restoring, with the cost in view");
@@ -310,4 +315,82 @@ t.group("checking a project before trusting it");
   stubFetch(new TypeError("nope"));
   t.eq("an unreachable project is named", (await checkProject(CFG)).reason, "unreachable");
   restoreFetch();
+}
+
+t.group("when the other device got there first");
+{
+  const now = Date.parse("2026-09-21T12:00:00");
+  const busy = { ...emptyState(), tasks: [{ id: "a" }, { id: "b" }] };
+  const seen = (stamp) => ({ fingerprint: "stale", at: now - 600_000, remoteStamp: stamp });
+
+  // Two phones, both in use. The shrink guard only catches this when the copies differ by a
+  // quarter, and two devices a day apart rarely do — so without this, the second one to push
+  // quietly lands on top of the first.
+  const moved = pushDecision({
+    state: busy, lastPush: seen("2026-09-21T09:00:00Z"), now,
+    remote: remoteFacts({ item_count: 2, updated_at: "2026-09-21T11:00:00Z" }),
+  });
+  t.eq("a row written since this device last saw it isn't overwritten", moved.push, false);
+  t.eq("...it asks for a merge instead", moved.reason, "remote-moved");
+  t.ok("...which is a thing to do, not a thing to confirm", moved.needsMerge && !moved.needsConfirmation);
+
+  const untouched = pushDecision({
+    state: busy, lastPush: seen("2026-09-21T11:00:00Z"), now,
+    remote: remoteFacts({ item_count: 2, updated_at: "2026-09-21T11:00:00Z" }),
+  });
+  t.eq("a row nobody else has touched is pushed as usual", untouched.push, true);
+  t.eq("...for the ordinary reason", untouched.reason, "changed");
+
+  // A device that has never pushed is the sharpest case of all: signing in on a second phone
+  // that already has a few habits on it isn't empty, so the empty-local guard does nothing,
+  // and it cannot possibly have incorporated what is already up there.
+  t.eq("a device that has never seen the backup merges before pushing", pushDecision({
+    state: busy, lastPush: null, now,
+    remote: remoteFacts({ item_count: 2, updated_at: "2026-09-21T11:00:00Z" }),
+  }).reason, "remote-moved");
+  t.eq("...and there is nothing to merge when no backup exists yet", pushDecision({
+    state: busy, lastPush: null, now, remote: remoteFacts(null),
+  }).push, true);
+  t.eq("...and neither is one against a row with no stamp", pushDecision({
+    state: busy, lastPush: seen("2026-09-21T09:00:00Z"), now,
+    remote: remoteFacts({ item_count: 2 }),
+  }).push, true);
+
+  // force is only ever reached from the shrink warning's "back up anyway". Having overridden
+  // a warning about losing your own data is not consent to overwrite someone else's, and a
+  // merge costs nothing to do first — it cannot lose a record either way.
+  const forced = pushDecision({
+    state: busy, lastPush: seen("2026-09-21T09:00:00Z"), now, force: true,
+    remote: remoteFacts({ item_count: 2, updated_at: "2026-09-21T11:00:00Z" }),
+  });
+  t.eq("overriding the shrink warning doesn't also overwrite the other device", forced.push, false);
+  t.eq("...it merges first, then pushes", forced.reason, "remote-moved");
+
+  // An empty device must still pull rather than push, whoever moved last.
+  t.eq("an empty device still refuses to push over a full backup", pushDecision({
+    state: emptyState(), lastPush: seen("2026-09-21T09:00:00Z"), now,
+    remote: remoteFacts({ item_count: 40, updated_at: "2026-09-21T11:00:00Z" }),
+  }).reason, "empty-local");
+}
+
+t.group("safety before efficiency");
+{
+  const now = Date.parse("2026-09-21T12:00:00");
+  const one = { ...emptyState(), tasks: [{ id: "a" }] };
+  const seen = { fingerprint: "different", at: now - 5_000, remoteStamp: "s" };
+  const big = remoteFacts({ item_count: 40, updated_at: "s" });
+
+  // The debounce is about not doing pointless work; the shrink guard is about not destroying
+  // the backup. Checked the other way round, a shrinking push made within the debounce window
+  // skipped the guard entirely — and the manual path, which only stops for a confirmation,
+  // went on to push anyway.
+  const soonAndShrinking = pushDecision({ state: one, lastPush: seen, now, remote: big });
+  t.eq("a shrinking push inside the debounce is still caught", soonAndShrinking.reason, "shrunk");
+  t.ok("...and still asks", soonAndShrinking.needsConfirmation);
+
+  // An ordinary push inside the window is still just too soon.
+  t.eq("a harmless push inside the debounce is simply deferred", pushDecision({
+    state: { ...emptyState(), tasks: Array.from({ length: 40 }, (_, i) => ({ id: `t${i}` })) },
+    lastPush: seen, now, remote: big,
+  }).reason, "too-soon");
 }

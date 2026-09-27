@@ -20,7 +20,7 @@ import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
-import { bury, unbury } from "./lib/merge.js";
+import { bury, mergeStates, unbury } from "./lib/merge.js";
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
@@ -42,9 +42,9 @@ import SearchView from "./views/SearchView.jsx";
 import ChunkBoundary from "./components/ChunkBoundary.jsx";
 import {
   CONFIG_KEY, PUSH_DEBOUNCE_MS, backupBody, deviceName, isConfigured, pushDecision,
-  readConfig, remoteFacts, weigh,
+  readConfig, remoteFacts, stateFromCloud, unwrap, weigh,
 } from "./lib/cloud.js";
-import { pushBackup, validSession } from "./lib/supabase.js";
+import { headBackup, pullBackup, pushBackup, validSession } from "./lib/supabase.js";
 
 // Money and Insights are the two chart-heavy views, and between them they account for most
 // of what recharts costs. Neither is where the app opens, so they load when they're first
@@ -61,6 +61,10 @@ const ViewLoading = () => (
 );
 
 const SESSION_KEY = "momentum:supabase:session";
+// What this device last pushed, and the row stamp it left behind. Kept across reloads
+// because it is genuinely known: forgetting it every start means pulling and merging
+// once per session to re-learn something the device already knew.
+const PUSH_KEY = "momentum:supabase:lastPush";
 // The config and session live outside the app's own state on purpose: they aren't the
 // person's data, they must not end up inside a backup, and a restore must not be able to
 // swap out the account it was restored from.
@@ -111,7 +115,7 @@ export default function Momentum() {
     readConfig(import.meta.env || {}, readLocal(CONFIG_KEY)));
   const [cloudSession, setCloudSession] = useState(() => readLocal(SESSION_KEY));
   const [cloudMeta, setCloudMeta] = useState(null);
-  const [lastPush, setLastPush] = useState(null);
+  const [lastPush, setLastPush] = useState(() => readLocal(PUSH_KEY));
 
   useEffect(() => {
     const l = document.createElement("link");
@@ -167,11 +171,30 @@ export default function Momentum() {
   useEffect(() => {
     if (!loaded || !isConfigured(cloudConfig) || !cloudSession?.user?.id) return undefined;
     const timer = setTimeout(async () => {
-      const decision = pushDecision({ state, lastPush, remote: remoteFacts(cloudMeta) });
-      if (!decision.push) return;
       try {
         const live = await validSession(cloudConfig, cloudSession);
         if (live !== cloudSession) setCloudSession(live);
+
+        // Ask the row when it was last written before deciding anything. Without this the
+        // check is against whatever this device happened to see at sign-in, which is exactly
+        // the stale answer that lets two phones overwrite each other.
+        const head = await headBackup(cloudConfig, live).catch(() => cloudMeta);
+        if (head) setCloudMeta(head);
+        const decision = pushDecision({ state, lastPush, remote: remoteFacts(head) });
+
+        // The other device has written since this one last looked. Take their copy, fold it
+        // into this one, and carry on — a merge never loses a record, so there is nothing
+        // here worth interrupting anyone about. The push happens on the next pass and
+        // carries both devices' work.
+        if (decision.needsMerge) {
+          const pulled = await pullBackup(cloudConfig, live);
+          const theirs = pulled?.data ? stateFromCloud(unwrap(pulled.data)) : null;
+          if (theirs) setState((mine) => mergeStates(mine, theirs));
+          setLastPush({ fingerprint: null, at: null, remoteStamp: head?.updated_at || null });
+          return;
+        }
+        if (!decision.push) return;
+
         const row = await pushBackup(cloudConfig, live, {
           payload: backupBody(state),
           device: deviceName(navigator.userAgent),
@@ -179,7 +202,9 @@ export default function Momentum() {
           items: weigh(state),
         });
         setCloudMeta(row);
-        setLastPush({ fingerprint: decision.fingerprint, at: Date.now() });
+        setLastPush({
+          fingerprint: decision.fingerprint, at: Date.now(), remoteStamp: row?.updated_at || null,
+        });
       } catch (e) {
         // A failed backup is not worth interrupting anyone over — the data is still here,
         // and Settings shows the real state of things.
@@ -193,6 +218,7 @@ export default function Momentum() {
   }, [loaded, state, cloudConfig, cloudSession, cloudMeta, lastPush, show]);
 
   useEffect(() => { writeLocal(SESSION_KEY, cloudSession); }, [cloudSession]);
+  useEffect(() => { writeLocal(PUSH_KEY, lastPush); }, [lastPush]);
 
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
@@ -815,6 +841,10 @@ export default function Momentum() {
                   },
                   onSession: setCloudSession,
                   onMeta: setCloudMeta,
+                  // A manual backup has to record what it left behind for the same reason the
+                  // automatic one does: the next push compares against it to tell "nobody has
+                  // touched this" from "the other device has been busy".
+                  onPushed: setLastPush,
                 }}
               />
             )}

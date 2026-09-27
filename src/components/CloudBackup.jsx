@@ -6,17 +6,17 @@ import {
 import { C, R, alpha, styles } from "../theme.js";
 import {
   backupBody, configProblem, deviceName, fingerprint, isConfigured, pushDecision,
-  remoteFacts, restorePreview, stateFromCloud, statusLine, weigh,
+  remoteFacts, restorePreview, stateFromCloud, statusLine, unwrap, weigh,
 } from "../lib/cloud.js";
 import {
   checkProject, headBackup, pullBackup, pushBackup, signIn, signUp, signOut, validSession,
 } from "../lib/supabase.js";
-import { mergePreview } from "../lib/merge.js";
+import { mergePreview, mergeStates } from "../lib/merge.js";
 import { SectionLabel } from "./ui.jsx";
 
 // The one place a person can see whether their data exists anywhere but this phone.
 export default function CloudBackup({
-  state, config, session, meta, onSaveConfig, onSession, onMeta, onRestore, lastPush,
+  state, config, session, meta, onSaveConfig, onSession, onMeta, onPushed, onRestore, lastPush,
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -89,10 +89,28 @@ export default function CloudBackup({
   const doPush = (force = false) => run("push", async () => {
     const live = await validSession(config, session);
     if (live !== session) onSession(live);
-    const decision = pushDecision({ state, lastPush, remote: remoteFacts(meta), force });
+    // Against the row as it is now, not as it was at sign-in — the other device may have
+    // written since.
+    const head = await headBackup(config, live).catch(() => meta);
+    if (head) onMeta(head);
+    const decision = pushDecision({ state, lastPush, remote: remoteFacts(head), force });
     if (!decision.push && decision.needsConfirmation) {
       setConfirmShrink({ local: decision.local, remote: decision.remote });
       return;
+    }
+    // Someone else has written since this device last looked. Backing up now would put a
+    // copy that never held their work on top of it, so fold theirs in first. Nothing is
+    // lost either way, which is why this doesn't stop to ask.
+    if (decision.needsMerge) {
+      const pulled = await pullBackup(config, live);
+      const theirs = pulled?.data ? stateFromCloud(unwrap(pulled.data)) : null;
+      if (theirs) {
+        const merged = mergeStates(state, theirs);
+        onRestore(merged);
+        setConfirmShrink(null);
+        setNotice("The other device had newer changes — merged them in, then backed up.");
+        return;
+      }
     }
     const row = await pushBackup(config, live, {
       payload: backupBody(state),
@@ -102,6 +120,7 @@ export default function CloudBackup({
     });
     setConfirmShrink(null);
     onMeta(row);
+    onPushed?.({ fingerprint: fingerprint(state), at: Date.now(), remoteStamp: row?.updated_at || null });
     setNotice("Backed up.");
   });
 

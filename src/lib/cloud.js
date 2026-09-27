@@ -42,6 +42,9 @@ export const remoteFacts = (meta) => ({
   weight: typeof meta?.item_count === "number" ? meta.item_count
     : typeof meta?.weight === "number" ? meta.weight
     : null,
+  // When the row was last written, which is how this device tells "nobody has touched the
+  // backup since I last saw it" from "the other device has been busy".
+  stamp: meta?.updated_at || null,
 });
 
 export const describeContents = (data) => summarise(data || {});
@@ -91,27 +94,46 @@ export function pushDecision({
   const local = weigh(state);
   const print = fingerprint(state);
 
-  const cloud = remote ? { exists: remote.exists ?? (remote.weight ?? 0) > 0, weight: remote.weight ?? null } : null;
+  const cloud = remote
+    ? { exists: remote.exists ?? (remote.weight ?? 0) > 0, weight: remote.weight ?? null, stamp: remote.stamp ?? null }
+    : null;
 
   if (local === 0 && cloud?.exists) {
     // The fresh-install case: signing in on a new phone must not push its emptiness over
     // everything. Restoring is what's wanted here, and it's the opposite direction.
     return { push: false, reason: "empty-local", needsConfirmation: false, fingerprint: print };
   }
+  // The other device has written since this one last saw the row. Pushing now would put a
+  // copy that never contained their work on top of it, and the shrink guard only catches
+  // that when the two differ by a quarter — which two active devices rarely do. Merge first,
+  // then push the result. This is what turns a backup into something that survives two
+  // phones being used on the same day.
+  // Note "hasn't seen it" counts as "has moved". A device that has never pushed cannot have
+  // incorporated what is already up there, and it is not necessarily empty — signing in on a
+  // second phone that already has a few habits on it is the ordinary case, and the empty-local
+  // guard above does nothing for it.
+  if (cloud?.exists && cloud.stamp && cloud.stamp !== (lastPush?.remoteStamp || null)) {
+    return { push: false, reason: "remote-moved", needsMerge: true, needsConfirmation: false, fingerprint: print };
+  }
   if (force) return { push: true, reason: "asked", needsConfirmation: false, fingerprint: print };
 
-  if (lastPush?.fingerprint === print) {
-    return { push: false, reason: "unchanged", needsConfirmation: false, fingerprint: print };
-  }
-  if (lastPush?.at && now - lastPush.at < PUSH_DEBOUNCE_MS) {
-    return { push: false, reason: "too-soon", needsConfirmation: false, fingerprint: print };
-  }
   // Only when the size of the cloud copy is actually known: guessing in either direction
   // would either block ordinary pushes or wave through the one that destroys the backup.
   if (cloud && typeof cloud.weight === "number" && cloud.weight > 0 && local < cloud.weight * SHRINK_RATIO) {
     // Losing a quarter of everything between two pushes is either a deliberate clear-out or
     // a mistake, and the app can't tell which. Asking costs one tap; guessing costs the data.
     return { push: false, reason: "shrunk", needsConfirmation: true, fingerprint: print, local, remote: cloud.weight };
+  }
+
+  // The guards above are about not destroying data; the two below are only about not doing
+  // pointless work. Safety first: with these the other way round, a shrinking push made
+  // within the debounce window skipped the shrink check altogether, and on the manual path
+  // went on to push anyway.
+  if (lastPush?.fingerprint === print) {
+    return { push: false, reason: "unchanged", needsConfirmation: false, fingerprint: print };
+  }
+  if (lastPush?.at && now - lastPush.at < PUSH_DEBOUNCE_MS) {
+    return { push: false, reason: "too-soon", needsConfirmation: false, fingerprint: print };
   }
   return { push: true, reason: "changed", needsConfirmation: false, fingerprint: print };
 }

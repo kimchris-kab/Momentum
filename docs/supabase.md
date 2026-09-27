@@ -7,8 +7,12 @@ It is a **backup, not sync**: one row per account, replaced wholesale, and the n
 to back up wins. Restoring replaces what is on the device — that is the simple, explicable
 behaviour and it stays the default.
 
-Where two devices have diverged, restoring also offers to **merge** instead, and says how
-much it would bring back before you choose. A merge never loses a record: everything either
+Where two devices have diverged, restoring offers to **merge** instead of replacing, and says
+how much it would bring back before you choose. Backing up does it without being asked: if the
+row has been written since this device last saw it, the other copy is pulled and folded in
+before anything is sent, so the second device to back up on a given day no longer lands on top
+of the first. Merging cannot lose a record, so there is nothing there worth stopping to ask
+about. A merge never loses a record: everything either
 side knows about survives. What it cannot do is reconcile the *same* record edited in both
 places — one of those edits wins, by the later clock — and the app says so on the button
 rather than leaving you to find out. Deleting is remembered for 90 days so a merge doesn't
