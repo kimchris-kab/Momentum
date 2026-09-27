@@ -41,7 +41,7 @@ export default defineConfig({
         filename: "sw.js",
         registerType: "autoUpdate",
         injectManifest: { globPatterns: ["**/*.{js,css,html,png,svg,woff2}"] },
-        includeAssets: ["icons/*.png"],
+        includeAssets: ["icons/*.png", "icons/*.svg"],
         manifest: {
           name: "Momentum",
           short_name: "Momentum",
@@ -55,6 +55,7 @@ export default defineConfig({
             { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
             { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
             { src: "icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+            { src: "icons/icon.svg", sizes: "any", type: "image/svg+xml" },
           ],
         },
       }),
