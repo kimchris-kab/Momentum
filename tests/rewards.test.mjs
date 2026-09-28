@@ -128,7 +128,7 @@ atDate(CLOCK, () => {
   t.eq("a finished quota habit isn't on the widget", met.total, 0);
 
   t.eq("an empty day is an empty snapshot, not a crash",
-    widgetSnapshot({}, TODAY), { date: TODAY, done: 0, total: 0, streak: 0, items: [], updatedAt: Date.parse(CLOCK) });
+    widgetSnapshot({}, TODAY), { date: TODAY, done: 0, total: 0, streak: 0, items: [], quitting: [], updatedAt: Date.parse(CLOCK) });
 });
 
 t.group("publishing it");

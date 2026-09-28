@@ -40,4 +40,26 @@
     <TextView android:id="@+id/row_1" style="@style/MomentumWidgetRow" />
     <TextView android:id="@+id/row_2" style="@style/MomentumWidgetRow" />
     <TextView android:id="@+id/row_3" style="@style/MomentumWidgetRow" />
+
+    <!-- The break side. Hidden until the app says there's a habit being broken; each row carries
+         an Urge button that opens straight into riding it out. -->
+    <!-- A FrameLayout, not a View: widget layouts may only use classes RemoteViews allows, and
+         a bare View is not one — it would take the whole widget down, not just the line. -->
+    <FrameLayout
+        android:id="@+id/quit_divider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="9dp"
+        android:background="#2E2A3D"
+        android:visibility="gone" />
+
+    <LinearLayout android:id="@+id/quit_0" style="@style/MomentumWidgetQuitRow">
+        <TextView android:id="@+id/quit_0_text" style="@style/MomentumWidgetQuitText" />
+        <TextView android:id="@+id/quit_0_urge" style="@style/MomentumWidgetUrge" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/quit_1" style="@style/MomentumWidgetQuitRow">
+        <TextView android:id="@+id/quit_1_text" style="@style/MomentumWidgetQuitText" />
+        <TextView android:id="@+id/quit_1_urge" style="@style/MomentumWidgetUrge" />
+    </LinearLayout>
 </LinearLayout>

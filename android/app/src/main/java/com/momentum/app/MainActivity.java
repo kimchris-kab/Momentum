@@ -1,10 +1,21 @@
 package com.momentum.app;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+
+    /**
+     * Where the Urge button's habit id is left for the web app. Must match PENDING_URGE_KEY in
+     * src/lib/widget.js exactly — tests/android.test.mjs checks the two are the same string.
+     */
+    static final String PENDING_URGE_KEY = "momentum:pendingUrge";
+    /** Capacitor Preferences' file, which is what the web app reads through. */
+    private static final String PREFS = "CapacitorStorage";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -12,5 +23,40 @@ public class MainActivity extends BridgeActivity {
         // built, which is why this sits above the super call.
         registerPlugin(MomentumWidgetPlugin.class);
         super.onCreate(savedInstanceState);
+        // A cold start from the widget: the web app isn't loaded yet, so there's nobody to tell.
+        // It finds the id itself when it starts.
+        stashUrge(getIntent());
+    }
+
+    /**
+     * The app was already running — singleTask sends a second launch here, not to onCreate,
+     * which is the path that's easy to miss. The web app is loaded, so it gets a nudge too.
+     */
+    // Public rather than protected: widening an override is always legal, while matching the
+    // wrong visibility in a superclass nobody here can compile against would not be.
+    @Override
+    public void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (stashUrge(intent)) {
+            Bridge bridge = getBridge();
+            if (bridge != null) bridge.triggerWindowJSEvent("momentumWidget");
+        }
+    }
+
+    /** Leaves the habit id where the web app looks for it. True if the intent carried one. */
+    private boolean stashUrge(Intent intent) {
+        if (intent == null) return false;
+        Uri data = intent.getData();
+        if (data == null
+                || !MomentumWidget.URGE_SCHEME.equals(data.getScheme())
+                || !MomentumWidget.URGE_HOST.equals(data.getHost())) return false;
+        String id = data.getLastPathSegment();
+        if (id == null || id.isEmpty()) return false;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PENDING_URGE_KEY, id).apply();
+        // Consumed: a rotation or a return from the recents screen re-delivers the same intent,
+        // and it shouldn't open the urge screen a second time.
+        intent.setData(null);
+        return true;
     }
 }

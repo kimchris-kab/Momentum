@@ -8,4 +8,6 @@
     <!-- Shown before the app has written its first snapshot. -->
     <string name="widget_placeholder">—</string>
     <string name="widget_empty">Nothing scheduled today</string>
+    <string name="widget_urge">Urge</string>
+    <string name="widget_slipped_today">slipped today</string>
 </resources>

@@ -13,7 +13,7 @@ import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { newSession } from "./lib/focus.js";
 import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
 import { drainActions } from "./lib/actionQueue.js";
-import { publishWidget } from "./lib/widget.js";
+import { publishWidget, takePendingUrge } from "./lib/widget.js";
 import { comebacksToday, freshStart } from "./lib/rewards.js";
 import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
 import { postDueRecurring } from "./lib/money.js";
@@ -169,7 +169,7 @@ export default function Momentum() {
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, today, state.tasks, state.dayLog, state.srbai, state.checkins, state.freezes, state.settings]);
+  }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings]);
 
   // An automatic backup can destroy data as easily as save it, so the decision of whether to
   // push at all lives in cloud.js with its guards, and this only carries it out.
@@ -628,6 +628,26 @@ export default function Momentum() {
   const logFocus = useCallback((entry) => setState((s) => ({
     ...s, focusSessions: [...(s.focusSessions || []), newSession(entry)],
   })), []);
+
+  // An Urge tapped on the home-screen widget. The native side leaves the habit's id in shared
+  // preferences and brings the app forward; this picks it up on start, whenever the app comes
+  // back to the front, and when the activity nudges it directly — whichever gets there first
+  // takes it, because reading it clears it.
+  useEffect(() => {
+    if (!loaded) return undefined;
+    const check = async () => {
+      if (document.hidden) return;
+      const id = await takePendingUrge();
+      if (id) setUrging({ id, mode: "urge" });
+    };
+    check();
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("momentumWidget", check);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("momentumWidget", check);
+    };
+  }, [loaded]);
 
   // ---- The break side ----
   // An urge ridden out is a win in its own right, so it's recorded as one — quitting is made

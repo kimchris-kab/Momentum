@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { suite } from "./harness.mjs";
-import { WIDGET_KEY } from "../src/lib/widget.js";
+import { PENDING_URGE_KEY, WIDGET_KEY } from "../src/lib/widget.js";
 
 const t = suite("android");
 
@@ -155,4 +155,50 @@ t.group("honesty about what this is");
   // but until then it stays where whoever builds this will see it.
   t.ok("the Java says out loud that it has never been built",
     /NOT VERIFIED/.test(widgetJava));
+}
+
+t.group("the Urge button, from home screen to urge screen");
+{
+  const activity = read("java/com/momentum/app/MainActivity.java");
+  const app = readFileSync(join(ROOT, "src", "Momentum.jsx"), "utf8");
+
+  // A widget layout may only use the classes RemoteViews allows. Anything else — a bare View
+  // used as a divider, say — doesn't fail at build time: the whole widget shows "Problem
+  // loading widget" on the phone. That was nearly shipped.
+  const ALLOWED = new Set(["FrameLayout", "LinearLayout", "RelativeLayout", "GridLayout", "AnalogClock",
+    "Button", "Chronometer", "ImageButton", "ImageView", "ProgressBar", "TextView", "ViewFlipper",
+    "ListView", "GridView", "StackView", "AdapterViewFlipper", "ViewStub", "CheckBox", "Switch", "RadioButton",
+    "RadioGroup", "TextClock"]);
+  const tags = [...layout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g)].map((m) => m[1]).filter((tag) => tag !== "?xml");
+  t.eq("every element in the widget is one RemoteViews will inflate",
+    [...new Set(tags.filter((tag) => !ALLOWED.has(tag)))], []);
+
+  // Two languages, one string, and nothing to catch a typo in either until a tap on a phone
+  // silently does nothing.
+  t.ok("the activity leaves the id under the key the app reads", activity.includes(`"${PENDING_URGE_KEY}"`), PENDING_URGE_KEY);
+  t.ok("...in the file Capacitor's Preferences reads", activity.includes('"CapacitorStorage"'));
+  const event = activity.match(/triggerWindowJSEvent\("([^"]+)"\)/)?.[1];
+  t.ok("the nudge the activity sends is the one the app listens for",
+    event && app.includes(`addEventListener("${event}"`), event);
+
+  // singleTask: a second launch goes to onNewIntent. Handling only onCreate is the classic way
+  // this works exactly once — on a cold start — and never again.
+  t.ok("the activity is singleTask, so a running app gets the tap in onNewIntent",
+    /android:launchMode="singleTask"/.test(manifest));
+  t.ok("...which it handles", /void onNewIntent\(Intent intent\)/.test(activity));
+  t.ok("...keeping Capacitor's own handling", /super\.onNewIntent\(intent\)/.test(activity));
+  t.ok("a cold start from the widget is handled too", /onCreate[\s\S]*stashUrge\(getIntent\(\)\)/.test(activity));
+  t.ok("the activity reads the same scheme and host the widget builds",
+    activity.includes("MomentumWidget.URGE_SCHEME") && activity.includes("MomentumWidget.URGE_HOST"));
+
+  // PendingIntents are the same if action, data and class match — extras don't count. Without
+  // a distinct URI per row, every Urge button opens whichever habit was bound last.
+  const urgeBlock = widgetJava.slice(widgetJava.indexOf("new Intent(context, MainActivity.class)"));
+  t.ok("each Urge carries its habit in the intent's data, not only in extras",
+    /\.setData\(/.test(urgeBlock.slice(0, 400)) && /appendPath\(id\)/.test(urgeBlock.slice(0, 400)));
+  t.ok("...with a request code of its own", /PendingIntent\.getActivity\(\s*context,\s*100 \+ i/.test(widgetJava));
+  t.ok("...immutable, as Android 12 and later require", /FLAG_IMMUTABLE/.test(urgeBlock.slice(0, 700)));
+  t.ok("every Urge button is given a tap handler",
+    /quitButtons\s*=\s*\{\s*R\.id\.quit_0_urge,\s*R\.id\.quit_1_urge\s*\}/.test(widgetJava)
+    && /setOnClickPendingIntent\(quitButtons\[i\]/.test(widgetJava));
 }
