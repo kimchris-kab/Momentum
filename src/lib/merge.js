@@ -24,6 +24,7 @@ const LOGS = {
   habitAudit: "id",
   freshStarts: "id",
   reviews: "date",
+  urgeLog: "id",
 };
 
 /** Records that can be edited after the fact. Union by id; a conflict goes to the later edit. */
@@ -138,6 +139,14 @@ export function mergeDayLog(mineLog, theirsLog) {
       const y = b[taskId];
       if (!x) { day[taskId] = y; return; }
       if (!y) { day[taskId] = x; return; }
+      // A slip beats a clean tick, whichever device recorded which: you can't have been clean
+      // on a day you slipped, and a tick made earlier that day on the other phone was true
+      // only until it wasn't. Between two slips, the earlier one is when it happened.
+      if (x.slipped || y.slipped) {
+        if (x.slipped && y.slipped) { day[taskId] = (y.at || Infinity) < (x.at || Infinity) ? y : x; return; }
+        day[taskId] = x.slipped ? x : y;
+        return;
+      }
       // Done beats not-done: a tick is a positive act, an absence is just an absence. Between
       // two ticks, the earlier one is when it actually happened.
       if (x.done !== y.done) { day[taskId] = x.done ? x : y; return; }

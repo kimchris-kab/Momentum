@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Bell, BellOff, CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus,
-  Handshake, Repeat, Shuffle, Target, Timer, Trash2, X, Zap,
+  Feather, Handshake, Repeat, Shuffle, Target, Timer, Trash2, X, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
@@ -12,6 +12,7 @@ import {
   implementationIntention,
 } from "../lib/cues.js";
 import { defaultCueFor, expectation, typeOf, typesFor } from "../lib/habitTypes.js";
+import { CALM_PROMPTS } from "../lib/urges.js";
 import { REWARD_BY_ID, REWARD_TYPES, rewardTypeOf } from "../lib/rewards.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission,
@@ -476,6 +477,65 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
           </div>
         </Field>
 
+        {/* A break habit's working parts — what sets it off, what to do instead, and the note
+            read first in an urge. These used to sit behind "Advanced", under a label naming
+            other features entirely, which is to say nobody would ever have found them. */}
+        {task.kind === "break" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+              <div style={styles.fieldShell}>
+                <Zap size={13} color={C.red} />
+                <input value={task.trigger || ""} onChange={(e) => set({ trigger: e.target.value || null })}
+                  placeholder="What usually triggers it?" style={{ ...styles.bareInput, flex: 1 }} />
+              </div>
+              <div style={styles.fieldShell}>
+                <Repeat size={13} color={C.green} />
+                <input value={task.competingResponse || ""}
+                  onChange={(e) => set({ competingResponse: e.target.value || null })}
+                  placeholder="Instead, I will…" style={{ ...styles.bareInput, flex: 1 }} />
+              </div>
+              <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "2px 0 0" }}>
+                {COMPETING_RESPONSE_HELP}
+              </p>
+
+              {/* The note from calm you. Written in your words, read first when an urge hits.
+                  "Why" belongs here, at setup; the other two are best answered at the moment
+                  the app asks — after a slip, after riding one out — but can be written now. */}
+              <div style={{
+                marginTop: 8, padding: "12px 12px 4px", borderRadius: R.md,
+                background: alpha(C.teal, 0.06), border: `1px solid ${alpha(C.teal, 0.2)}`,
+              }}>
+                <p style={{ display: "flex", alignItems: "center", gap: 6, color: C.teal, fontSize: 11, fontWeight: 650, letterSpacing: 0.4, margin: "0 0 4px", textTransform: "uppercase" }}>
+                  <Feather size={12} /> A note from calm you
+                </p>
+                <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "0 0 10px" }}>
+                  Calm, you underestimate how strong the urge will be; in the urge, you can't
+                  reach what you knew when calm. Write it now — it's the first thing you'll see
+                  when you tap Urge.
+                </p>
+                {CALM_PROMPTS.map((pr) => (
+                  <div key={pr.id} style={{ marginBottom: 10 }}>
+                    <p style={{ color: C.muted, fontSize: 11.5, fontWeight: 600, margin: "0 0 5px" }}>
+                      {pr.label}
+                      {pr.moment !== "setup" && (
+                        <span style={{ color: C.faint, fontWeight: 400 }}>
+                          {pr.moment === "lapse" ? " · asked after a slip" : " · asked after you ride one out"}
+                        </span>
+                      )}
+                    </p>
+                    <textarea
+                      value={task.calmNote?.[pr.id] || ""}
+                      // Raw while typing: trimming on each keystroke would eat the space
+                      // at the end of every word. The note is trimmed where it's read.
+                      onChange={(e) => set({ calmNote: { ...(task.calmNote || {}), [pr.id]: e.target.value } })}
+                      rows={2} placeholder={pr.placeholder} aria-label={pr.label}
+                      style={{ ...styles.input, resize: "vertical", fontFamily: F.display, fontSize: 14, lineHeight: 1.45, padding: "9px 11px" }}
+                    />
+                  </div>
+                ))}
+              </div>
+          </div>
+        )}
+
         <button onClick={() => setAdvanced((a) => !a)} style={styles.linkBtn}>
           {advanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           Advanced — friction, bundling, the tiny version
@@ -521,24 +581,6 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
               <input value={task.twoMin || ""} onChange={(e) => set({ twoMin: e.target.value || null })}
                 placeholder="2-minute version for hard days" style={{ ...styles.bareInput, flex: 1 }} />
             </div>
-            {task.kind === "break" && (
-              <>
-                <div style={styles.fieldShell}>
-                  <Zap size={13} color={C.red} />
-                  <input value={task.trigger || ""} onChange={(e) => set({ trigger: e.target.value || null })}
-                    placeholder="What usually triggers it?" style={{ ...styles.bareInput, flex: 1 }} />
-                </div>
-                <div style={styles.fieldShell}>
-                  <Repeat size={13} color={C.green} />
-                  <input value={task.competingResponse || ""}
-                    onChange={(e) => set({ competingResponse: e.target.value || null })}
-                    placeholder="Instead, I will…" style={{ ...styles.bareInput, flex: 1 }} />
-                </div>
-                <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "2px 0 0" }}>
-                  {COMPETING_RESPONSE_HELP}
-                </p>
-              </>
-            )}
           </div>
         )}
 

@@ -18,12 +18,14 @@ import { comebacksToday, freshStart } from "./lib/rewards.js";
 import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
+import { newLapse, newUrge, slip, unslip, withCalmNote } from "./lib/urges.js";
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import { bury, mergeStates, unbury } from "./lib/merge.js";
 import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
+import UrgeSheet from "./components/UrgeSheet.jsx";
 import SrbaiSheet from "./components/SrbaiSheet.jsx";
 import WoopSheet from "./components/WoopSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
@@ -94,6 +96,9 @@ export default function Momentum() {
   const [editing, setEditing] = useState(null);
   const [ritual, setRitual] = useState(null);
   const [focusId, setFocusId] = useState(null);
+  // { id, mode } — which break habit the urge sheet is open for, and whether to ride an urge
+  // out or record a slip.
+  const [urging, setUrging] = useState(null);
   const [rating, setRating] = useState(null);
   const [woopGoal, setWoopGoal] = useState(null);
   const [comebackSeen, setComebackSeen] = useState(false);
@@ -590,6 +595,7 @@ export default function Momentum() {
   const editingTask = editing ? state.tasks.find((t) => t.id === editing) : null;
   const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
   const focusTask = focusId ? state.tasks.find((t) => t.id === focusId) : null;
+  const urgeTask = urging ? state.tasks.find((t) => t.id === urging.id) : null;
   const ratingTask = rating ? state.tasks.find((t) => t.id === rating) : null;
   const fresh = useMemo(() => (loaded ? freshStart(state) : null), [loaded, state]);
   const comebacks = useMemo(
@@ -622,6 +628,41 @@ export default function Momentum() {
   const logFocus = useCallback((entry) => setState((s) => ({
     ...s, focusSessions: [...(s.focusSessions || []), newSession(entry)],
   })), []);
+
+  // ---- The break side ----
+  // An urge ridden out is a win in its own right, so it's recorded as one — quitting is made
+  // of these, and before this nothing counted them.
+  const logUrge = useCallback(({ task, seconds, outcome }) => {
+    setState((s) => ({ ...s, urgeLog: [...(s.urgeLog || []), newUrge({ taskId: task.id, seconds, outcome })] }));
+    if (outcome === "rode-out") show("Rode it out. That's the one that counts.");
+  }, [show]);
+
+  // A slip is two writes: the details go in the log, and the day is marked so streaks and
+  // Insights read it as not clean. Undo takes both back — and buries the log entry, because
+  // unlike a deleted task this record should not exist anywhere, including on the other phone.
+  const logLapse = useCallback(({ task, trigger, feeling, place }) => {
+    const entry = newLapse({ taskId: task.id, trigger, feeling, place });
+    setState((s) => ({
+      ...s,
+      urgeLog: [...(s.urgeLog || []), entry],
+      dayLog: slip(s.dayLog, task.id, entry.date, entry.at),
+    }));
+    show("Recorded. One slip is information, not a verdict.", "Undo", () => setState((cur) => ({
+      ...cur,
+      urgeLog: (cur.urgeLog || []).filter((r) => r.id !== entry.id),
+      dayLog: unslip(cur.dayLog, task.id, entry.date),
+      graveyard: bury(cur.graveyard, entry.id),
+    })));
+  }, [show]);
+
+  const saveCalmNote = useCallback((task, promptId, text) => {
+    setState((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => (t.id === task.id
+        ? { ...t, calmNote: withCalmNote(t, promptId, text), updatedAt: Date.now() } : t)),
+    }));
+    show("Kept. You'll read it first next time.");
+  }, [show]);
 
   const logSrbai = useCallback((task, scores) => setState((s) => {
     const next = { ...s, srbai: [...(s.srbai || []), newSrbaiEntry({ taskId: task.id, scores })] };
@@ -710,6 +751,8 @@ export default function Momentum() {
                 onFreeze={freezeYesterday} onRepair={repairDay}
                 onStartRitual={(t) => setRitual(t.id)} onOpenReview={() => setView("review")}
                 onStartFocus={(t) => setFocusId(t.id)} onSchedule={scheduleTask}
+                onUrge={(t) => setUrging({ id: t.id, mode: "urge" })}
+                onSlip={(t) => setUrging({ id: t.id, mode: "lapse" })}
                 srbaiDue={srbaiDueTasks} onRateHabit={(t) => setRating(t.id)}
                 onOpenSettings={() => setView("settings")}
                 onOpenSearch={() => setView("search")}
@@ -929,6 +972,15 @@ export default function Momentum() {
           onClose={() => setFocusId(null)}
           onLog={logFocus}
           onComplete={(t) => { if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr()); }}
+        />
+
+        <UrgeSheet
+          open={!!urgeTask} task={urgeTask} mode={urging?.mode}
+          urgeLog={state.urgeLog || []}
+          onLogUrge={logUrge}
+          onLogLapse={logLapse}
+          onSaveNote={saveCalmNote}
+          onClose={() => setUrging(null)}
         />
 
         <EntrySheet

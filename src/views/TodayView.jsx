@@ -2,11 +2,12 @@ import React, { Suspense, lazy, useMemo, useState } from "react";
 import {
   Ban, CalendarCheck, CalendarDays, CalendarRange, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock4, Crosshair, Fingerprint, Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake,
-  Search, Settings, Sparkles, Sun, Target,
+  Search, Settings, Sparkles, Sun, Target, Waves,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, pillarOf } from "../data/constants.js";
-import { hashIdx, longDate, todayStr } from "../lib/date.js";
+import { formatTime12, hashIdx, longDate, pad, todayStr } from "../lib/date.js";
+import { dayState, urgeTally } from "../lib/urges.js";
 import { agendaForDate, dayStats, isDone, isFlexible, tasksForDate, weekProgress } from "../lib/tasks.js";
 import {
   freezesLeft, habitStreakProtected, isFrozen, missedYesterday, nextMilestone, reviewDue,
@@ -47,7 +48,7 @@ export default function TodayView({
   onRescheduleOverdue, onToggleFocus, onStartFocus, onSchedule, srbaiDue = [], onRateHabit,
   onOpenSettings, onOpenSearch, freshStart: fresh, onAcceptFreshStart, onDismissFreshStart,
   comebacks = [], onAckComebacks, startSmall, woopNeeded = [], onStartWoop,
-  onboarding, onStartOnboarding, onDismissOnboarding,
+  onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -412,25 +413,68 @@ export default function TodayView({
             </span>
           </div>
           <Card style={{ borderColor: alpha(C.red, 0.18) }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {avoids.map((t) => (
-                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 2px" }}>
-                  <Checkbox checked={isDone(t, today, dayLog)} onClick={() => onToggleTask(t)} color={C.red} />
-                  <button onClick={() => onOpenTask(t)} style={{
-                    flex: 1, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", minWidth: 0,
-                  }}>
-                    <span style={{
-                      display: "block", color: isDone(t, today, dayLog) ? C.faint : C.text, fontSize: 13.5,
-                      textDecoration: isDone(t, today, dayLog) ? "line-through" : "none",
-                    }}>{t.text}</span>
-                    {t.trigger && (
-                      <span style={{ display: "block", color: C.faint, fontSize: 11, marginTop: 2 }}>
-                        Trigger: {t.trigger}
-                      </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {avoids.map((t) => {
+                // Three states now, not two: clean, slipped, or not decided yet. A slip used to
+                // be indistinguishable from not having opened the app.
+                const st = dayState(t, today, dayLog);
+                const slipAt = st === "slipped" ? dayLog[today][t.id].at : null;
+                const week = urgeTally(state.urgeLog, t.id, { today });
+                return (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px" }}>
+                    {st === "slipped" ? (
+                      <span title="Slipped today" style={{
+                        width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: "flex",
+                        alignItems: "center", justifyContent: "center",
+                        border: `1.5px solid ${alpha(C.orange, 0.55)}`, color: C.orange, fontSize: 13, fontWeight: 700,
+                      }}>–</span>
+                    ) : (
+                      <Checkbox checked={st === "clean"} onClick={() => onToggleTask(t)} color={C.red}
+                        label={`${st === "clean" ? "Undo" : "Mark clean"}: ${t.text}`} />
                     )}
-                  </button>
-                </div>
-              ))}
+                    <button onClick={() => onOpenTask(t)} style={{
+                      flex: 1, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", minWidth: 0,
+                    }}>
+                      <span style={{
+                        display: "block", color: st === "clean" ? C.faint : C.text, fontSize: 13.5,
+                        textDecoration: st === "clean" ? "line-through" : "none",
+                      }}>{t.text}</span>
+                      <span style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
+                        {st === "slipped" && (
+                          <span style={{ ...styles.tag, color: C.orange, background: alpha(C.orange, 0.13) }}>
+                            Slipped{slipAt ? ` · ${formatTime12(`${pad(new Date(slipAt).getHours())}:${pad(new Date(slipAt).getMinutes())}`)}` : ""}
+                          </span>
+                        )}
+                        {week.rodeOut > 0 && (
+                          <span style={{ ...styles.tag, color: C.teal, background: alpha(C.teal, 0.13) }}>
+                            <Waves size={9} /> {week.rodeOut} urge{week.rodeOut === 1 ? "" : "s"} ridden out this week
+                          </span>
+                        )}
+                        {st !== "slipped" && t.trigger && !week.rodeOut && (
+                          <span style={{ color: C.faint, fontSize: 11 }}>Trigger: {t.trigger}</span>
+                        )}
+                      </span>
+                    </button>
+                    {onUrge && (
+                      <button onClick={() => onUrge(t)} aria-label={`Having an urge: ${t.text}`} style={{
+                        display: "flex", alignItems: "center", gap: 5, flexShrink: 0, cursor: "pointer",
+                        background: alpha(C.teal, 0.12), border: `1px solid ${alpha(C.teal, 0.3)}`,
+                        color: C.teal, borderRadius: R.pill, padding: "6px 11px", fontSize: 12, fontWeight: 600,
+                      }}>
+                        <Waves size={13} /> Urge
+                      </button>
+                    )}
+                    {onSlip && st !== "slipped" && (
+                      <button onClick={() => onSlip(t)} aria-label={`I slipped: ${t.text}`} style={{
+                        background: "none", border: "none", color: C.faint, cursor: "pointer",
+                        fontSize: 11.5, padding: "6px 2px", flexShrink: 0,
+                      }}>
+                        Slipped
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
         </>

@@ -9,7 +9,7 @@ import { mmss } from "../lib/focus.js";
 // Time comes from the wall clock rather than a tick count: a phone that sleeps or a
 // backgrounded tab throttles setInterval, and a timer that quietly loses ten minutes is
 // worse than no timer.
-export function useTimer({ totalSecs = 0, countUp = false, resetKey }) {
+export function useTimer({ totalSecs = 0, countUp = false, resetKey, autoStart = false }) {
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
   const startedAt = useRef(null);
@@ -24,7 +24,13 @@ export function useTimer({ totalSecs = 0, countUp = false, resetKey }) {
     stopTicking();
   }, [stopTicking]);
 
-  useEffect(() => { reset(); }, [resetKey, reset]);
+  // autoStart is for the one place a Start button is the wrong thing to ask for: someone in
+  // the middle of an urge should not have to find it. Set after the reset in the same pass, so
+  // changing the length restarts the clock rather than stopping it.
+  useEffect(() => {
+    reset();
+    if (autoStart) setRunning(true);
+  }, [resetKey, reset, autoStart]);
 
   useEffect(() => {
     if (!running) return undefined;

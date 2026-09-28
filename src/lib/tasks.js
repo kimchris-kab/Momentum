@@ -114,6 +114,9 @@ export const isDone = (task, dateStr, dayLog) =>
   task.recurrence ? !!dayLog?.[dateStr]?.[task.id]?.done : !!task.done;
 
 export function toggleDoneReducer(task, dateStr, tasks, dayLog) {
+  // A slipped day is not one a tick can make clean. Undoing a slip is its own, explicit act —
+  // otherwise one mis-tap on a row quietly rewrites the only honest record of the day.
+  if (dayLog?.[dateStr]?.[task.id]?.slipped) return { tasks, dayLog };
   const nowDone = !isDone(task, dateStr, dayLog);
   if (task.recurrence) {
     const day = { ...(dayLog[dateStr] || {}) };
