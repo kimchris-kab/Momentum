@@ -23,8 +23,14 @@ for i in $(seq 1 45); do
   fi
 done
 
+# Reaching "ready" isn't the finish line. The first real-phone crash came a moment *after*
+# it — a notification listener that threw once the app had drawn — and this check waved it
+# through because it stopped looking at "ready". So it keeps watching for a few more seconds.
+sleep 8
+
 adb exec-out screencap -p > smoke-start.png || true
 adb logcat -d > logcat.txt || true
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 && adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || true
 
 echo
 echo "===== The app's own startup marks and errors ====="
@@ -33,11 +39,26 @@ echo
 echo "===== WebView console and crashes ====="
 grep -E "Capacitor/Console|Capacitor:|chromium|AndroidRuntime|FATAL EXCEPTION|E Capacitor" logcat.txt | tail -120 || true
 
-if grep -qF "[momentum] boot: ready" logcat.txt; then
+echo
+echo "===== What's on the screen (accessibility text) ====="
+if [ -f ui.xml ]; then
+  grep -o 'text="[^"]\{2,\}"' ui.xml | head -25 || true
+fi
+
+if ! grep -qF "[momentum] boot: ready" logcat.txt; then
   echo
-  echo "SMOKE PASSED: the app started."
-  exit 0
+  echo "SMOKE FAILED: the app never reached 'ready'."
+  exit 1
+fi
+# Capacitor reports every uncaught error in the page as "JavaScript Error"; the app's own
+# boundary logs "[momentum] crashed". Either one after starting is a failure, whatever
+# "ready" said.
+if grep -qE "E Capacitor: JavaScript Error|\[momentum\] crashed" logcat.txt; then
+  echo
+  echo "SMOKE FAILED: the app started, then threw:"
+  grep -E "E Capacitor: JavaScript Error|\[momentum\] crashed" logcat.txt | head -5
+  exit 1
 fi
 echo
-echo "SMOKE FAILED: the app never reached 'ready'."
-exit 1
+echo "SMOKE PASSED: the app started and stayed up with no uncaught errors."
+exit 0

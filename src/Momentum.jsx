@@ -314,15 +314,30 @@ export default function Momentum() {
   }, [loaded, applyNotificationAction, show]);
 
   // Native taps come back through the Capacitor plugin instead of a service worker.
+  //
+  // The plugin reached through window.Capacitor.Plugins hands back its listener handle
+  // directly — { remove } — not the promise the imported plugin gives. Calling .then on it was
+  // the first crash on a real phone: it threw right after startup, and with nothing to catch
+  // it React removed the whole app, leaving a blank screen. Promise.resolve takes either shape,
+  // and the try stops a plugin that changes shape again from taking the app down with it.
   useEffect(() => {
     const plugin = window.Capacitor?.Plugins?.LocalNotifications;
     if (!loaded || !plugin?.addListener) return undefined;
     let handle;
-    plugin.addListener("localNotificationActionPerformed", (e) => {
-      const extra = e?.notification?.extra || {};
-      applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date });
-    }).then((h) => { handle = h; }).catch(() => {});
-    return () => { handle?.remove?.(); };
+    let gone = false;
+    try {
+      Promise.resolve(plugin.addListener("localNotificationActionPerformed", (e) => {
+        const extra = e?.notification?.extra || {};
+        applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date });
+      })).then((h) => {
+        handle = h;
+        // Unmounted before the handle arrived: let go of it straight away.
+        if (gone) handle?.remove?.();
+      }).catch(() => {});
+    } catch (e) {
+      console.error("[momentum] notification actions unavailable", e);
+    }
+    return () => { gone = true; handle?.remove?.(); };
   }, [loaded, applyNotificationAction]);
 
   // Rent, salary and subscriptions post themselves for every occurrence that came due
