@@ -20,11 +20,12 @@ import org.json.JSONObject;
  * SharedPreferences file below. The widget only ever reads that snapshot — it never parses
  * the app's full state, so a schema change in the app cannot break the home screen.
  *
- * NOT VERIFIED: this was written without a working Android toolchain (the sandbox cannot
- * reach dl.google.com), so it has never been compiled, installed or run. Treat it as a
- * starting point to build locally, not as working code. A later review of it by hand did
- * find and fix three things that would have stopped it working at all — an unexported
- * receiver, an unbound XML namespace, and a missing Preferences plugin — so expect more.
+ * NOT YET RUN ON A DEVICE. It was written without an Android toolchain, and is now compiled
+ * on every push by .github/workflows/android.yml — cleanly, first time — but compiling is not
+ * running: nobody has yet put this widget on a home screen and tapped it. A review by hand
+ * before it was ever compiled found three faults that would each have stopped it working —
+ * an unexported receiver, an unbound XML namespace, a missing Preferences plugin — and a
+ * fourth (a bare View in the layout) that a compiler would not have caught either.
  */
 public class MomentumWidget extends AppWidgetProvider {
 

@@ -151,10 +151,13 @@ t.group("the bridge between app and widget");
 
 t.group("honesty about what this is");
 {
-  // None of the above compiles anything. If that ever stops being true the note should go,
-  // but until then it stays where whoever builds this will see it.
-  t.ok("the Java says out loud that it has never been built",
-    /NOT VERIFIED/.test(widgetJava));
+  // It compiles now — on GitHub's runners, on every push — but compiling isn't running.
+  // Until someone has put the widget on a home screen and tapped it, the Java says so where
+  // whoever works on it next will see it. When that changes, so should this.
+  t.ok("the Java says out loud that it hasn't been run on a device",
+    /NOT YET RUN ON A DEVICE/.test(widgetJava));
+  const workflow = readFileSync(join(ROOT, ".github", "workflows", "android.yml"), "utf8");
+  t.ok("...and something compiles it on every push", /assembleDebug/.test(workflow) && /android\/\*\*/.test(workflow));
 }
 
 t.group("the Urge button, from home screen to urge screen");

@@ -12,8 +12,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * The app treats this as optional — src/lib/widget.js calls it through optional chaining —
  * so a build without it still works, just less promptly.
  *
- * NOT VERIFIED: written without a working Android toolchain (this sandbox cannot reach
- * dl.google.com), so it has never been compiled or run.
+ * NOT YET RUN ON A DEVICE: compiled on every push by .github/workflows/android.yml, but
+ * nobody has yet watched it redraw a widget on a phone.
  */
 @CapacitorPlugin(name = "MomentumWidget")
 public class MomentumWidgetPlugin extends Plugin {
