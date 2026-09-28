@@ -170,3 +170,156 @@ export function knownTriggers(urgeLog, task, limit = 5) {
   if (setup && !ranked.some((t) => t.toLowerCase() === setup.toLowerCase())) ranked.push(setup);
   return ranked.slice(0, limit);
 }
+
+// ---- Cutting down, not only stopping (2) ----
+// Most quitting is reduction before it is abstinence: twenty, then twelve, then five, then
+// none. A habit with a limit is judged against it, so a day at three of five is a kept day
+// rather than a failed one. No limit — the default — means none at all.
+export const limitOf = (task) => Math.max(0, Math.floor(Number(task?.limit) || 0));
+
+/** How many times it happened on a day, counted from the log rather than stored as a number. */
+export const lapsesOn = (urgeLog, taskId, dateStr) =>
+  (urgeLog || [])
+    .filter((r) => r.kind === "lapse" && r.taskId === taskId && r.date === dateStr)
+    .sort((a, b) => a.at - b.at);
+
+/**
+ * Brings one day's slipped mark into line with the log. The count is derived from the log —
+ * which merges by union across devices — rather than kept as a number, because two phones
+ * each holding "3" would otherwise merge into three rather than six. The mark follows from
+ * the count: set once it goes over the limit, cleared if it no longer does (a lapse undone,
+ * or a limit raised).
+ */
+export function syncSlip(dayLog, task, dateStr, urgeLog) {
+  const lapses = lapsesOn(urgeLog, task.id, dateStr);
+  const limit = limitOf(task);
+  const entry = dayLog?.[dateStr]?.[task.id];
+  if (lapses.length > limit) {
+    // The lapse that crossed the line is when the day was lost, not the first of the day.
+    const at = lapses[limit].at;
+    if (entry?.slipped && entry.at === at) return dayLog;
+    return { ...(dayLog || {}), [dateStr]: { ...(dayLog?.[dateStr] || {}), [task.id]: { done: false, slipped: true, at } } };
+  }
+  if (entry?.slipped) return unslip(dayLog, task.id, dateStr);
+  return dayLog;
+}
+
+/** Every day the log has an opinion about, brought into line. Run after a merge. */
+export function reconcileSlips(tasks, urgeLog, dayLog) {
+  let out = dayLog || {};
+  (tasks || []).filter((t) => t.kind === "break").forEach((task) => {
+    const dates = new Set([
+      ...(urgeLog || []).filter((r) => r.taskId === task.id && r.kind === "lapse").map((r) => r.date),
+      ...Object.keys(out).filter((d) => out[d]?.[task.id]?.slipped),
+    ]);
+    dates.forEach((d) => { out = syncSlip(out, task, d, urgeLog); });
+  });
+  return out;
+}
+
+// ---- A rate, not just a run (5) ----
+// A streak that goes to zero on one slip is the abstinence violation effect with a number on
+// it. The run is still worth showing, but next to the best one, and next to a rate that a
+// single slip barely moves. Untouched days are left out of the rate entirely: the app doesn't
+// know what happened on them, and counting them either way would be making it up.
+export function cleanRecord(task, dayLog, { today = todayStr(), days = 30 } = {}) {
+  const state = (d) => {
+    const e = dayLog?.[d]?.[task.id];
+    return e?.slipped ? "slipped" : e?.done ? "clean" : "open";
+  };
+
+  let clean = 0, slipped = 0;
+  for (let i = 0; i < days; i++) {
+    const s = state(addDays(today, -i));
+    if (s === "clean") clean++;
+    else if (s === "slipped") slipped++;
+  }
+
+  // Current run: today counts if it's clean, and doesn't break the run if it isn't decided.
+  let current = 0;
+  let cursor = state(today) === "open" ? addDays(today, -1) : today;
+  while (state(cursor) === "clean") { current++; cursor = addDays(cursor, -1); }
+
+  // Best run over everything recorded.
+  const recorded = Object.keys(dayLog || {}).filter((d) => dayLog[d]?.[task.id]).sort();
+  let best = 0, run = 0, prev = null;
+  recorded.forEach((d) => {
+    if (state(d) === "clean") {
+      run = prev && addDays(prev, 1) === d && state(prev) === "clean" ? run + 1 : 1;
+      best = Math.max(best, run);
+    } else {
+      run = 0;
+    }
+    prev = d;
+  });
+
+  return { current, best: Math.max(best, current), clean, slipped, recorded: clean + slipped, days };
+}
+
+// ---- Time since, and what it has bought (6) ----
+const HOUR = 3600 * 1000;
+const DAY = 24 * HOUR;
+
+/**
+ * The lapses that are slips: every one, for a habit being stopped; only the ones past the
+ * day's limit, for a habit being cut down. Three on a limit of five aren't slips — they're the
+ * plan — and treating them as slips is how Insights once reported a single afternoon's +1s as
+ * "Mondays are where it breaks".
+ */
+export function slipsOf(task, urgeLog) {
+  const limit = limitOf(task);
+  const byDate = {};
+  (urgeLog || [])
+    .filter((r) => r.kind === "lapse" && r.taskId === task.id)
+    .forEach((r) => { (byDate[r.date] = byDate[r.date] || []).push(r); });
+  return Object.values(byDate).flatMap((list) => list.sort((a, b) => a.at - b.at).slice(limit));
+}
+
+/** One slip per day — the one that lost it. For patterns in days and times, a day is the unit. */
+export function daysLost(task, urgeLog) {
+  const first = {};
+  slipsOf(task, urgeLog).forEach((r) => { if (!first[r.date] || r.at < first[r.date].at) first[r.date] = r; });
+  return Object.values(first).sort((a, b) => a.at - b.at);
+}
+
+/** When the last slip was, or when the habit started if there hasn't been one. */
+export function lastSlipAt(task, urgeLog) {
+  const last = slipsOf(task, urgeLog).reduce((a, r) => Math.max(a, r.at), 0);
+  if (last) return last;
+  const start = task.startDate ? new Date(`${task.startDate}T00:00:00`).getTime() : task.createdAt;
+  return start || null;
+}
+
+/** "4d 6h", "3h 20m", "12m" — the most motivating number in quitting, kept honest to the minute. */
+export function fmtSince(ms) {
+  if (ms == null || ms < 0) return null;
+  const d = Math.floor(ms / DAY);
+  const h = Math.floor((ms % DAY) / HOUR);
+  const m = Math.floor((ms % HOUR) / 60000);
+  if (d > 0) return h ? `${d}d ${h}h` : `${d}d`;
+  if (h > 0) return m ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
+
+/**
+ * Money and time not spent, from the person's own numbers: what they did before starting,
+ * against what the log says they've done since. Null unless there's a baseline to compare
+ * with — without one this would be a figure made up to look encouraging.
+ */
+export function reclaimed(task, urgeLog, now = Date.now()) {
+  const baseline = Number(task.baseline) || 0;
+  if (baseline <= 0) return null;
+  const startMs = task.startDate ? new Date(`${task.startDate}T00:00:00`).getTime() : task.createdAt;
+  if (!startMs || now <= startMs) return null;
+  const days = (now - startMs) / DAY;
+  const actual = (urgeLog || []).filter((r) => r.kind === "lapse" && r.taskId === task.id && r.at >= startMs).length;
+  const avoided = Math.max(0, Math.round(baseline * days - actual));
+  const cost = Number(task.costPer) || 0;
+  const mins = Number(task.minutesPer) || 0;
+  return {
+    avoided,
+    days: Math.floor(days),
+    money: cost > 0 ? Math.round(avoided * cost) : null,
+    minutes: mins > 0 ? Math.round(avoided * mins) : null,
+  };
+}

@@ -497,6 +497,45 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
                 {COMPETING_RESPONSE_HELP}
               </p>
 
+              {/* Cutting down is how most people quit. A limit judges the day against it, a
+                  baseline makes "what it's bought" a real figure instead of an invented one. */}
+              <div style={{ marginTop: 8, padding: "12px 12px 10px", borderRadius: R.md, background: C.surface2, border: `1px solid ${C.border}` }}>
+                <p style={{ color: C.muted, fontSize: 11, fontWeight: 650, letterSpacing: 0.4, margin: "0 0 4px", textTransform: "uppercase" }}>
+                  Cutting down, and what it's worth
+                </p>
+                <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "0 0 10px" }}>
+                  Leave the limit empty to stop altogether. With one set, a day inside it is a kept day.
+                </p>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
+                  <span style={{ color: C.muted, fontSize: 11 }}>Daily limit</span>
+                  <input type="number" inputMode="decimal" min="0" step="1" value={task.limit ?? ""} aria-label="Daily limit"
+                    onChange={(e) => set({ limit: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
+                    placeholder="none at all" style={{ ...styles.input, padding: "9px 11px", fontSize: 13.5 }} />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
+                  <span style={{ color: C.muted, fontSize: 11 }}>A day, before starting</span>
+                  <input type="number" inputMode="decimal" min="0" step="0.5" value={task.baseline ?? ""} aria-label="A day, before starting"
+                    onChange={(e) => set({ baseline: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
+                    placeholder="e.g. 20" style={{ ...styles.input, padding: "9px 11px", fontSize: 13.5 }} />
+                </label>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
+                  <span style={{ color: C.muted, fontSize: 11 }}>Cost each time</span>
+                  <input type="number" inputMode="decimal" min="0" step="0.01" value={task.costPer ?? ""} aria-label="Cost each time"
+                    onChange={(e) => set({ costPer: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
+                    placeholder="e.g. 0.60" style={{ ...styles.input, padding: "9px 11px", fontSize: 13.5 }} />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
+                  <span style={{ color: C.muted, fontSize: 11 }}>Minutes each time</span>
+                  <input type="number" inputMode="decimal" min="0" step="1" value={task.minutesPer ?? ""} aria-label="Minutes each time"
+                    onChange={(e) => set({ minutesPer: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
+                    placeholder="e.g. 7" style={{ ...styles.input, padding: "9px 11px", fontSize: 13.5 }} />
+                </label>
+                </div>
+              </div>
+
               {/* The note from calm you. Written in your words, read first when an urge hits.
                   "Why" belongs here, at setup; the other two are best answered at the moment
                   the app asks — after a slip, after riding one out — but can be written now. */}

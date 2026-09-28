@@ -1,3 +1,5 @@
+import { reconcileSlips } from "./urges.js";
+
 // Merging two copies of the state, for when the same account has been used on two devices.
 //
 // The backup this sits next to is deliberately not sync: one row, replaced wholesale, newest
@@ -201,6 +203,10 @@ export function mergeStates(mine, theirs, { now = Date.now() } = {}) {
   // lists is in both EDITABLE and WHOLE above; the merged version is the one to keep, because
   // losing a list loses everything filed under it.
   out.lists = mergeEditable(mine.lists, theirs.lists, graveyard);
+  // A slipped mark is derived from the lapse log and the habit's limit. Two phones each two
+  // lapses short of a limit of three merge into four — over — and neither mark alone knew it;
+  // a lapse undone on one phone should take its mark with it on both.
+  out.dayLog = reconcileSlips(out.tasks, out.urgeLog, out.dayLog);
   return out;
 }
 

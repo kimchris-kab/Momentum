@@ -7,7 +7,7 @@ import {
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, pillarOf } from "../data/constants.js";
 import { formatTime12, hashIdx, longDate, pad, todayStr } from "../lib/date.js";
-import { dayState, urgeTally } from "../lib/urges.js";
+import { dayState, fmtSince, lapsesOn, lastSlipAt, limitOf, slipsOf, urgeTally } from "../lib/urges.js";
 import { agendaForDate, dayStats, isDone, isFlexible, tasksForDate, weekProgress } from "../lib/tasks.js";
 import {
   freezesLeft, habitStreakProtected, isFrozen, missedYesterday, nextMilestone, reviewDue,
@@ -420,6 +420,13 @@ export default function TodayView({
                 const st = dayState(t, today, dayLog);
                 const slipAt = st === "slipped" ? dayLog[today][t.id].at : null;
                 const week = urgeTally(state.urgeLog, t.id, { today });
+                // Cutting down rather than stopping: the day is judged against the limit, and the
+                // count is what's shown — "2 of 5" is a kept day, not a failed one.
+                const limit = limitOf(t);
+                const count = limit ? lapsesOn(state.urgeLog, t.id, today).length : 0;
+                const since = st === "slipped" ? null : fmtSince(Date.now() - (lastSlipAt(t, state.urgeLog) || Date.now()));
+                // "Since the last slip" is only true if there was one.
+                const everSlipped = slipsOf(t, state.urgeLog).length > 0;
                 return (
                   <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px" }}>
                     {st === "slipped" ? (
@@ -445,13 +452,24 @@ export default function TodayView({
                             Slipped{slipAt ? ` · ${formatTime12(`${pad(new Date(slipAt).getHours())}:${pad(new Date(slipAt).getMinutes())}`)}` : ""}
                           </span>
                         )}
+                        {limit > 0 && (
+                          <span style={{
+                            ...styles.tag,
+                            color: count > limit ? C.orange : C.teal,
+                            background: alpha(count > limit ? C.orange : C.teal, 0.13),
+                          }}>
+                            {count} of {limit} today
+                          </span>
+                        )}
+                        {since && !limit && (
+                          <span style={{ ...styles.tag, color: C.muted, background: C.surface2 }}>
+                            {since} {everSlipped ? "since the last slip" : "since you started"}
+                          </span>
+                        )}
                         {week.rodeOut > 0 && (
                           <span style={{ ...styles.tag, color: C.teal, background: alpha(C.teal, 0.13) }}>
                             <Waves size={9} /> {week.rodeOut} urge{week.rodeOut === 1 ? "" : "s"} ridden out this week
                           </span>
-                        )}
-                        {st !== "slipped" && t.trigger && !week.rodeOut && (
-                          <span style={{ color: C.faint, fontSize: 11 }}>Trigger: {t.trigger}</span>
                         )}
                       </span>
                     </button>
@@ -464,12 +482,13 @@ export default function TodayView({
                         <Waves size={13} /> Urge
                       </button>
                     )}
-                    {onSlip && st !== "slipped" && (
-                      <button onClick={() => onSlip(t)} aria-label={`I slipped: ${t.text}`} style={{
+                    {onSlip && (limit > 0 || st !== "slipped") && (
+                      <button onClick={() => onSlip(t)}
+                        aria-label={limit > 0 ? `Log one: ${t.text}` : `I slipped: ${t.text}`} style={{
                         background: "none", border: "none", color: C.faint, cursor: "pointer",
                         fontSize: 11.5, padding: "6px 2px", flexShrink: 0,
                       }}>
-                        Slipped
+                        {limit > 0 ? "+1" : "Slipped"}
                       </button>
                     )}
                   </div>

@@ -20,6 +20,7 @@ import {
   weekdayBalance, weekdayPattern,
 } from "../lib/insights.js";
 import { moneyFindings } from "../lib/moneyInsights.js";
+import { breakFindings } from "../lib/breakInsights.js";
 import {
   Card, Checkbox, EmptyState, Pill, ProgressBar, SegmentedControl, SectionLabel,
 } from "../components/ui.jsx";
@@ -42,6 +43,8 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
   // The money half of the app was invisible here, while the ledger sat in the same state
   // object the habit findings already read.
   const money = useMemo(() => moneyFindings(state), [state]);
+  // The break side used to get two counters here. Now it gets what the lapse log can say.
+  const quitting = useMemo(() => breakFindings(state), [state]);
   const pillars = useMemo(
     () => pillarMovement(state.checkins, range.from, range.to, range.prevFrom, range.prevTo),
     [state.checkins, range]);
@@ -54,7 +57,8 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
 
   // Money counts as something to analyse. Someone who only uses the ledger was told there
   // was nothing here while six months of it sat in the same state object.
-  const hasAnything = cur.logged > 0 || cur.habitScheduled > 0 || cur.tasksDone > 0 || money.length > 0;
+  const hasAnything = cur.logged > 0 || cur.habitScheduled > 0 || cur.tasksDone > 0
+    || money.length > 0 || quitting.length > 0;
 
   return (
     <div style={styles.page}>
@@ -89,7 +93,7 @@ export default function InsightsView({ state, streak, onAddGoal, onUpdateGoal, o
       ) : tab === "habits" ? (
         <Habits state={state} cur={cur} prev={prev} range={range} weekdays={weekdays} habits={habits} />
       ) : (
-        <Patterns state={state} range={range} findings={findings} money={money} />
+        <Patterns state={state} range={range} findings={findings} money={money} quitting={quitting} />
       )}
     </div>
   );
@@ -573,7 +577,7 @@ function FindingCard({ finding: f }) {
   );
 }
 
-function Patterns({ state, range, findings, money = [] }) {
+function Patterns({ state, range, findings, money = [], quitting = [] }) {
   const cs = useMemo(() => checkinsIn(state.checkins, range.from, range.to), [state.checkins, range]);
   const energizers = useMemo(() => energizerImpact(cs), [cs]);
   const blockers = useMemo(() => blockerImpact(cs), [cs]);
@@ -585,6 +589,17 @@ function Patterns({ state, range, findings, money = [] }) {
 
   return (
     <>
+      {quitting.length > 0 && (
+        <>
+          <SectionLabel>Breaking habits</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 18 }}>
+            {quitting.map((f, i) => (
+              <FindingCard key={`quit-${i}`} finding={f} />
+            ))}
+          </div>
+        </>
+      )}
+
       {money.length > 0 && (
         <>
           <SectionLabel>Money</SectionLabel>

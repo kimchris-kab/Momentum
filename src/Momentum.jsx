@@ -18,7 +18,7 @@ import { comebacksToday, freshStart } from "./lib/rewards.js";
 import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
-import { newLapse, newUrge, slip, unslip, withCalmNote } from "./lib/urges.js";
+import { lapsesOn, limitOf, newLapse, newUrge, syncSlip, withCalmNote } from "./lib/urges.js";
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import { bury, mergeStates, unbury } from "./lib/merge.js";
@@ -640,19 +640,26 @@ export default function Momentum() {
   // A slip is two writes: the details go in the log, and the day is marked so streaks and
   // Insights read it as not clean. Undo takes both back — and buries the log entry, because
   // unlike a deleted task this record should not exist anywhere, including on the other phone.
-  const logLapse = useCallback(({ task, trigger, feeling, place }) => {
+  const logLapse = useCallback(({ task, trigger, feeling, place, message }) => {
     const entry = newLapse({ taskId: task.id, trigger, feeling, place });
-    setState((s) => ({
-      ...s,
-      urgeLog: [...(s.urgeLog || []), entry],
-      dayLog: slip(s.dayLog, task.id, entry.date, entry.at),
+    // The day's mark follows from the count against the limit, so it is derived after the
+    // write rather than set blind: on a habit being cut down, a lapse within the limit leaves
+    // the day kept.
+    setState((s) => {
+      const urgeLog = [...(s.urgeLog || []), entry];
+      const current = s.tasks.find((t) => t.id === task.id) || task;
+      return { ...s, urgeLog, dayLog: syncSlip(s.dayLog, current, entry.date, urgeLog) };
+    });
+    show(message || "Recorded. One slip is information, not a verdict.", "Undo", () => setState((cur) => {
+      const urgeLog = (cur.urgeLog || []).filter((r) => r.id !== entry.id);
+      const current = cur.tasks.find((t) => t.id === task.id) || task;
+      return {
+        ...cur,
+        urgeLog,
+        dayLog: syncSlip(cur.dayLog, current, entry.date, urgeLog),
+        graveyard: bury(cur.graveyard, entry.id),
+      };
     }));
-    show("Recorded. One slip is information, not a verdict.", "Undo", () => setState((cur) => ({
-      ...cur,
-      urgeLog: (cur.urgeLog || []).filter((r) => r.id !== entry.id),
-      dayLog: unslip(cur.dayLog, task.id, entry.date),
-      graveyard: bury(cur.graveyard, entry.id),
-    })));
   }, [show]);
 
   const saveCalmNote = useCallback((task, promptId, text) => {
@@ -752,7 +759,15 @@ export default function Momentum() {
                 onStartRitual={(t) => setRitual(t.id)} onOpenReview={() => setView("review")}
                 onStartFocus={(t) => setFocusId(t.id)} onSchedule={scheduleTask}
                 onUrge={(t) => setUrging({ id: t.id, mode: "urge" })}
-                onSlip={(t) => setUrging({ id: t.id, mode: "lapse" })}
+                onSlip={(t) => {
+                  // Cutting down: inside the limit a +1 is logged in one tap, because three taps
+                  // per occurrence is how counting gets abandoned. The one that crosses the
+                  // limit gets the full "what happened" — that's the lapse worth understanding.
+                  const limit = limitOf(t);
+                  const next = lapsesOn(state.urgeLog, t.id, todayStr()).length + 1;
+                  if (limit > 0 && next <= limit) logLapse({ task: t, message: `Logged — ${next} of ${limit} today` });
+                  else setUrging({ id: t.id, mode: "lapse" });
+                }}
                 srbaiDue={srbaiDueTasks} onRateHabit={(t) => setRating(t.id)}
                 onOpenSettings={() => setView("settings")}
                 onOpenSearch={() => setView("search")}

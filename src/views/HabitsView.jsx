@@ -12,6 +12,8 @@ import {
 import { habitStreakProtected, nextMilestoneFor, rewardProgress, scopeCheck } from "../lib/habits.js";
 import { graduationStatus, srbaiDue } from "../lib/automaticity.js";
 import { contextStability, cueOf, stabilityBand } from "../lib/cues.js";
+import { cleanRecord, fmtSince, lastSlipAt, reclaimed, slipsOf } from "../lib/urges.js";
+import { money } from "../lib/date.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission, scheduleReminders,
   sendTestReminder,
@@ -349,7 +351,7 @@ export default function HabitsView({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {active.map((t) => (
             <HabitCard key={t.id} task={t} kind={kind} accent={accent} dayLog={dayLog} freezes={freezes}
-              srbai={srbai} onRateHabit={onRateHabit}
+              srbai={srbai} onRateHabit={onRateHabit} urgeLog={state.urgeLog || []}
               onOpen={() => onOpenTask(t)} onMenu={() => setMenuFor(t.id)} />
           ))}
         </div>
@@ -455,7 +457,7 @@ export default function HabitsView({
   );
 }
 
-function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], onOpen, onMenu, onRateHabit }) {
+function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = [], onOpen, onMenu, onRateHabit }) {
   const streak = habitStreakProtected(task, dayLog, freezes);
   const dueToday = occursOn(task, todayStr());
   const doneToday = dueToday && isDone(task, todayStr(), dayLog);
@@ -581,6 +583,8 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], onOpen, on
         </p>
       )}
 
+      {kind === "break" && <QuitRecord task={task} dayLog={dayLog} urgeLog={urgeLog} />}
+
       {kind === "build" && (milestone || reward) && (
         <p style={{ color: C.faint, fontSize: 10.5, margin: "9px 0 0", lineHeight: 1.5 }}>
           {milestone && streak > 0 && `${milestone - streak} to your ${milestone}-${flexible ? "week" : "day"} mark`}
@@ -588,6 +592,40 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], onOpen, on
           {reward && (reward.ready
             ? <b style={{ color: C.gold }}>Reward ready: {reward.text}</b>
             : `${reward.remaining} to unlock: ${reward.text}`)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// A rate beside the run, and the best run beside the current one. A streak that goes to zero
+// on one slip is the abstinence violation effect with a number on it; "22 of 24 recorded days"
+// is the same history told in a way one bad evening can't wipe out.
+function QuitRecord({ task, dayLog, urgeLog }) {
+  const rec = cleanRecord(task, dayLog);
+  const since = fmtSince(Date.now() - (lastSlipAt(task, urgeLog) || Date.now()));
+  const everSlipped = slipsOf(task, urgeLog).length > 0;
+  const gain = reclaimed(task, urgeLog);
+  const stat = (value, label) => (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <p style={{ color: C.text, fontFamily: F.display, fontSize: 17, margin: 0 }}>{value}</p>
+      <p style={{ color: C.faint, fontSize: 10, margin: "1px 0 0" }}>{label}</p>
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 11, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        {stat(since || "—", everSlipped ? "since the last slip" : "since you started")}
+        {stat(rec.recorded ? `${rec.clean}/${rec.recorded}` : "—", "recorded days clean, 30d")}
+        {stat(`${rec.current}d`, rec.best > rec.current ? `run · best ${rec.best}d` : "current run")}
+      </div>
+      {gain && (gain.money !== null || gain.minutes !== null) && (
+        <p style={{ color: C.teal, fontSize: 11.5, lineHeight: 1.5, margin: "9px 0 0" }}>
+          About {gain.avoided} fewer since you started
+          {gain.money !== null && <> — roughly <b>{money(gain.money)}</b> not spent</>}
+          {gain.minutes !== null && <>{gain.money !== null ? " and" : " —"} <b>{gain.minutes >= 90
+            ? `${Math.round(gain.minutes / 60)} hours` : `${gain.minutes} minutes`}</b> back</>}
+          .
         </p>
       )}
     </div>
