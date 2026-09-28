@@ -1,0 +1,85 @@
+# Builds the Android APK on GitHub's own runners.
+#
+# The development sandbox this app was written in cannot reach dl.google.com — the host the
+# Android SDK and Google's Maven repository are served from — so no APK could ever be built
+# there. GitHub-hosted runners can, and doing it here has a second benefit: every change to
+# the native code is now compiled by something, which until this existed was nothing at all.
+#
+# The result is a debug APK, attached to each run as a downloadable artifact. It installs by
+# sideloading; a store build needs a release signing key, which belongs in repository secrets
+# and isn't set up here.
+name: Android APK
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - "android/**"
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.json"
+      - "vite.config.js"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push makes an older build pointless.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Seconds, and it stops a broken app from being packaged at all.
+      - name: Unit tests
+        run: npm test
+
+      - name: Build the web app
+        run: npm run build
+
+      # Capacitor 8 needs JDK 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      # Pinned explicitly rather than trusting whatever the runner image happens to carry:
+      # compileSdk is 36 in android/variables.gradle.
+      - uses: android-actions/setup-android@v3
+      - name: Android platform and build tools
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Copy the web app into the Android project
+        run: npx cap sync android
+
+      - name: Assemble the debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Name it after the commit
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk "momentum-${GITHUB_SHA::7}-debug.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: momentum-debug-apk
+          path: momentum-*-debug.apk
+          if-no-files-found: error
+          retention-days: 30
