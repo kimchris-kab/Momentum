@@ -63,7 +63,11 @@ jobs:
 
       # Pinned explicitly rather than trusting whatever the runner image happens to carry:
       # compileSdk is 36 in android/variables.gradle.
+      # Its default package list still includes "tools", which the SDK repository no longer
+      # carries — left at the default, the whole job fails on "Failed to find package 'tools'".
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Android platform and build tools
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
