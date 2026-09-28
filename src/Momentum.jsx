@@ -14,6 +14,7 @@ import { newSession } from "./lib/focus.js";
 import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
 import { drainActions } from "./lib/actionQueue.js";
 import { publishWidget, takePendingUrge } from "./lib/widget.js";
+import { bootState, bootStep } from "./boot.js";
 import { comebacksToday, freshStart } from "./lib/rewards.js";
 import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
 import { postDueRecurring } from "./lib/money.js";
@@ -89,6 +90,51 @@ const NAV = [
 ];
 const FAB_VIEWS = ["today", "tasks"];
 
+// The startup screen. Normally gone before anyone can read it; if it isn't, after a few
+// seconds it says what it's waiting on and anything that has gone wrong, so a screenshot is
+// enough to diagnose a phone nobody can attach a debugger to.
+function StartingUp() {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const boot = bootState();
+  const secs = Math.floor((Date.now() - boot.startedAt) / 1000);
+  const stuck = secs >= 6;
+  const native = !!window.Capacitor?.isNativePlatform?.();
+  const sw = typeof navigator !== "undefined" && navigator.serviceWorker?.controller ? "controlling" : "none";
+
+  return (
+    <div style={{
+      ...styles.app, display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", padding: 24, boxSizing: "border-box",
+    }}>
+      <span style={{ color: C.muted }}>Loading your map…</span>
+      {stuck && (
+        <div style={{
+          marginTop: 22, width: "100%", maxWidth: 380, background: C.surface, borderRadius: 14,
+          border: `1px solid ${C.border}`, padding: "14px 15px", fontSize: 12, lineHeight: 1.55,
+        }}>
+          <p style={{ color: C.text, fontWeight: 650, margin: "0 0 6px" }}>This is taking longer than it should.</p>
+          <p style={{ color: C.muted, margin: "0 0 10px" }}>
+            A screenshot of this box is enough to work out what's wrong.
+          </p>
+          <p style={{ color: C.faint, margin: 0, fontFamily: "monospace", fontSize: 11, wordBreak: "break-word" }}>
+            {secs}s · step: {boot.step}<br />
+            native: {String(native)} · sw: {sw}<br />
+            {boot.errors.length === 0 ? "no errors caught" : boot.errors.map((e, i) => <span key={i}>✕ {e}<br /></span>)}
+            {navigator.userAgent.match(/Chrome\/[\d.]+/)?.[0] || navigator.userAgent.slice(0, 80)}
+          </p>
+          <button onClick={() => window.location.reload()} style={{ ...styles.ghostCta, height: 38, marginTop: 12, fontSize: 12.5 }}>
+            Try again
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Momentum() {
   const [view, setView] = useState("today");
   const [state, setState] = useState(emptyState);
@@ -139,13 +185,22 @@ export default function Momentum() {
 
   useEffect(() => {
     (async () => {
+      bootStep("reading saved data");
       try {
         const r = await window.storage.get("momentum:data");
+        bootStep(r?.value ? `read ${r.value.length} bytes` : "nothing saved yet");
         setState(loadState(r?.value));
-      } catch { /* first run */ }
+      } catch (e) {
+        bootStep(`reading failed: ${e?.message || e}`);
+      }
       setLoaded(true);
+      bootStep("drawing the app");
     })();
   }, []);
+
+  // Runs once the full app has actually committed to the screen — the last mark a healthy
+  // start leaves, and the one the Android smoke test waits for.
+  useEffect(() => { if (loaded) bootStep("ready"); }, [loaded]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -747,13 +802,7 @@ export default function Momentum() {
     if (task) setEditing(task.id);
   };
 
-  if (!loaded) {
-    return (
-      <div style={{ ...styles.app, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ color: C.muted }}>Loading your map…</span>
-      </div>
-    );
-  }
+  if (!loaded) return <StartingUp />;
 
   const isSubView = ["checkin", "habits", "identity", "review", "plan"].includes(view);
 
