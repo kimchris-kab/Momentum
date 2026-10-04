@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 4x3 by default: the habits being broken take the top of it with their big counters, and the
+     task list scrolls in what's left. It can be sized down to 3x2 for a smaller footprint. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="180dp"
-    android:minHeight="110dp"
-    android:targetCellWidth="3"
-    android:targetCellHeight="2"
+    android:minWidth="250dp"
+    android:minHeight="180dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:initialLayout="@layout/momentum_widget"

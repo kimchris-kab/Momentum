@@ -2,7 +2,8 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { suite } from "./harness.mjs";
-import { PENDING_URGE_KEY, WIDGET_KEY } from "../src/lib/widget.js";
+import { PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
+import { newLapse, newUrge } from "../src/lib/urges.js";
 
 const t = suite("android");
 
@@ -36,6 +37,8 @@ const strings = read("res/values/strings.xml");
 const styles = read("res/values/styles.xml");
 const widgetJava = read("java/com/momentum/app/MomentumWidget.java");
 const layout = read("res/layout/momentum_widget.xml");
+const rowLayout = read("res/layout/widget_task_row.xml");
+const serviceJava = read("java/com/momentum/app/MomentumWidgetService.java");
 
 const declaredNames = (xml, tag) =>
   [...xml.matchAll(new RegExp(`<${tag}\\s+name="([^"]+)"`, "g"))].map((m) => m[1]);
@@ -73,7 +76,7 @@ t.group("resource references resolve");
   const styleNames = new Set(declaredNames(styles, "style"));
 
   const refs = (text, kind) => [...text.matchAll(new RegExp(`@${kind}/([a-zA-Z0-9_]+)`, "g"))].map((m) => m[1]);
-  const javaStrings = [...widgetJava.matchAll(/R\.string\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]);
+  const javaStrings = [...widgetJava.matchAll(/R\.string\.([a-zA-Z0-9_]+)/g), ...serviceJava.matchAll(/R\.string\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]);
 
   const missingStrings = [...xmlFiles.flatMap((f) => refs(read(f), "string")), ...javaStrings]
     .filter((n) => !stringNames.has(n));
@@ -99,8 +102,9 @@ t.group("resource references resolve");
   t.eq("every referenced layout, drawable, mipmap and xml file is there", [...new Set(missingFiles)], []);
 
   // A missing R.id is a compile error in Java and a silent no-op in RemoteViews.
-  const layoutIds = new Set([...layout.matchAll(/android:id="@\+id\/([a-zA-Z0-9_]+)"/g)].map((m) => m[1]));
-  const javaIds = [...widgetJava.matchAll(/R\.id\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]);
+  const idsIn = (xml) => [...xml.matchAll(/android:id="@\+id\/([a-zA-Z0-9_]+)"/g)].map((m) => m[1]);
+  const layoutIds = new Set([...idsIn(layout), ...idsIn(rowLayout)]);
+  const javaIds = [...widgetJava.matchAll(/R\.id\.([a-zA-Z0-9_]+)/g), ...serviceJava.matchAll(/R\.id\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]);
   t.eq("every view the widget writes to exists in its layout",
     [...new Set(javaIds.filter((id) => !layoutIds.has(id)))], []);
   t.ok("the layout has a root the tap handler can bind to", layoutIds.has("widget_root"));
@@ -158,6 +162,10 @@ t.group("honesty about what this is");
     /NOT YET RUN ON A DEVICE/.test(widgetJava));
   const workflow = readFileSync(join(ROOT, ".github", "workflows", "android.yml"), "utf8");
   t.ok("...and something compiles it on every push", /assembleDebug/.test(workflow) && /android\/\*\*/.test(workflow));
+  // The Java claims it's inflated on an emulator by the widget test. That has to be true.
+  t.ok("...and the widget test the Java mentions exists and is run by the workflow",
+    existsSync(join(ROOT, "android/app/src/androidTest/java/com/momentum/app/WidgetTest.java"))
+    && /connectedDebugAndroidTest/.test(workflow));
 }
 
 t.group("the Urge button, from home screen to urge screen");
@@ -172,7 +180,7 @@ t.group("the Urge button, from home screen to urge screen");
     "Button", "Chronometer", "ImageButton", "ImageView", "ProgressBar", "TextView", "ViewFlipper",
     "ListView", "GridView", "StackView", "AdapterViewFlipper", "ViewStub", "CheckBox", "Switch", "RadioButton",
     "RadioGroup", "TextClock"]);
-  const tags = [...layout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g)].map((m) => m[1]).filter((tag) => tag !== "?xml");
+  const tags = [...layout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g), ...rowLayout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g)].map((m) => m[1]).filter((tag) => tag !== "?xml");
   t.eq("every element in the widget is one RemoteViews will inflate",
     [...new Set(tags.filter((tag) => !ALLOWED.has(tag)))], []);
 
@@ -204,4 +212,97 @@ t.group("the Urge button, from home screen to urge screen");
   t.ok("every Urge button is given a tap handler",
     /quitButtons\s*=\s*\{\s*R\.id\.quit_0_urge,\s*R\.id\.quit_1_urge\s*\}/.test(widgetJava)
     && /setOnClickPendingIntent\(quitButtons\[i\]/.test(widgetJava));
+}
+
+t.group("the scrolling task list");
+{
+  // RemoteViews has no list of its own: a ListView needs a service to supply each row. Every
+  // link in that chain is a place a widget can show nothing, with no error anywhere.
+  t.ok("the layout has a ListView for the tasks", /<ListView[\s\S]*?android:id="@\+id\/widget_list"/.test(layout));
+  t.ok("...and something to show when it's empty", /@\+id\/widget_list_empty/.test(layout) && /setEmptyView\(R\.id\.widget_list,\s*R\.id\.widget_list_empty\)/.test(widgetJava));
+  t.ok("it takes the room that's left rather than a fixed height",
+    /<ListView[\s\S]*?android:layout_height="0dp"[\s\S]*?android:layout_weight="1"/.test(layout));
+
+  const service = manifest.match(/<service[\s\S]*?\/>/)?.[0] || "";
+  t.ok("the service is declared", service.includes(".MomentumWidgetService"), service);
+  // Without this permission the system refuses to bind it and the list stays empty.
+  t.ok("...guarded by the permission the system binds with", /android:permission="android\.permission\.BIND_REMOTEVIEWS"/.test(service));
+  t.ok("...and not open to other apps", /android:exported="false"/.test(service));
+  t.ok("the service class extends RemoteViewsService", /class MomentumWidgetService extends RemoteViewsService/.test(serviceJava));
+  t.ok("...and hands back a factory", /onGetViewFactory\(Intent intent\)[\s\S]*new Factory\(/.test(serviceJava));
+  t.ok("the factory re-reads the snapshot when told the data changed",
+    /onDataSetChanged\(\)\s*\{\s*items = MomentumWidget\.readItems\(context\)/.test(serviceJava));
+
+  t.ok("the widget points the list at the service", /setRemoteAdapter\(R\.id\.widget_list,/.test(widgetJava)
+    && /new Intent\(context, MomentumWidgetService\.class\)/.test(widgetJava));
+  // Two widgets on one screen with the same adapter intent would each be given the other's list.
+  t.ok("...with an intent that's unique per widget", /setData\(Uri\.parse\(list\.toUri\(Intent\.URI_INTENT_SCHEME\)\)\)/.test(widgetJava)
+    && /EXTRA_APPWIDGET_ID/.test(widgetJava));
+  t.ok("it tells the list to re-read after drawing", /notifyAppWidgetViewDataChanged\(widgetId,\s*R\.id\.widget_list\)/.test(widgetJava));
+  t.ok("a tap on a row has a template to fill in", /setPendingIntentTemplate\(R\.id\.widget_list/.test(widgetJava)
+    && /setOnClickFillInIntent\(R\.id\.task_text/.test(serviceJava));
+  // A template that rows fill in has to be mutable from Android 12; immutable ones throw at
+  // draw time, which on a phone looks like the widget refusing to load.
+    const templateCall = widgetJava.slice(widgetJava.indexOf("setPendingIntentTemplate"), widgetJava.indexOf("setPendingIntentTemplate") + 220);
+  t.ok("...which is mutable on the versions that ask",
+    /int mutable = Build\.VERSION\.SDK_INT >= Build\.VERSION_CODES\.S \? PendingIntent\.FLAG_MUTABLE : 0/.test(widgetJava)
+    && /FLAG_UPDATE_CURRENT \| mutable/.test(templateCall) && !/FLAG_IMMUTABLE/.test(templateCall), templateCall);
+  t.ok("the old four fixed rows are gone", !/row_[0-3]/.test(layout) && !/row_[0-3]/.test(widgetJava));
+}
+
+t.group("keeping the counter moving");
+{
+  // Android won't update a widget more than every half hour by itself, so a counter reading
+  // "3h 20m" would sit there stale. The widget schedules its own, gentler tick.
+  t.ok("it handles its own tick", /TICK_ACTION\.equals\(intent\.getAction\(\)\)/.test(widgetJava));
+  t.ok("...redrawing and scheduling the next", /refresh\(context\);\s*scheduleTick\(context\)/.test(widgetJava));
+  t.ok("it starts when the first widget is added", /onEnabled\(Context context\)\s*\{\s*scheduleTick/.test(widgetJava));
+  t.ok("...and stops when the last is removed, rather than ticking for nothing", /onDisabled[\s\S]*alarms\.cancel\(tickIntent/.test(widgetJava));
+  t.ok("the tick isn't a waking alarm", /AlarmManager\.RTC,/.test(widgetJava) && !/RTC_WAKEUP/.test(widgetJava));
+  const every = Number(widgetJava.match(/TICK_MS\s*=\s*(\d+) \* 60_000L/)?.[1]);
+  t.ok("it ticks more often than Android's half hour, but not wastefully", every >= 5 && every < 30, every);
+}
+
+t.group("the counter is the biggest thing on the widget");
+{
+  const size = (re) => Number(re.exec(styles)?.[1]);
+  const timeSize = size(/name="MomentumWidgetQuitTime"[\s\S]*?textSize">(\d+)sp/);
+  const others = [...styles.matchAll(/textSize">(\d+(?:\.\d+)?)sp/g)].map((m) => Number(m[1]));
+  const progress = Number(layout.match(/widget_progress"[\s\S]*?textSize="(\d+)sp"/)?.[1]);
+  t.ok("the clean-time counter is larger than the day's progress figure", timeSize > progress, { timeSize, progress });
+  t.ok("...and than anything else in the styles", others.every((o) => o <= timeSize), others);
+  t.ok("...and big in absolute terms", timeSize >= 28, timeSize);
+  t.ok("it's bold", /name="MomentumWidgetQuitTime"[\s\S]*?textStyle">bold/.test(styles));
+}
+
+t.group("the keys the Java reads are the keys the app writes");
+{
+  // Two languages, one JSON shape. A key misspelt on either side doesn't fail anywhere — the
+  // widget just shows the default. So: every key the Java asks for must exist in a real snapshot.
+  const at = new Date("2026-09-28T15:00:00").getTime();
+  const daily = { freq: "daily", interval: 1 };
+  const snap = widgetSnapshot({
+    tasks: [
+      { id: "b1", kind: "build", text: "Walk", recurrence: daily, startDate: "2026-09-01", createdAt: 1 },
+      { id: "q1", kind: "break", text: "Doomscrolling", recurrence: daily, startDate: "2026-09-01", createdAt: 1, limit: 3 },
+    ],
+    dayLog: {},
+    urgeLog: [newLapse({ taskId: "q1", at }), newUrge({ taskId: "q1", at })],
+  }, "2026-09-28");
+  const top = new Set(Object.keys(snap));
+  const item = new Set(Object.keys(snap.items[0] || {}));
+  const quit = new Set(Object.keys(snap.quitting[0] || {}));
+
+  const read = (java) => [...java.matchAll(/\b(\w+)\.opt(?:String|Int|Long|Boolean|JSONArray|JSONObject)\("(\w+)"/g)]
+    .map((m) => ({ on: m[1], key: m[2] }));
+  const reads = [...read(widgetJava), ...read(serviceJava)];
+  t.ok("the Java reads something", reads.length > 8, reads.length);
+  const topReads = reads.filter((r) => r.on === "snapshot").map((r) => r.key);
+  const itemReads = reads.filter((r) => r.on === "item").map((r) => r.key);
+  const quitReads = reads.filter((r) => r.on === "q").map((r) => r.key);
+  t.eq("top-level keys all exist", topReads.filter((k) => !top.has(k)), []);
+  t.eq("task keys all exist", itemReads.filter((k) => !item.has(k)), []);
+  t.eq("habit-being-broken keys all exist", quitReads.filter((k) => !quit.has(k)), []);
+  t.ok("...and each group was actually checked", topReads.length && itemReads.length && quitReads.length,
+    { topReads, itemReads, quitReads });
 }

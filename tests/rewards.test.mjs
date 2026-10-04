@@ -116,10 +116,13 @@ atDate(CLOCK, () => {
   t.eq("today's date", snap.date, TODAY);
   t.eq("what's on and what's done", [snap.total, snap.done], [5, 1]);
   t.eq("the streak comes along", snap.streak, 12);
-  // A widget that needs scrolling is an app.
-  t.eq("at most four rows", snap.items.length, 4);
-  t.ok("long names are cut to fit", snap.items.some((i) => i.text.endsWith("…") && i.text.length <= 28));
-  t.ok("each row knows if it's done", snap.items[0].done === true);
+  // The widget's list scrolls now, so every task goes across — the old cap of four is why a
+  // day with five things on it looked like a day with four.
+  t.eq("every task is on it", snap.items.length, 5);
+  t.ok("long names are cut to fit", snap.items.some((i) => i.text.endsWith("…") && i.text.length <= 40));
+  t.ok("each row knows if it's done", snap.items.some((i) => i.done === true));
+  t.eq("what's still to do comes before what's finished",
+    snap.items.map((i) => i.done), [false, false, false, false, true]);
   t.ok("archived habits never reach the launcher", !snap.items.some((i) => i.id === "h9"));
 
   // A quota habit that's met its week has nothing left to ask for, so it drops off.

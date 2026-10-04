@@ -282,6 +282,22 @@ export function daysLost(task, urgeLog) {
   return Object.values(first).sort((a, b) => a.at - b.at);
 }
 
+/**
+ * Every moment this habit pulled at you that got written down: an urge ridden out, an urge
+ * given in to, and a lapse. A slip is the narrowest of these and the least useful for knowing
+ * when the pull comes — the urges that were ridden out never show up as slips at all.
+ */
+export const urgeEvents = (task, urgeLog) =>
+  (urgeLog || [])
+    .filter((r) => r.taskId === task.id && (r.kind === "urge" || r.kind === "lapse"))
+    .sort((a, b) => a.at - b.at);
+
+/** When it last pulled at you, however it ended. Null if it never has. */
+export function lastUrgeAt(task, urgeLog) {
+  const events = urgeEvents(task, urgeLog);
+  return events.length ? events[events.length - 1].at : null;
+}
+
 /** When the last slip was, or when the habit started if there hasn't been one. */
 export function lastSlipAt(task, urgeLog) {
   const last = slipsOf(task, urgeLog).reduce((a, r) => Math.max(a, r.at), 0);

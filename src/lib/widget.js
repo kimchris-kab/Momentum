@@ -1,18 +1,20 @@
 import { todayStr } from "./date.js";
 import { agendaForDate, isDone, occursOn } from "./tasks.js";
-import { dayState, lapsesOn, lastSlipAt, limitOf } from "./urges.js";
+import { dayState, lapsesOn, lastSlipAt, lastUrgeAt, limitOf, slipsOf } from "./urges.js";
 
 // The home-screen widget reads a small snapshot rather than the app's state, so a schema
 // change here can never break the launcher. Written through Capacitor Preferences, which on
 // Android lands in the SharedPreferences file the widget provider reads.
 //
-// Kept deliberately tiny: four rows, three numbers. A widget that needs scrolling is a app.
+// A few numbers and a list. The list scrolls inside the widget, so it carries everything today
+// holds — an earlier version stopped at four rows, and a day with seven things on it looked like
+// a day with four. The cap is a safety net for the size of the stored string, not a design limit.
 export const WIDGET_KEY = "momentum:widget";
 // Where the widget leaves the id of a habit whose Urge button was tapped, for the app to pick
 // up when it comes to the front. The Java side writes this exact string; tests/android
 // checks the two haven't drifted apart, since nothing else could until it failed on a phone.
 export const PENDING_URGE_KEY = "momentum:pendingUrge";
-const MAX_ITEMS = 4;
+const MAX_ITEMS = 50;
 // Two, not four: the rows carry a button each, and the widget is already a 3×2.
 const MAX_QUITTING = 2;
 
@@ -23,15 +25,21 @@ export function widgetSnapshot(state, date = todayStr()) {
     ...agendaForDate(tasks, date, dayLog, "todo"),
   ];
   const done = agenda.filter((t) => isDone(t, date, dayLog)).length;
+  // What's still to do comes first. On a long day the list scrolls, and the finished ones are
+  // the ones that can afford to be below the fold.
+  const ordered = [
+    ...agenda.filter((t) => !isDone(t, date, dayLog)),
+    ...agenda.filter((t) => isDone(t, date, dayLog)),
+  ];
 
   return {
     date,
     done,
     total: agenda.length,
     streak: state.streak || 0,
-    items: agenda.slice(0, MAX_ITEMS).map((t) => ({
+    items: ordered.slice(0, MAX_ITEMS).map((t) => ({
       id: t.id,
-      text: t.text.length > 28 ? `${t.text.slice(0, 27)}…` : t.text,
+      text: t.text.length > 40 ? `${t.text.slice(0, 39)}…` : t.text,
       done: isDone(t, date, dayLog),
     })),
     // The break side, with an Urge button each. An urge button only helps if it can be reached
@@ -43,9 +51,13 @@ export function widgetSnapshot(state, date = todayStr()) {
       .slice(0, MAX_QUITTING)
       .map((t) => ({
         id: t.id,
-        text: t.text.length > 22 ? `${t.text.slice(0, 21)}…` : t.text,
+        text: t.text.length > 24 ? `${t.text.slice(0, 23)}…` : t.text,
         state: dayState(t, date, dayLog),
         lastSlipAt: lastSlipAt(t, state.urgeLog) || null,
+        lastUrgeAt: lastUrgeAt(t, state.urgeLog) || null,
+        // lastSlipAt falls back to the day the habit began; the widget needs to know which it is
+        // to say "since the last slip" rather than claim a slip that never happened.
+        everSlipped: slipsOf(t, state.urgeLog).length > 0,
         limit: limitOf(t),
         count: limitOf(t) ? lapsesOn(state.urgeLog, t.id, date).length : 0,
       })),

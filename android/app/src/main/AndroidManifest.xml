@@ -38,6 +38,13 @@
                 android:resource="@xml/momentum_widget_info" />
         </receiver>
 
+        <!-- Feeds the widget's task list. The system binds to it, not another app, so it isn't
+             exported; the permission is what stops anything else asking it for the list. -->
+        <service
+            android:name=".MomentumWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

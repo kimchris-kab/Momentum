@@ -1,5 +1,5 @@
 import { addDays, daysBetween, parseD, todayStr, weekStartOf } from "./date.js";
-import { isDone, occursOn } from "./tasks.js";
+import { isDone, isFinished, occursOn } from "./tasks.js";
 import { isFrozen } from "./habits.js";
 import { GRADUATION_MEAN, graduationStatus } from "./automaticity.js";
 
@@ -110,7 +110,7 @@ const LAPSED_DAYS = 4;
 
 /** Has the person actually drifted? Nothing kept in the last few scheduled days. */
 export function isLapsed(tasks, dayLog, today = todayStr(), days = LAPSED_DAYS) {
-  const habits = tasks.filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt);
+  const habits = tasks.filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt && !isFinished(t, today));
   if (!habits.length) return false;
   let scheduled = 0;
   let done = 0;

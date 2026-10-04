@@ -1,4 +1,4 @@
-import { addDays, daysBetween, dstr, parseD, todayStr, weekStartOf, weekdayKey } from "./date.js";
+import { addDays, daysBetween, dstr, parseD, prettyDate, todayStr, weekStartOf, weekdayKey } from "./date.js";
 import { WK_ORDER } from "../data/constants.js";
 
 // A single Task shape backs all three kinds of thing the app tracks:
@@ -44,6 +44,63 @@ export const weeklyCountRule = (timesPerWeek = 3) => ({
   timesPerWeek: Math.max(1, Math.min(7, Math.round(timesPerWeek) || 3)),
 });
 
+// ---- Ending a repeat ----
+// A repeating task runs until it's stopped, until a date, or for a number of completions. The
+// two limits live on the recurrence itself — endDate ("YYYY-MM-DD") and endAfter (a count) —
+// and ride along when the pattern changes, so switching "every 2 days" to "every 3" doesn't
+// quietly forget that it was meant to stop.
+//
+// A date is easy to check. A count is judged from the day log, which occursOn can't see, so the
+// day the last one was done is stamped on the task as endedOn and kept in line by settleEnds.
+export const carryEnd = (rule, from) => (rule
+  ? { ...rule, endDate: from?.endDate || null, endAfter: from?.endAfter || null }
+  : rule);
+
+export const endModeOf = (rec) => (rec?.endDate ? "date" : rec?.endAfter ? "count" : "never");
+
+const completionDates = (task, dayLog) =>
+  Object.keys(dayLog || {}).filter((d) => dayLog[d]?.[task.id]?.done).sort();
+
+/** How far into an "after N times" ending a task is. Null when it has no such ending. */
+export function endProgress(task, dayLog) {
+  const of = Number(task?.recurrence?.endAfter) || 0;
+  if (!of) return null;
+  const done = Math.min(of, completionDates(task, dayLog).length);
+  return { done, of, left: of - done };
+}
+
+/**
+ * Brings every task's endedOn into line with the day log. Returns the same array when nothing
+ * moved, so calling it after every write costs a loop and not a render. Run wherever the log or
+ * a recurrence changes — a tick, an edit, a merge — because the stamp is only as true as the
+ * last time this ran. Deliberately leaves updatedAt alone: every device derives the same
+ * answer from the same log, and bumping it would have two phones overwriting each other with it.
+ */
+export function settleEnds(tasks, dayLog) {
+  let changed = false;
+  const out = (tasks || []).map((t) => {
+    const n = Number(t.recurrence?.endAfter) || 0;
+    const dates = n ? completionDates(t, dayLog) : [];
+    const endedOn = n && dates.length >= n ? dates[n - 1] : null;
+    if ((t.endedOn || null) === endedOn) return t;
+    changed = true;
+    return { ...t, endedOn };
+  });
+  return changed ? out : tasks;
+}
+
+/** Past its end — by date, or because the last of its count has been done. */
+export const isFinished = (task, today = todayStr()) =>
+  !!task?.recurrence && !task.archivedAt
+  && ((!!task.recurrence.endDate && today > task.recurrence.endDate) || !!task.endedOn);
+
+/** "Until 31 Oct", "10 times", or null. */
+export function describeEnd(rec) {
+  if (rec?.endDate) return `Until ${prettyDate(rec.endDate)}`;
+  if (rec?.endAfter) return rec.endAfter === 1 ? "Once" : `${rec.endAfter} times`;
+  return null;
+}
+
 export const isFlexible = (task) => task?.recurrence?.freq === "weeklyCount";
 export const weeklyTarget = (task) =>
   Math.max(1, Math.min(7, task?.recurrence?.timesPerWeek || 3));
@@ -84,6 +141,8 @@ export function occursOn(task, dateStr) {
   if (!rec) return task.dueDate === dateStr;
   const startsOn = task.startDate || dstr(new Date(task.createdAt || Date.now()));
   if (dateStr < startsOn) return false;
+  if (rec.endDate && dateStr > rec.endDate) return false;
+  if (task.endedOn && dateStr > task.endedOn) return false;
   // A quota habit is available every day; the week decides whether you kept it.
   if (rec.freq === "weeklyCount") return true;
   if (rec.freq === "daily") {
@@ -122,7 +181,8 @@ export function toggleDoneReducer(task, dateStr, tasks, dayLog) {
     const day = { ...(dayLog[dateStr] || {}) };
     if (nowDone) day[task.id] = { done: true, doneAt: Date.now() };
     else delete day[task.id];
-    return { tasks, dayLog: { ...dayLog, [dateStr]: day } };
+    const nextLog = { ...dayLog, [dateStr]: day };
+    return { tasks: settleEnds(tasks, nextLog), dayLog: nextLog };
   }
   return {
     tasks: tasks.map((t) => t.id === task.id ? { ...t, done: nowDone, doneAt: nowDone ? Date.now() : null } : t),

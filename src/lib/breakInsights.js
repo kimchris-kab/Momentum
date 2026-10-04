@@ -1,4 +1,4 @@
-import { FEELING_BY_ID, daysLost, slipsOf } from "./urges.js";
+import { FEELING_BY_ID, daysLost, slipsOf, urgeEvents } from "./urges.js";
 
 // What the lapse log says about when and why a habit breaks. The build side has had cue
 // stability, automaticity and comebacks for a while; the break side had two counters. This is
@@ -47,6 +47,55 @@ export function peakTime(lapses) {
   if (!top || top.n / lapses.length < DOMINANT) return null;
   const band = TIME_BANDS.find((b) => b.id === top.value);
   return { band, n: top.n, of: lapses.length, share: Math.round((top.n / lapses.length) * 100) };
+}
+
+// ---- When the pull usually comes ----
+// peakTime above names a broad stretch of the day from slips. This is the other question — at
+// what clock time should a warning go out — so it looks at every urge, ridden out or not (the
+// ones ridden out are most of the evidence, and they never show up as slips), finds the
+// two-hour stretch of the day that holds the most of them, and warns shortly before it begins.
+const WINDOW_MINUTES = 120;
+const WINDOW_STEP = 30;
+const WINDOW_MIN_HITS = 3;     // fewer than three in one stretch is a coincidence
+const WINDOW_SHARE = 0.4;      // ...and so is a stretch holding less than 40% of them
+const WINDOW_RECENT_DAYS = 60; // old habits of mind shouldn't outvote this month's
+export const URGE_LEAD_MINUTES = 20;
+
+const hhmm = (minutes) => {
+  const m = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+
+/**
+ * The clock time to warn at, from this habit's own log — or null until there is enough of it.
+ * `warnAt` is shortly before the pull usually starts, not when it peaks: a warning at the peak
+ * arrives with the urge, and the point is to arrive ahead of it. `around` is the middle of the
+ * stretch, for saying in words when it usually comes.
+ */
+export function urgeWindow(task, urgeLog, { now = Date.now() } = {}) {
+  const since = now - WINDOW_RECENT_DAYS * 86400000;
+  const events = urgeEvents(task, urgeLog).filter((r) => r.at >= since);
+  if (events.length < MIN_URGES) return null;
+
+  const minutes = events.map((r) => { const d = new Date(r.at); return d.getHours() * 60 + d.getMinutes(); });
+  // Slide a two-hour window round the clock. Modulo, so 23:30 and 00:20 are neighbours.
+  let best = null;
+  for (let start = 0; start < 1440; start += WINDOW_STEP) {
+    const inside = minutes.map((m) => (m - start + 1440) % 1440).filter((off) => off < WINDOW_MINUTES);
+    if (!best || inside.length > best.offsets.length) best = { start, offsets: inside.sort((a, b) => a - b) };
+  }
+  const n = best.offsets.length;
+  if (n < WINDOW_MIN_HITS || n / events.length < WINDOW_SHARE) return null;
+
+  // The early quartile rather than the earliest: one stray 8:05 shouldn't drag a nine o'clock
+  // habit's warning to a quarter to eight.
+  const early = best.offsets[Math.floor((n - 1) * 0.25)];
+  const middle = best.offsets[Math.floor((n - 1) / 2)];
+  return {
+    warnAt: hhmm(best.start + early - URGE_LEAD_MINUTES),
+    around: hhmm(best.start + middle),
+    n, of: events.length, share: Math.round((n / events.length) * 100),
+  };
 }
 
 /** Which day of the week, if one stands out. */

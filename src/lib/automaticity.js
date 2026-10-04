@@ -1,5 +1,5 @@
 import { addDays, daysBetween, dstr, todayStr } from "./date.js";
-import { isDone, occursOn } from "./tasks.js";
+import { isDone, isFinished, occursOn } from "./tasks.js";
 import { habitReliability } from "./habits.js";
 
 // Completion and automaticity are different things, and the gap between them is the most
@@ -67,7 +67,7 @@ const ageInDays = (task, today) => {
 
 // Is it worth asking about this habit today?
 export function srbaiDue(task, entries, dayLog, today = todayStr()) {
-  if (task.kind !== "build" || !task.recurrence || task.archivedAt) return false;
+  if (task.kind !== "build" || !task.recurrence || task.archivedAt || isFinished(task, today)) return false;
   if (ageInDays(task, today) < MIN_AGE_DAYS) return false;
   if (completionCount(task, dayLog) < MIN_COMPLETIONS) return false;
   const last = latestSrbai(entries, task.id);

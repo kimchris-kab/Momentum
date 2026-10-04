@@ -5,8 +5,10 @@ import {
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { PILLARS, PRIORITY, WEEKDAYS } from "../data/constants.js";
-import { addDays, formatTime12, todayStr } from "../lib/date.js";
-import { dailyRule, describeRecurrence, monthlyRule, weeklyCountRule, weeklyRule } from "../lib/tasks.js";
+import { addDays, dstr, formatTime12, todayStr } from "../lib/date.js";
+import {
+  carryEnd, dailyRule, describeRecurrence, endModeOf, endProgress, monthlyRule, weeklyCountRule, weeklyRule,
+} from "../lib/tasks.js";
 import {
   CUE_BY_ID, CUE_TYPES, COMPETING_RESPONSE_HELP, DEFAULT_CUE, cueOf, frictionPrompt,
   implementationIntention,
@@ -29,6 +31,11 @@ const REPEAT_MODES = [
 // weeklyCount sits under "Weekly" rather than taking a fifth slot in the control: both are
 // weekly patterns, and the real choice is whether the week names the days or just a count.
 const repeatModeOf = (rec) => (!rec ? "none" : rec.freq === "weeklyCount" ? "weekly" : rec.freq);
+const END_MODES = [
+  { id: "never", label: "Never" },
+  { id: "date", label: "On a date" },
+  { id: "count", label: "After N times" },
+];
 const WEEKLY_SHAPES = [
   { id: "days", label: "On set days" },
   { id: "count", label: "Any days" },
@@ -45,7 +52,7 @@ function Field({ label, children }) {
   );
 }
 
-export default function TaskSheet({ open, task, lists, goals = [], onClose, onChange, onDelete, onStartFocus }) {
+export default function TaskSheet({ open, task, lists, goals = [], dayLog = {}, onClose, onChange, onDelete, onStartFocus }) {
   const [subText, setSubText] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [perm, setPerm] = useState("default");
@@ -68,6 +75,18 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
     cueType === "time" ? { cueDetail: detail, time: detail || null } : { cueDetail: detail },
   );
   const weeklyShape = task.recurrence?.freq === "weeklyCount" ? "count" : "days";
+  const startsOn = task.startDate || dstr(new Date(task.createdAt || Date.now()));
+  const endMode = endModeOf(task.recurrence);
+  const progress = endProgress(task, dayLog);
+  // Switching between endings keeps only the one chosen, with a sensible first value rather
+  // than a blank the person has to fill in before it means anything.
+  const setEndMode = (mode) => set({
+    recurrence: {
+      ...task.recurrence,
+      endDate: mode === "date" ? (task.recurrence.endDate || addDays(todayStr() > startsOn ? todayStr() : startsOn, 28)) : null,
+      endAfter: mode === "count" ? (task.recurrence.endAfter || 10) : null,
+    },
+  });
 
   // A reminder needs permission, and the place someone asks for one is right here — not in a
   // settings screen they may never open.
@@ -85,23 +104,23 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
   const setRepeat = (mode) => {
     // dropping a repeat shouldn't strand the task in "No date" — put it back on today
     if (mode === "none") return set({ recurrence: null, dueDate: task.dueDate || todayStr() });
-    if (mode === "daily") return set({ recurrence: dailyRule(1), dueDate: null });
+    if (mode === "daily") return set({ recurrence: carryEnd(dailyRule(1), task.recurrence), dueDate: null });
     if (mode === "monthly") {
       const day = task.dueDate ? Number(task.dueDate.slice(8, 10)) : new Date().getDate();
-      return set({ recurrence: monthlyRule(day), dueDate: null });
+      return set({ recurrence: carryEnd(monthlyRule(day), task.recurrence), dueDate: null });
     }
     const wk = task.recurrence?.weekdays?.length
       ? task.recurrence.weekdays
       : [WEEKDAYS[(new Date().getDay() + 6) % 7].key];
-    set({ recurrence: weeklyRule(wk), dueDate: null });
+    set({ recurrence: carryEnd(weeklyRule(wk), task.recurrence), dueDate: null });
   };
 
   const setWeeklyShape = (shape) => {
-    if (shape === "count") return set({ recurrence: weeklyCountRule(task.recurrence?.timesPerWeek || 3) });
+    if (shape === "count") return set({ recurrence: carryEnd(weeklyCountRule(task.recurrence?.timesPerWeek || 3), task.recurrence) });
     const wk = task.recurrence?.weekdays?.length
       ? task.recurrence.weekdays
       : [WEEKDAYS[(new Date().getDay() + 6) % 7].key];
-    set({ recurrence: weeklyRule(wk) });
+    set({ recurrence: carryEnd(weeklyRule(wk), task.recurrence) });
   };
 
   const toggleWeekday = (key) => {
@@ -211,7 +230,7 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
                     {[1, 2, 3, 4, 5, 6, 7].map((n) => {
                       const on = (task.recurrence?.timesPerWeek || 3) === n;
                       return (
-                        <button key={n} onClick={() => set({ recurrence: weeklyCountRule(n) })} style={{
+                        <button key={n} onClick={() => set({ recurrence: carryEnd(weeklyCountRule(n), task.recurrence) })} style={{
                           flex: 1, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 600,
                           fontFamily: F.body,
                           border: `1px solid ${on ? C.gold : C.border}`,
@@ -234,7 +253,7 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
               <Repeat size={13} color={C.muted} />
               <span style={{ color: C.muted, fontSize: 12.5 }}>Every</span>
               <input type="number" min={1} max={30} value={task.recurrence?.interval || 1}
-                onChange={(e) => set({ recurrence: dailyRule(Math.max(1, Number(e.target.value) || 1)) })}
+                onChange={(e) => set({ recurrence: carryEnd(dailyRule(Math.max(1, Number(e.target.value) || 1)), task.recurrence) })}
                 style={{ ...styles.bareInput, width: 42 }} />
               <span style={{ color: C.muted, fontSize: 12.5 }}>day(s)</span>
             </div>
@@ -244,7 +263,7 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
               <CalendarClock size={13} color={C.muted} />
               <span style={{ color: C.muted, fontSize: 12.5 }}>Day</span>
               <input type="number" min={1} max={31} value={task.recurrence?.monthDay || 1}
-                onChange={(e) => set({ recurrence: monthlyRule(Math.min(31, Math.max(1, Number(e.target.value) || 1))) })}
+                onChange={(e) => set({ recurrence: carryEnd(monthlyRule(Math.min(31, Math.max(1, Number(e.target.value) || 1))), task.recurrence) })}
                 style={{ ...styles.bareInput, width: 42 }} />
             </div>
           )}
@@ -256,6 +275,45 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
             </div>
           )}
         </Field>
+
+        {task.recurrence && (
+          <Field label="Starts and ends">
+            {/* "Every 3 days" counts from here, so the start is the thing that says which days. */}
+            <div style={{ ...styles.fieldShell, width: "fit-content" }}>
+              <CalendarClock size={13} color={C.muted} />
+              <span style={{ color: C.muted, fontSize: 12.5 }}>Starts</span>
+              <input type="date" aria-label="Starts on" value={startsOn}
+                onChange={(e) => set({ startDate: e.target.value || startsOn })} style={styles.bareInput} />
+            </div>
+            <SegmentedControl style={{ marginTop: 10 }} value={endMode} onChange={setEndMode} options={END_MODES} />
+            {endMode === "date" && (
+              <div style={{ ...styles.fieldShell, marginTop: 10, width: "fit-content" }}>
+                <CalendarClock size={13} color={C.muted} />
+                <span style={{ color: C.muted, fontSize: 12.5 }}>Last day</span>
+                <input type="date" aria-label="Last day" min={startsOn} value={task.recurrence.endDate || ""}
+                  onChange={(e) => set({ recurrence: { ...task.recurrence, endDate: e.target.value || null } })}
+                  style={styles.bareInput} />
+              </div>
+            )}
+            {endMode === "count" && (
+              <div style={{ ...styles.fieldShell, marginTop: 10, width: "fit-content" }}>
+                <Repeat size={13} color={C.muted} />
+                <span style={{ color: C.muted, fontSize: 12.5 }}>Stop after</span>
+                <input type="number" aria-label="Number of times" min={1} max={999} value={task.recurrence.endAfter || 1}
+                  onChange={(e) => set({ recurrence: { ...task.recurrence, endAfter: Math.min(999, Math.max(1, Math.round(Number(e.target.value)) || 1)) } })}
+                  style={{ ...styles.bareInput, width: 52 }} />
+                <span style={{ color: C.muted, fontSize: 12.5 }}>times</span>
+              </div>
+            )}
+            <p style={{ color: C.faint, fontSize: 11, lineHeight: 1.5, margin: "8px 0 0" }}>
+              {endMode === "never" && "Keeps going until you pause or delete it."}
+              {endMode === "date" && "After that day it leaves your plan and sits under Finished — its history stays."}
+              {endMode === "count" && (progress
+                ? `${progress.done} of ${progress.of} done${progress.left ? "" : " — finished"}. It leaves your plan after the last one, and its history stays.`
+                : "It leaves your plan once you've done it that many times, and its history stays.")}
+            </p>
+          </Field>
+        )}
 
         {task.kind !== "todo" && (
           <Field label="What kind of habit is this?">
@@ -572,6 +630,20 @@ export default function TaskSheet({ open, task, lists, goals = [], onClose, onCh
                   </div>
                 ))}
               </div>
+
+              {/* The warning itself needs no setup — it's learned from the urges logged — so
+                  all that's here is the way to turn it off for this one habit. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={task.urgeReminder !== false}
+                  onChange={(e) => set({ urgeReminder: e.target.checked })}
+                  style={{ width: 18, height: 18, accentColor: C.teal }} />
+                <span style={{ color: C.muted, fontSize: 12, lineHeight: 1.45 }}>
+                  Warn me shortly before the hour this usually hits
+                  <span style={{ display: "block", color: C.faint, fontSize: 11 }}>
+                    Learned from the urges you log — nothing is sent until there are enough to go on.
+                  </span>
+                </span>
+              </label>
           </div>
         )}
 

@@ -7,12 +7,14 @@ import { C, F, R, alpha, styles } from "../theme.js";
 import { BREAK_TEMPLATES, DAY_PRESETS, HABIT_TEMPLATES, PILLARS, PRIORITY, WEEKDAYS, pillarOf } from "../data/constants.js";
 import { formatTime12, todayStr } from "../lib/date.js";
 import {
-  describeRecurrence, isDone, isFlexible, occursOn, weekProgress, weeklyCountRule, weeklyRule,
+  describeEnd, describeRecurrence, endProgress, isDone, isFinished, isFlexible, occursOn, weekProgress,
+  weeklyCountRule, weeklyRule,
 } from "../lib/tasks.js";
 import { habitStreakProtected, nextMilestoneFor, rewardProgress, scopeCheck } from "../lib/habits.js";
 import { graduationStatus, srbaiDue } from "../lib/automaticity.js";
 import { contextStability, cueOf, stabilityBand } from "../lib/cues.js";
-import { cleanRecord, fmtSince, lastSlipAt, reclaimed, slipsOf } from "../lib/urges.js";
+import { cleanRecord, fmtSince, lastSlipAt, lastUrgeAt, reclaimed, slipsOf } from "../lib/urges.js";
+import { urgeWindow } from "../lib/breakInsights.js";
 import { money } from "../lib/date.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission, scheduleReminders,
@@ -31,10 +33,12 @@ export default function HabitsView({
   state, onAdd, onOpenTask, onBack, onSetSetting, onDuplicate, onArchive, onDelete, onMove, onRateHabit,
 }) {
   const { tasks, dayLog, settings, freezes, srbai = [] } = state;
+  const today = todayStr();
   const [kind, setKind] = useState("build");
   const [perm, setPerm] = useState("default");
   const [menuFor, setMenuFor] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [showFinished, setShowFinished] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const capability = useMemo(() => reminderCapability(), []);
 
@@ -62,10 +66,16 @@ export default function HabitsView({
     }
   };
 
+  // A habit past its end is neither running nor paused: it did what it was set up to do, and
+  // the history it leaves is the point of keeping it. It gets its own list rather than sitting
+  // among the active ones asking for a tick that will never be due.
   const active = useMemo(
-    () => tasks.filter((t) => t.kind === kind && t.recurrence && !t.archivedAt)
+    () => tasks.filter((t) => t.kind === kind && t.recurrence && !t.archivedAt && !isFinished(t, today))
       .sort((a, b) => a.order - b.order),
-    [tasks, kind]);
+    [tasks, kind, today]);
+  const finished = useMemo(
+    () => tasks.filter((t) => t.kind === kind && isFinished(t, today)),
+    [tasks, kind, today]);
   const archived = useMemo(
     () => tasks.filter((t) => t.kind === kind && t.recurrence && t.archivedAt),
     [tasks, kind]);
@@ -357,6 +367,45 @@ export default function HabitsView({
         </div>
       )}
 
+      {/* ---- Finished ---- */}
+      {finished.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <button onClick={() => setShowFinished((s) => !s)} style={styles.linkBtn}>
+            {showFinished ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            Finished ({finished.length})
+          </button>
+          {showFinished && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+              {finished.map((t) => {
+                const prog = endProgress(t, dayLog);
+                return (
+                  <Card key={t.id} style={{ marginBottom: 0, opacity: 0.85 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>{t.text}</p>
+                        <p style={{ color: C.faint, fontSize: 11, margin: "3px 0 0" }}>
+                          {describeRecurrence(t.recurrence)} · {prog ? `all ${prog.of} done` : describeEnd(t.recurrence)} · history kept
+                        </p>
+                      </div>
+                      {/* Opening it is how it's carried on: push the end date out, or raise the count. */}
+                      <button onClick={() => onOpenTask(t)} style={{
+                        ...styles.ghostCta, width: "auto", height: 36, padding: "0 14px", fontSize: 12.5,
+                        borderColor: alpha(accent, 0.4), color: accent,
+                      }}>
+                        <Pencil size={13} /> Extend
+                      </button>
+                      <button onClick={() => onDelete(t.id)} style={{
+                        background: "none", border: "none", cursor: "pointer", color: C.faint, padding: 4,
+                      }}><Trash2 size={15} /></button>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ---- Paused ---- */}
       {archived.length > 0 && (
         <div style={{ marginTop: 18 }}>
@@ -471,6 +520,8 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
   const week = flexible ? weekProgress(task, dayLog) : null;
   const reward = rewardProgress(task, streak);
   const pillar = pillarOf(task.pillarId);
+  const endProg = endProgress(task, dayLog);
+  const endTag = endProg ? `${endProg.done} of ${endProg.of}` : describeEnd(task.recurrence);
 
   return (
     <div style={{
@@ -511,6 +562,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
         <span style={styles.tag}><Repeat size={9} /> {describeRecurrence(task.recurrence)}</span>
+        {endTag && <span style={styles.tag}>{endTag}</span>}
         {auto.mean !== null && (
           <span style={{
             ...styles.tag,
@@ -606,6 +658,9 @@ function QuitRecord({ task, dayLog, urgeLog }) {
   const since = fmtSince(Date.now() - (lastSlipAt(task, urgeLog) || Date.now()));
   const everSlipped = slipsOf(task, urgeLog).length > 0;
   const gain = reclaimed(task, urgeLog);
+  const lastUrge = lastUrgeAt(task, urgeLog);
+  const sinceUrge = lastUrge ? fmtSince(Date.now() - lastUrge) : null;
+  const window = urgeWindow(task, urgeLog);
   const stat = (value, label) => (
     <div style={{ flex: 1, minWidth: 0 }}>
       <p style={{ color: C.text, fontFamily: F.display, fontSize: 17, margin: 0 }}>{value}</p>
@@ -619,6 +674,21 @@ function QuitRecord({ task, dayLog, urgeLog }) {
         {stat(rec.recorded ? `${rec.clean}/${rec.recorded}` : "—", "recorded days clean, 30d")}
         {stat(`${rec.current}d`, rec.best > rec.current ? `run · best ${rec.best}d` : "current run")}
       </div>
+      {/* When it last pulled at you, and when it usually does — the second only once the log
+          holds enough to say, so there's never a time here that was guessed. */}
+      <p style={{ color: C.muted, fontSize: 11.5, lineHeight: 1.55, margin: "9px 0 0" }}>
+        {sinceUrge
+          ? <>Last urge <b style={{ color: C.text }}>{sinceUrge} ago</b></>
+          : "No urges logged yet — tap Urge the next time one hits."}
+        {window && (
+          <> · usually around <b style={{ color: C.text }}>{formatTime12(window.around)}</b>
+            {" "}({window.n} of {window.of})
+            {task.urgeReminder === false
+              ? " · warning off"
+              : <> · warning at <b style={{ color: C.teal }}>{formatTime12(window.warnAt)}</b></>}
+          </>
+        )}
+      </p>
       {gain && (gain.money !== null || gain.minutes !== null) && (
         <p style={{ color: C.teal, fontSize: 11.5, lineHeight: 1.5, margin: "9px 0 0" }}>
           About {gain.avoided} fewer since you started

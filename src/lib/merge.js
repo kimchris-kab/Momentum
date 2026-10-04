@@ -1,4 +1,5 @@
 import { reconcileSlips } from "./urges.js";
+import { settleEnds } from "./tasks.js";
 
 // Merging two copies of the state, for when the same account has been used on two devices.
 //
@@ -207,6 +208,9 @@ export function mergeStates(mine, theirs, { now = Date.now() } = {}) {
   // lapses short of a limit of three merge into four — over — and neither mark alone knew it;
   // a lapse undone on one phone should take its mark with it on both.
   out.dayLog = reconcileSlips(out.tasks, out.urgeLog, out.dayLog);
+  // Likewise "ended after N times": the other phone may hold the last completions, or the copy
+  // of the habit that won the merge may carry a stamp that the merged log no longer supports.
+  out.tasks = settleEnds(out.tasks, out.dayLog);
   return out;
 }
 

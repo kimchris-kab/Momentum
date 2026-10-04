@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Matches the app's dark palette: bg #16141F, text #F2EFFA, gold #E8B75D. -->
+<!-- Matches the app's dark palette: bg #16141F, text #F2EFFA, gold #E8B75D, calm teal #5FC7C0.
+     Top to bottom: today's progress, the habits being broken (big clean-time counter + Urge),
+     then every task for today in a list that scrolls. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -36,13 +38,47 @@
             android:text="" />
     </LinearLayout>
 
-    <TextView android:id="@+id/row_0" style="@style/MomentumWidgetRow" />
-    <TextView android:id="@+id/row_1" style="@style/MomentumWidgetRow" />
-    <TextView android:id="@+id/row_2" style="@style/MomentumWidgetRow" />
-    <TextView android:id="@+id/row_3" style="@style/MomentumWidgetRow" />
+    <!-- The break side. The time since the last slip is the biggest thing on the widget on
+         purpose: it's the number that's worth protecting, and it should be the first thing the
+         eye lands on. Each block carries an Urge button that opens straight into riding it out. -->
+    <LinearLayout android:id="@+id/quit_0" style="@style/MomentumWidgetQuitRow">
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:baselineAligned="true">
+                <TextView android:id="@+id/quit_0_time" style="@style/MomentumWidgetQuitTime" />
+                <TextView android:id="@+id/quit_0_name" style="@style/MomentumWidgetQuitName" />
+            </LinearLayout>
+            <TextView android:id="@+id/quit_0_detail" style="@style/MomentumWidgetQuitDetail" />
+        </LinearLayout>
+        <TextView android:id="@+id/quit_0_urge" style="@style/MomentumWidgetUrge" />
+    </LinearLayout>
 
-    <!-- The break side. Hidden until the app says there's a habit being broken; each row carries
-         an Urge button that opens straight into riding it out. -->
+    <LinearLayout android:id="@+id/quit_1" style="@style/MomentumWidgetQuitRow">
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:baselineAligned="true">
+                <TextView android:id="@+id/quit_1_time" style="@style/MomentumWidgetQuitTime" />
+                <TextView android:id="@+id/quit_1_name" style="@style/MomentumWidgetQuitName" />
+            </LinearLayout>
+            <TextView android:id="@+id/quit_1_detail" style="@style/MomentumWidgetQuitDetail" />
+        </LinearLayout>
+        <TextView android:id="@+id/quit_1_urge" style="@style/MomentumWidgetUrge" />
+    </LinearLayout>
+
     <!-- A FrameLayout, not a View: widget layouts may only use classes RemoteViews allows, and
          a bare View is not one — it would take the whole widget down, not just the line. -->
     <FrameLayout
@@ -53,13 +89,24 @@
         android:background="#2E2A3D"
         android:visibility="gone" />
 
-    <LinearLayout android:id="@+id/quit_0" style="@style/MomentumWidgetQuitRow">
-        <TextView android:id="@+id/quit_0_text" style="@style/MomentumWidgetQuitText" />
-        <TextView android:id="@+id/quit_0_urge" style="@style/MomentumWidgetUrge" />
-    </LinearLayout>
+    <!-- Every task for today. A ListView, not a fixed set of rows: it takes the room that's left
+         and scrolls, so nothing is left off — the first version stopped at four. -->
+    <ListView
+        android:id="@+id/widget_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="4dp"
+        android:divider="@null"
+        android:dividerHeight="0dp"
+        android:scrollbars="none" />
 
-    <LinearLayout android:id="@+id/quit_1" style="@style/MomentumWidgetQuitRow">
-        <TextView android:id="@+id/quit_1_text" style="@style/MomentumWidgetQuitText" />
-        <TextView android:id="@+id/quit_1_urge" style="@style/MomentumWidgetUrge" />
-    </LinearLayout>
+    <TextView
+        android:id="@+id/widget_list_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="#6B6683"
+        android:textSize="12sp"
+        android:text="@string/widget_empty" />
 </LinearLayout>

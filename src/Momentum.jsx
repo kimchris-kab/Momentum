@@ -4,7 +4,7 @@ import { C, MOTION_CSS, styles } from "./theme.js";
 import { MANTRAS, PILLARS } from "./data/constants.js";
 import { addDays, dstr, formatTime12, hashIdx, todayStr } from "./lib/date.js";
 import {
-  heatmapDays, isDone, isFlexible, newTask, reorderTasks, tasksForDate, toggleDoneReducer, voteTally,
+  heatmapDays, isDone, isFlexible, newTask, reorderTasks, settleEnds, tasksForDate, toggleDoneReducer, voteTally,
 } from "./lib/tasks.js";
 import {
   MILESTONES, freezesLeft, habitStreakProtected, isMilestoneFor, protectedStreak,
@@ -23,7 +23,6 @@ import { lapsesOn, limitOf, newLapse, newUrge, syncSlip, withCalmNote } from "./
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import { bury, mergeStates, unbury } from "./lib/merge.js";
-import TaskSheet from "./components/TaskSheet.jsx";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
 import UrgeSheet from "./components/UrgeSheet.jsx";
@@ -58,6 +57,10 @@ const InsightsView = lazy(() => import("./views/InsightsView.jsx"));
 // the update channel, the merge. None of it is needed to draw Today, and all of it was
 // sitting in the chunk that has to arrive before anything appears.
 const SettingsView = lazy(() => import("./views/SettingsView.jsx"));
+// The task editor is the largest single component and only matters once something is opened, so
+// it arrives as its own chunk the first time it's wanted. It's mounted for good after that, so
+// closing and reopening costs nothing.
+const TaskSheet = lazy(() => import("./components/TaskSheet.jsx"));
 
 const ViewLoading = () => (
   <div style={{ ...styles.page, color: C.faint, fontSize: 12.5 }}>Loading…</div>
@@ -134,6 +137,20 @@ function StartingUp() {
     </div>
   );
 }
+
+// What a "Done" or "Just the tiny bit" tapped on a notification does to the state.
+const tickFromNotification = (payload) => (s) => {
+  if (!payload?.taskId || (payload.action !== "done" && payload.action !== "twoMin")) return s;
+  const task = s.tasks.find((t) => t.id === payload.taskId);
+  const date = payload.date || todayStr();
+  if (!task || isDone(task, date, s.dayLog)) return s;
+  const next = toggleDoneReducer(task, date, s.tasks, s.dayLog);
+  let dayLog = next.dayLog;
+  if (payload.action === "twoMin" && task.recurrence && dayLog[date]?.[task.id]?.done) {
+    dayLog = { ...dayLog, [date]: { ...dayLog[date], [task.id]: { ...dayLog[date][task.id], minimal: true } } };
+  }
+  return { ...s, tasks: next.tasks, dayLog };
+};
 
 export default function Momentum() {
   const [view, setView] = useState("today");
@@ -282,18 +299,15 @@ export default function Momentum() {
 
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
-  const applyNotificationAction = useCallback((payload) => setState((s) => {
-    if (!payload?.taskId || (payload.action !== "done" && payload.action !== "twoMin")) return s;
-    const task = s.tasks.find((t) => t.id === payload.taskId);
-    const date = payload.date || todayStr();
-    if (!task || isDone(task, date, s.dayLog)) return s;
-    const next = toggleDoneReducer(task, date, s.tasks, s.dayLog);
-    let dayLog = next.dayLog;
-    if (payload.action === "twoMin" && task.recurrence && dayLog[date]?.[task.id]?.done) {
-      dayLog = { ...dayLog, [date]: { ...dayLog[date], [task.id]: { ...dayLog[date][task.id], minimal: true } } };
+  const applyNotificationAction = useCallback((payload) => {
+    // An urge warning isn't a tick. However it was tapped — the button or the body — it means
+    // "take me to riding this out", so that's where it goes.
+    if (payload?.kind === "urges") {
+      if (payload.taskId) setUrging({ id: payload.taskId, mode: "urge" });
+      return;
     }
-    return { ...s, tasks: next.tasks, dayLog };
-  }), []);
+    setState(tickFromNotification(payload));
+  }, []);
 
   useEffect(() => {
     if (!loaded) return undefined;
@@ -301,7 +315,9 @@ export default function Momentum() {
     drainActions().then((rows) => {
       if (cancelled || !rows.length) return;
       rows.forEach(applyNotificationAction);
-      show(`${rows.length} ticked off from ${rows.length === 1 ? "a notification" : "notifications"}`);
+      // An urge warning opens a screen rather than ticking anything off, so it isn't counted.
+      const ticks = rows.filter((r) => r.kind !== "urges").length;
+      if (ticks) show(`${ticks} ticked off from ${ticks === 1 ? "a notification" : "notifications"}`);
     });
     const onMessage = (e) => {
       if (e.data?.type === "momentum:action") applyNotificationAction(e.data.payload);
@@ -328,7 +344,7 @@ export default function Momentum() {
     try {
       Promise.resolve(plugin.addListener("localNotificationActionPerformed", (e) => {
         const extra = e?.notification?.extra || {};
-        applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date });
+        applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date, kind: extra.kind });
       })).then((h) => {
         handle = h;
         // Unmounted before the handle arrived: let go of it straight away.
@@ -371,9 +387,12 @@ export default function Momentum() {
 
   // Every edit is stamped. Merging two devices resolves a record edited on both by which
   // edit came last, so an unstamped write is one a merge has to guess about.
-  const updateTask = useCallback((id, p) => setState((s) => ({
-    ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...p, updatedAt: Date.now() } : t)),
-  })), []);
+  const updateTask = useCallback((id, p) => setState((s) => {
+    const tasks = s.tasks.map((t) => (t.id === id ? { ...t, ...p, updatedAt: Date.now() } : t));
+    // Changing how a habit repeats can change whether it has ended — "after 10 times" edited to
+    // 5 when 7 are done — so the stamp is worked out again rather than trusted.
+    return { ...s, tasks: "recurrence" in p ? settleEnds(tasks, s.dayLog) : tasks };
+  }), []);
 
   const removeTask = useCallback((id) => {
     setState((s) => {
@@ -399,6 +418,13 @@ export default function Momentum() {
     }
     const after = { ...s, tasks: next.tasks, dayLog };
 
+    // The tick that uses up an "after N times" habit. Said once, at the moment it happens.
+    const was = s.tasks.find((t) => t.id === task.id);
+    const now = after.tasks.find((t) => t.id === task.id);
+    if (!was?.endedOn && now?.endedOn) {
+      setTimeout(() => show(`Finished: “${task.text}” — all ${task.recurrence.endAfter} done`), 260);
+    }
+
     if (task.kind === "build" && isDone(task, date, dayLog)) {
       const streak = habitStreakProtected(task, dayLog, s.freezes);
       const already = s.milestones.some((m) => m.taskId === task.id && m.days === streak);
@@ -417,7 +443,7 @@ export default function Momentum() {
       }
     }
     return after;
-  }), []);
+  }), [show]);
 
   const toggleStar = useCallback((task) =>
     updateTask(task.id, { starred: !task.starred }), [updateTask]);
@@ -486,7 +512,8 @@ export default function Momentum() {
       if (!day[t.id]?.done) day[t.id] = { done: true, doneAt: Date.now(), repaired: true };
     });
     show(`Logged ${scheduled.length} habit${scheduled.length === 1 ? "" : "s"} for yesterday`);
-    return { ...s, dayLog: { ...s.dayLog, [date]: day } };
+    const dayLog = { ...s.dayLog, [date]: day };
+    return { ...s, dayLog, tasks: settleEnds(s.tasks, dayLog) };
   }), [show]);
 
   const claimReward = useCallback((taskId) => setState((s) => ({
@@ -663,6 +690,10 @@ export default function Momentum() {
   }, [state.checkins]);
 
   const editingTask = editing ? state.tasks.find((t) => t.id === editing) : null;
+  // Derived state, set during render: once the editor has been wanted it stays mounted, so it
+  // exists on the very render that opens it rather than one pass later.
+  const [sheetSeen, setSheetSeen] = useState(false);
+  if (editingTask && !sheetSeen) setSheetSeen(true);
   const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
   const focusTask = focusId ? state.tasks.find((t) => t.id === focusId) : null;
   const urgeTask = urging ? state.tasks.find((t) => t.id === urging.id) : null;
@@ -1036,11 +1067,17 @@ export default function Momentum() {
           })}
         </nav>
 
-        <TaskSheet
-          open={!!editingTask} task={editingTask} lists={state.lists} goals={state.goals}
-          onClose={() => setEditing(null)} onChange={updateTask} onDelete={removeTask}
-          onStartFocus={(t) => setFocusId(t.id)}
-        />
+        {(editingTask || sheetSeen) && (
+          <ChunkBoundary resetKey={editing}>
+            <Suspense fallback={null}>
+              <TaskSheet
+                open={!!editingTask} task={editingTask} lists={state.lists} goals={state.goals} dayLog={state.dayLog}
+                onClose={() => setEditing(null)} onChange={updateTask} onDelete={removeTask}
+                onStartFocus={(t) => setFocusId(t.id)}
+              />
+            </Suspense>
+          </ChunkBoundary>
+        )}
 
         <RitualSheet
           open={!!ritualTask} task={ritualTask} identity={state.identities}

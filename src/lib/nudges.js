@@ -4,6 +4,8 @@ import { isDone, tasksForDate } from "./tasks.js";
 import { missedYesterday } from "./habits.js";
 import { reminderMode } from "./automaticity.js";
 import { cueOf } from "./cues.js";
+import { urgeWindow } from "./breakInsights.js";
+import { calmNoteParts } from "./urges.js";
 
 // Every nudge the app is allowed to send, in one place. Spec item 15 is blunt about the
 // risk here — over-reliance on reminders undermines the habit, and notification fatigue is
@@ -20,6 +22,12 @@ export const NUDGE_KINDS = [
     id: "comeback",
     label: "Never miss twice",
     desc: "One nudge the morning after a missed habit. Missing twice is the single best predictor of quitting.",
+    kind: "toggle",
+  },
+  {
+    id: "urges",
+    label: "Warning before an urge",
+    desc: "Once the app has seen when a habit you're quitting usually pulls at you, it nudges you about 20 minutes before — with your own words. Sent even in quiet hours, since that's often when it hits.",
     kind: "toggle",
   },
   {
@@ -48,6 +56,7 @@ export const NUDGE_KINDS = [
 export const DEFAULT_NOTIFY = {
   habits: true,
   comeback: true,
+  urges: true,
   morning: null,        // "HH:MM" when on
   evening: null,
   weekly: null,         // { day, time } when on
@@ -85,6 +94,7 @@ export const ACTIONS = {
   snooze: { id: "snooze", title: "In 15 min" },
   twoMin: { id: "twoMin", title: "Just the tiny bit" },
   open: { id: "open", title: "Open" },
+  urge: { id: "urge", title: "Ride it out" },
 };
 
 const habitBody = (task) => {
@@ -110,6 +120,20 @@ const habitBody = (task) => {
   return "Time to show up for this one.";
 };
 
+/**
+ * What the warning says. Their own words first — the note from calm-them is the whole reason
+ * this notification exists — then the replacement they planned, then a plain instruction. The
+ * clock is last and short: they know what time it is, and what they need is the reason.
+ */
+const urgeBody = (task, window) => {
+  const bits = [`${task.text} usually pulls at you around ${formatTime12(window.around)}.`];
+  const why = calmNoteParts(task).find((p) => p.id === "why");
+  if (why) bits.push(`You wrote: “${why.text.length > 110 ? `${why.text.slice(0, 109)}…` : why.text}”`);
+  else if (task.competingResponse) bits.push(`Instead: ${task.competingResponse}`);
+  else bits.push("Get ahead of it — change rooms, put the phone down.");
+  return bits.join(" ");
+};
+
 const actionsFor = (task) => {
   const out = [ACTIONS.done];
   if (task?.twoMin && task.kind === "build") out.push(ACTIONS.twoMin);
@@ -128,6 +152,15 @@ export function buildNudges(state, { days = 7, now = Date.now() } = {}) {
   const notify = notifySettings(settings);
   const out = [];
   const today = todayStr();
+
+  // The learned warning times, worked out once per habit rather than once per day. A habit with
+  // too few urges on record has none, and so sends nothing — no guessing at a time.
+  const windows = notify.urges
+    ? tasks
+      .filter((t) => t.kind === "break" && t.recurrence && !t.archivedAt && t.urgeReminder !== false)
+      .map((t) => ({ task: t, window: urgeWindow(t, state.urgeLog, { now }) }))
+      .filter((w) => w.window)
+    : [];
 
   for (let offset = 0; offset < days; offset++) {
     const date = offset === 0 ? today : addDays(today, offset);
@@ -150,6 +183,23 @@ export function buildNudges(state, { days = 7, now = Date.now() } = {}) {
         });
       });
     }
+
+    // --- the hard hour ---
+    // Deliberately not held back by quiet hours: a warning for a habit that hits at 11pm that
+    // is silenced because it's 11pm has done the opposite of its job. It is its own switch.
+    windows.forEach(({ task, window }) => {
+      if (!tasksForDate([task], date, "break").length) return;
+      out.push({
+        id: `urge:${task.id}:${date}`,
+        kind: "urges",
+        taskId: task.id,
+        date,
+        at: at(date, window.warnAt),
+        title: "Heads up — the hard hour is coming",
+        body: urgeBody(task, window),
+        actions: [ACTIONS.urge, ACTIONS.open],
+      });
+    });
 
     // --- morning plan ---
     if (notify.morning && !inQuietHours(notify.morning, notify)) {

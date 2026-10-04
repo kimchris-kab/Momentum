@@ -76,6 +76,7 @@ async function ensureActionTypes() {
           { id: "twoMin", title: "Just the tiny bit" },
           { id: "snooze", title: "In 15 min" },
         ] },
+        { id: "urge", actions: [{ id: "urge", title: "Ride it out" }] },
         { id: "simple", actions: [{ id: "open", title: "Open" }] },
       ],
     });
@@ -105,7 +106,7 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
           title: n.title,
           body: n.body,
           schedule: { at: n.at, allowWhileIdle: true },
-          actionTypeId: n.kind === "habits" || n.kind === "comeback" ? "habit" : "simple",
+          actionTypeId: n.kind === "habits" || n.kind === "comeback" ? "habit" : n.kind === "urges" ? "urge" : "simple",
           extra: { taskId: n.taskId || null, date: n.date, kind: n.kind },
         })),
       });

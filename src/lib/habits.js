@@ -1,6 +1,6 @@
 import { addDays, monthKeyOf, todayStr } from "./date.js";
 import {
-  countsTowardDay, isDone, isFlexible, occursOn, tasksForDate, weekProgress, weekStreak,
+  countsTowardDay, isDone, isFinished, isFlexible, occursOn, tasksForDate, weekProgress, weekStreak,
   weeklyTarget,
 } from "./tasks.js";
 
@@ -75,10 +75,15 @@ export function habitStreakProtected(task, dayLog, freezes) {
 // The habits that were scheduled yesterday and left undone — the input to the
 // never-miss-twice intervention, which is the single best predictor of quitting.
 // Quota habits are out: skipping them yesterday may well have been the plan.
+// A habit that ended yesterday — its last day was yesterday and it went undone — is not one to
+// come back to: there's no today for it. Telling someone "one rep today and you're building
+// again" about a habit that has finished is the app contradicting itself.
 export function missedYesterday(tasks, dayLog, freezes) {
-  const y = addDays(todayStr(), -1);
+  const today = todayStr();
+  const y = addDays(today, -1);
   if (isFrozen(freezes, y)) return [];
-  return tasksForDate(tasks, y, "build").filter((t) => !isFlexible(t) && !isDone(t, y, dayLog));
+  return tasksForDate(tasks, y, "build")
+    .filter((t) => !isFlexible(t) && !isDone(t, y, dayLog) && !isFinished(t, today));
 }
 
 // Quota habits are at risk only once the week can no longer reach target without today.
@@ -148,7 +153,7 @@ export const VERDICTS = {
 
 export function reviewHabits(tasks, dayLog, days = 28) {
   return tasks
-    .filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt)
+    .filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt && !isFinished(t))
     .map((t) => {
       const r = habitReliability(t, dayLog, days);
       let verdict = "new";

@@ -4,6 +4,7 @@ import { C, F, R, alpha, styles } from "../theme.js";
 import { fmtDuration, focusToday } from "../lib/focus.js";
 import { automaticityReport, GRADUATION_MEAN } from "../lib/automaticity.js";
 import { contextStability, cueOf, stabilityBand } from "../lib/cues.js";
+import { isFinished } from "../lib/tasks.js";
 import { Card, SectionLabel } from "./ui.jsx";
 
 // Three cards for things the app now knows but Today could not see. Each one returns null
@@ -103,7 +104,7 @@ export function AutomaticityCard({ state, onOpenHabits }) {
 /** Habits that are running on memory rather than on a cue. */
 export function CueHealthCard({ state, onOpenTask }) {
   const weak = useMemo(() => {
-    const habits = (state.tasks || []).filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt);
+    const habits = (state.tasks || []).filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt && !isFinished(t));
     return habits
       .map((t) => {
         const cue = cueOf(t);

@@ -8,6 +8,9 @@
     <!-- Shown before the app has written its first snapshot. -->
     <string name="widget_placeholder">—</string>
     <string name="widget_empty">Nothing scheduled today</string>
+    <string name="widget_since_slip">since the last slip</string>
+    <string name="widget_since_start">since you started</string>
+    <string name="widget_since_slipped_today">since you slipped today</string>
+    <string name="widget_no_urges">no urges logged yet</string>
     <string name="widget_urge">Urge</string>
-    <string name="widget_slipped_today">slipped today</string>
 </resources>

@@ -1,4 +1,5 @@
 import { todayStr } from "./date.js";
+import { isFinished } from "./tasks.js";
 
 // Spec item 3, rated STRONG: Oettingen's mental contrasting. Indulging in positive fantasy
 // LOWERS effort and attainment; contrasting the wish against the obstacle, then pre-committing
@@ -61,7 +62,7 @@ export const START_SMALL_MAX = 3;
 export const EARLY_DAYS = 21;
 
 export function startSmallCheck(state, today = todayStr()) {
-  const habits = (state.tasks || []).filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt);
+  const habits = (state.tasks || []).filter((t) => t.kind === "build" && t.recurrence && !t.archivedAt && !isFinished(t, today));
   if (habits.length <= START_SMALL_MAX) return null;
 
   // Only speak up while everything is still new — past the first few weeks this is the scope

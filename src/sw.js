@@ -52,13 +52,16 @@ self.addEventListener("notificationclick", (event) => {
     // If a page is already open it can apply this immediately; otherwise it waits in
     // IndexedDB until the app next starts.
     const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    if (clientsList.length && (action === "done" || action === "twoMin")) {
+    // An urge warning isn't a tick, but it does need the page: the body tap and "Ride it out"
+    // both mean "open the urge screen", so both are carried through like an action.
+    const carried = action === "done" || action === "twoMin" || action === "urge" || data.kind === "urges";
+    if (clientsList.length && carried) {
       clientsList.forEach((c) => c.postMessage({ type: "momentum:action", payload }));
       await focusApp();
       return;
     }
 
-    if (action === "done" || action === "twoMin") await queueAction(payload);
+    if (carried) await queueAction(payload);
     await focusApp();
   })());
 });
