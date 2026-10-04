@@ -75,9 +75,28 @@ jobs:
       - name: Copy the web app into the Android project
         run: npx cap sync android
 
+      # Android refuses to install an app over one signed with a different key — "App not
+      # installed" — and the only way round it is to uninstall, which deletes the app's data.
+      # Debug builds are signed with a key Android creates the first time it needs one, and every
+      # run here starts on a fresh machine, so every build got a different key and none could
+      # update the last. Remembering the key between runs fixes that. It's kept in the Actions
+      # cache rather than in the repository on purpose: the repository is public, and a signing
+      # key published there would let anyone sign an "update" that a phone would accept.
+      - name: Remember the debug signing key between builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
       - name: Assemble the debug APK
         working-directory: android
         run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+      # The fingerprint of the key this build was signed with. Two builds that print the same line
+      # can update one another; two that don't, can't.
+      - name: Show which key signed it
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -E "certificate SHA-256 digest"
 
       - name: Name it after the commit
         run: cp android/app/build/outputs/apk/debug/app-debug.apk "momentum-${GITHUB_SHA::7}-debug.apk"

@@ -306,3 +306,19 @@ t.group("the keys the Java reads are the keys the app writes");
   t.ok("...and each group was actually checked", topReads.length && itemReads.length && quitReads.length,
     { topReads, itemReads, quitReads });
 }
+
+t.group("builds that can update one another");
+{
+  // Android won't install an app over one signed with a different key. Every CI run starts on a
+  // fresh machine, which used to mean a fresh debug key per build — so no build could update the
+  // last, and the only way to install was to uninstall and lose the app's data.
+  const workflow = readFileSync(join(ROOT, ".github", "workflows", "android.yml"), "utf8");
+  const apkJob = workflow.slice(workflow.indexOf("  apk:"), workflow.indexOf("  starts-on-android:"));
+  t.ok("the debug key is remembered between runs", /actions\/cache@v4[\s\S]*?path: ~\/\.android\/debug\.keystore/.test(apkJob));
+  t.ok("...restored before the APK is built, or it would be made too late",
+    apkJob.indexOf("debug.keystore") < apkJob.indexOf("assembleDebug"));
+  t.ok("the build says which key signed it, so stability can be checked from the log", /apksigner[\s\S]*print-certs/.test(apkJob));
+  // The repository is public: a key committed to it would let anyone sign an "update".
+  const tracked = readdirSync(join(ROOT, "android", "app"), { withFileTypes: true }).map((e) => e.name);
+  t.ok("no signing key is committed to the repository", !tracked.some((n) => /\.(keystore|jks|p12|pfx)$/i.test(n)), tracked);
+}
