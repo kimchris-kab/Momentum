@@ -179,9 +179,10 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            cd android && ./gradlew :app:dependencies --configuration debugAndroidTestRuntimeClasspath --no-daemon > ../deps.txt; grep -n -B8 "kotlin-stdlib-jdk" ../deps.txt | head -80; true
-            cd android && ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace
+          # Just the app's own tests. The bare task also walks capacitor-cordova-android-plugins, a
+          # module Capacitor generates, whose test classpath trips the Kotlin duplicate-class check
+          # and which has no tests of its own.
+          script: cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
 
       - if: always()
         uses: actions/upload-artifact@v4
