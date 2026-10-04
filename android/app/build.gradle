@@ -37,6 +37,10 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
+    // The test libraries pull in kotlin-stdlib-jdk7/jdk8 1.6.21 while the app is on stdlib 1.8.22,
+    // and the two define the same classes, which fails the build before any test runs. A BOM
+    // lines every Kotlin library up to one version. Test classpath only: the app is untouched.
+    androidTestImplementation platform("org.jetbrains.kotlin:kotlin-bom:1.8.22")
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
