@@ -1,3 +1,4 @@
+import { saveFile, shareFile } from "./files.js";
 import { SCHEMA_VERSION, emptyState } from "./migrate.js";
 
 // Ten phases in, everything this app knows lives in one browser's localStorage with no
@@ -23,17 +24,13 @@ export function exportPayload(state, at = Date.now()) {
 export const backupFilename = (at = Date.now()) =>
   `momentum-backup-${new Date(at).toISOString().slice(0, 10)}.json`;
 
-export function downloadJson(filename, obj) {
-  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+const backupText = (obj) => JSON.stringify(obj, null, 2);
+
+/** Saves a backup. See files.js for why this isn't just a download link. */
+export const saveBackup = (filename, obj) => saveFile(filename, backupText(obj), "application/json");
+
+/** Offers a backup to the share sheet, so it can be sent somewhere that isn't this phone. */
+export const shareBackup = (filename, obj) => shareFile(filename, backupText(obj), "application/json");
 
 const count = (v) => (Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0);
 

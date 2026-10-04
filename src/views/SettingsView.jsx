@@ -6,9 +6,10 @@ import {
 import { C, F, R, alpha, styles } from "../theme.js";
 import { formatTime12, prettyDate } from "../lib/date.js";
 import {
-  backupFilename, downloadJson, exportPayload, inspectImport, stateFromImport,
+  backupFilename, exportPayload, inspectImport, saveBackup, shareBackup, stateFromImport,
 } from "../lib/backup.js";
 import CloudBackup from "../components/CloudBackup.jsx";
+import { canShareFiles } from "../lib/files.js";
 import UpdateCheck from "../components/UpdateCheck.jsx";
 import { NUDGE_KINDS, WEEKDAY_OPTIONS, notifySettings } from "../lib/nudges.js";
 import {
@@ -73,7 +74,8 @@ export default function SettingsView({
   const [perm, setPerm] = useState("default");
   const [report, setReport] = useState(null);
   const [testing, setTesting] = useState(null);
-  const [exported, setExported] = useState(false);
+  // The outcome of the last export: what really happened, not what was hoped for.
+  const [exportResult, setExportResult] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
 
@@ -102,10 +104,17 @@ export default function SettingsView({
     setTimeout(() => setTesting(null), 4000);
   };
 
-  const exportNow = () => {
-    downloadJson(backupFilename(), exportPayload(state));
-    setExported(true);
-    setTimeout(() => setExported(false), 4000);
+  const exportNow = async () => {
+    setExportResult(null);
+    const result = await saveBackup(backupFilename(), exportPayload(state));
+    setExportResult(result);
+    // A failure stays up until the next try; a success has done its job after a while.
+    if (result.ok) setTimeout(() => setExportResult((cur) => (cur === result ? null : cur)), 20000);
+  };
+
+  const shareNow = async () => {
+    const result = await shareBackup(backupFilename(), exportPayload(state));
+    if (!result.ok) setExportResult(result);
   };
 
   const pickFile = async (e) => {
@@ -325,16 +334,43 @@ export default function SettingsView({
       <SectionLabel>Your data</SectionLabel>
       <Card>
         <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "0 0 13px" }}>
-          Everything Momentum knows lives in this browser and nowhere else — habits, the
-          completion log, journal entries, money records. Clearing site data or switching phone
-          loses all of it. A backup is one plain JSON file you keep yourself.
+          Everything Momentum knows lives on this device and nowhere else — habits, the
+          completion log, journal entries, money records. Uninstalling the app, clearing its data
+          or switching phone loses all of it. A backup is one plain JSON file you keep yourself.
         </p>
         <button onClick={exportNow} style={{ ...styles.cta, height: 46, fontSize: 14 }}>
-          {exported ? <CheckCircle2 size={17} color={C.green} /> : <Download size={17} />}
-          {exported ? "Saved to your downloads" : "Export a backup"}
+          {exportResult?.ok ? <CheckCircle2 size={17} color={C.green} /> : <Download size={17} />}
+          {exportResult?.ok ? "Backup saved" : "Export a backup"}
         </button>
 
-        <input ref={fileRef} type="file" accept="application/json,.json" onChange={pickFile}
+        {exportResult?.ok && (
+          <p role="status" style={{ color: C.green, fontSize: 12, lineHeight: 1.55, margin: "9px 0 0" }}>
+            Saved as <b>{exportResult.name}</b> in {exportResult.location}. Find it in your Files app
+            under Downloads{canShareFiles() ? ", or send it somewhere safe with Share below" : ""}.
+          </p>
+        )}
+        {exportResult && !exportResult.ok && (
+          <p role="alert" style={{
+            color: C.red, fontSize: 12, lineHeight: 1.55, margin: "9px 0 0",
+            background: alpha(C.red, 0.08), border: `1px solid ${alpha(C.red, 0.3)}`,
+            borderRadius: R.md, padding: "9px 11px",
+          }}>
+            <TriangleAlert size={12} style={{ verticalAlign: -1, marginRight: 5 }} />
+            The backup was not saved: {exportResult.error}.
+            {canShareFiles() ? " Try Share instead — it sends the file without saving it first." : ""}
+          </p>
+        )}
+
+        {canShareFiles() && (
+          <button onClick={shareNow} style={{ ...styles.ghostCta, height: 42, marginTop: 9, fontSize: 13 }}>
+            <Send size={14} /> Share the backup (Drive, email, chat…)
+          </button>
+        )}
+
+        {/* Any file, not just ones the phone has typed as JSON: a backup that came through Drive or a
+            chat is often typed as plain text or "binary", and a picker told to show only JSON greys it
+            out. Whatever's chosen is checked for what it is before anything is replaced. */}
+        <input ref={fileRef} type="file" accept="*/*" onChange={pickFile}
           aria-label="Backup file" style={{ display: "none" }} />
         <button onClick={() => fileRef.current?.click()}
           style={{ ...styles.ghostCta, height: 42, marginTop: 9, fontSize: 13 }}>

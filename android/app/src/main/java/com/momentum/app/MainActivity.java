@@ -22,6 +22,7 @@ public class MainActivity extends BridgeActivity {
         // Plugins that live in the app itself have to be registered before the bridge is
         // built, which is why this sits above the super call.
         registerPlugin(MomentumWidgetPlugin.class);
+        registerPlugin(MomentumFilesPlugin.class);
         super.onCreate(savedInstanceState);
         // A cold start from the widget: the web app isn't loaded yet, so there's nobody to tell.
         // It finds the id itself when it starts.

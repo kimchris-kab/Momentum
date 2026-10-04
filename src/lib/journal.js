@@ -1,3 +1,4 @@
+import { announce, saveFile } from "./files.js";
 import { JOURNAL_MOODS, PILLARS, P_BY_ID } from "../data/constants.js";
 import { addDays, longDate, monthKeyOf, monthLabel, parseD, todayStr } from "./date.js";
 
@@ -125,14 +126,8 @@ export function toMarkdown(entries, checkins) {
   return lines.join("\n");
 }
 
-export function downloadText(filename, text, mime = "text/markdown;charset=utf-8") {
-  const blob = new Blob([text], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+export async function downloadText(filename, text, mime = "text/markdown;charset=utf-8") {
+  const result = await saveFile(filename, text, mime);
+  announce(result, "Journal");
+  return result;
 }

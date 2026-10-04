@@ -1,3 +1,4 @@
+import { announce, saveFile } from "./files.js";
 import { BUDGET_CATS, TX_CATEGORIES, TX_CAT_BY_ID } from "../data/constants.js";
 import { addDays, dstr, monthKeyOf, monthLabel, pad, parseD, todayStr } from "./date.js";
 
@@ -249,14 +250,8 @@ export function transactionsToCsv(transactions) {
   return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
 }
 
-export function downloadCsv(filename, csv) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+export async function downloadCsv(filename, csv) {
+  const result = await saveFile(filename, csv, "text/csv;charset=utf-8");
+  announce(result, "Transactions");
+  return result;
 }

@@ -297,6 +297,13 @@ export default function Momentum() {
   useEffect(() => { writeLocal(SESSION_KEY, cloudSession); }, [cloudSession]);
   useEffect(() => { writeLocal(PUSH_KEY, lastPush); }, [lastPush]);
 
+  // Anything in the app can say how a save went (files.js) without needing a toast of its own.
+  useEffect(() => {
+    const onNotice = (e) => { if (e.detail) show(String(e.detail)); };
+    window.addEventListener("momentum:toast", onNotice);
+    return () => window.removeEventListener("momentum:toast", onNotice);
+  }, [show]);
+
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
   const applyNotificationAction = useCallback((payload) => {

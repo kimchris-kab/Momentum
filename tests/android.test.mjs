@@ -324,3 +324,51 @@ t.group("builds that can update one another");
   const tracked = readdirSync(join(ROOT, "android", "app"), { withFileTypes: true }).map((e) => e.name);
   t.ok("no signing key is committed to the repository", !tracked.some((n) => /\.(keystore|jks|p12|pfx)$/i.test(n)), tracked);
 }
+
+t.group("getting a backup out of the app");
+{
+  // The first backup button made a link and clicked it. A web view has no download handler, so
+  // nothing was written anywhere — while the screen said "Saved to your downloads". Every link in
+  // the chain from button to Downloads folder is a place that can quietly do nothing.
+  const filesJava = read("java/com/momentum/app/MomentumFilesPlugin.java");
+  const filesJs = readFileSync(join(ROOT, "src", "lib", "files.js"), "utf8");
+  const main = read("java/com/momentum/app/MainActivity.java");
+
+  t.ok("the plugin is registered before the bridge is built",
+    main.indexOf("registerPlugin(MomentumFilesPlugin.class)") > -1
+    && main.indexOf("registerPlugin(MomentumFilesPlugin.class)") < main.indexOf("super.onCreate"));
+  const nativeName = filesJava.match(/@CapacitorPlugin\(name = "(\w+)"\)/)?.[1];
+  t.ok("the app calls it by the name it registers under", nativeName && filesJs.includes(`Capacitor?.Plugins?.${nativeName}`), nativeName);
+
+  // Two languages, one set of names: a misspelt method or argument doesn't fail anywhere, the
+  // call just comes back empty.
+  const methods = [...filesJava.matchAll(/@PluginMethod\s+public void (\w+)\(/g)].map((m) => m[1]);
+  t.eq("it offers save and share", methods.sort(), ["save", "share"]);
+  t.ok("the app calls both", /p\.save\(/.test(filesJs) && /p\.share\(/.test(filesJs));
+  const sent = [...filesJs.matchAll(/p\.(?:save|share)\(\{ ([^}]+) \}\)/g)].flatMap((m) => m[1].split(",").map((k) => k.trim()));
+  const read_ = [...filesJava.matchAll(/call\.getString\("(\w+)"/g)].map((m) => m[1]);
+  t.eq("everything the app sends, the plugin reads", [...new Set(sent)].filter((k) => !read_.includes(k)), []);
+  const answers = [...filesJava.matchAll(/result\.put\("(\w+)"/g)].map((m) => m[1]);
+  t.ok("...and the app reads back what the plugin answers", answers.every((k) => filesJs.includes(`r?.${k}`) || filesJs.includes(`r.${k}`)), answers);
+
+  t.ok("it saves through MediaStore.Downloads, which needs no permission", /MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(filesJava));
+  t.ok("...into the Downloads folder", /RELATIVE_PATH, Environment\.DIRECTORY_DOWNLOADS/.test(filesJava));
+  t.ok("...hidden until complete, so nothing sees half a file", /IS_PENDING, 1/.test(filesJava) && /IS_PENDING, 0/.test(filesJava));
+  t.ok("it cleans up after a failed write", /resolver\.delete\(uri/.test(filesJava));
+  t.ok("a name can't climb out of its folder", /safeName/.test(filesJava) && /replaceAll\(/.test(filesJava));
+  t.ok("it needs no storage permission it doesn't ask for", !/WRITE_EXTERNAL_STORAGE/.test(manifest));
+
+  // Share goes through a FileProvider; its authority and paths are only checked when someone taps.
+  t.ok("share uses the provider the manifest declares", filesJava.includes('getPackageName() + ".fileprovider"') && /\$\{applicationId\}\.fileprovider/.test(manifest));
+  const paths = read("res/xml/file_paths.xml");
+  t.ok("...which covers the cache folder the file is staged in", /<cache-path[^>]*path="\."/.test(paths) && /getCacheDir\(\), "shared"/.test(filesJava));
+
+  const workflow = readFileSync(join(ROOT, ".github", "workflows", "android.yml"), "utf8");
+  t.ok("the file test exists and is run with the widget test",
+    existsSync(join(ROOT, "android/app/src/androidTest/java/com/momentum/app/FilesTest.java")) && /:app:connectedDebugAndroidTest/.test(workflow));
+
+  // Nothing in the app may rely on a browser download any more: it silently does nothing here.
+  const srcFiles = ["lib/backup.js", "lib/journal.js", "lib/money.js", "views/SettingsView.jsx", "views/JournalView.jsx", "views/MoneyView.jsx"];
+  const offenders = srcFiles.filter((f) => /createObjectURL|\.download\s*=/.test(readFileSync(join(ROOT, "src", f), "utf8")));
+  t.eq("only files.js makes download links", offenders, []);
+}
