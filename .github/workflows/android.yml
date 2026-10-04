@@ -38,6 +38,11 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Where Android keeps its per-user files, including the debug signing key. Set outright so
+      # the build and the cache below can't disagree about where it is — the first attempt cached
+      # ~/.android and the key wasn't there, so nothing was saved.
+      ANDROID_USER_HOME: /home/runner/android-user
     steps:
       - uses: actions/checkout@v4
 
@@ -85,7 +90,7 @@ jobs:
       - name: Remember the debug signing key between builds
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
+          path: ${{ env.ANDROID_USER_HOME }}/debug.keystore
           key: android-debug-keystore-v1
 
       - name: Assemble the debug APK

@@ -314,7 +314,9 @@ t.group("builds that can update one another");
   // last, and the only way to install was to uninstall and lose the app's data.
   const workflow = readFileSync(join(ROOT, ".github", "workflows", "android.yml"), "utf8");
   const apkJob = workflow.slice(workflow.indexOf("  apk:"), workflow.indexOf("  starts-on-android:"));
-  t.ok("the debug key is remembered between runs", /actions\/cache@v4[\s\S]*?path: ~\/\.android\/debug\.keystore/.test(apkJob));
+  t.ok("the debug key is remembered between runs", /actions\/cache@v4[\s\S]*?path: \$\{\{ env\.ANDROID_USER_HOME \}\}\/debug\.keystore/.test(apkJob));
+  // Cached from one folder, written to another: that is how the first attempt saved nothing.
+  t.ok("...from the folder the build is told to keep it in", /ANDROID_USER_HOME: \/home\/runner\/\S+/.test(apkJob.slice(0, apkJob.indexOf("steps:"))));
   t.ok("...restored before the APK is built, or it would be made too late",
     apkJob.indexOf("debug.keystore") < apkJob.indexOf("assembleDebug"));
   t.ok("the build says which key signed it, so stability can be checked from the log", /apksigner[\s\S]*print-certs/.test(apkJob));
