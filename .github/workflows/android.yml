@@ -179,7 +179,9 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: cd android && ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace
+          script: |
+            cd android && ./gradlew :app:dependencies --configuration debugAndroidTestRuntimeClasspath --no-daemon > ../deps.txt; grep -n -B8 "kotlin-stdlib-jdk" ../deps.txt | head -80; true
+            cd android && ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace
 
       - if: always()
         uses: actions/upload-artifact@v4

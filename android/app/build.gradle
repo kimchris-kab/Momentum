@@ -43,13 +43,19 @@ dependencies {
 }
 
 // The test libraries pull in kotlin-stdlib-jdk7 and -jdk8 1.6.21 while the app is on kotlin-stdlib
-// 1.8.22. From 1.8 the stdlib contains everything those two used to add, so the old copies only
-// define the same classes twice — which fails the build before any test runs. (A Kotlin BOM was
-// tried first and left the clash in place.) Dropped from the test classpaths only; the app's own
-// is untouched.
-configurations.matching { it.name.toLowerCase().contains('androidtest') }.configureEach {
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+// 1.8.22, and the two copies define the same classes — which fails the build before any test runs.
+// From 1.8 the stdlib contains everything those two used to add, and their 1.8.x releases are
+// empty shells that just point at it, so pinning them there removes the clash and nothing else.
+// (A Kotlin BOM, then an exclude on the androidTest configurations, were tried first; neither
+// reached the classpath Android checks.) Applied to every configuration, harmlessly for the app.
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'org.jetbrains.kotlin'
+                && (details.requested.name == 'kotlin-stdlib-jdk7' || details.requested.name == 'kotlin-stdlib-jdk8')) {
+            details.useVersion '1.8.22'
+            details.because 'merged into kotlin-stdlib since 1.8; older copies duplicate its classes'
+        }
+    }
 }
 
 apply from: 'capacitor.build.gradle'
