@@ -1,6 +1,6 @@
 import { addDays, formatTime12, todayStr, weekdayKey } from "./date.js";
 import { WK_ORDER } from "../data/constants.js";
-import { isDone, tasksForDate } from "./tasks.js";
+import { agendaForDate, isDone, tasksForDate } from "./tasks.js";
 import { missedYesterday } from "./habits.js";
 import { reminderMode } from "./automaticity.js";
 import { cueOf } from "./cues.js";
@@ -29,6 +29,12 @@ export const NUDGE_KINDS = [
     id: "urges",
     label: "Warning before an urge",
     desc: "Once the app has seen when a habit you're quitting usually pulls at you, it nudges you about 20 minutes before — with your own words. Sent even in quiet hours, since that's often when it hits.",
+    kind: "toggle",
+  },
+  {
+    id: "rescue",
+    label: "Save the chain",
+    desc: "At 8pm, if a habit with a small version is still open, one note offering it. The small version counts, and it's often enough to get you started on the real one.",
     kind: "toggle",
   },
   {
@@ -64,6 +70,7 @@ export const DEFAULT_NOTIFY = {
   habits: true,
   comeback: true,
   urges: true,
+  rescue: true,
   experiments: true,
   morning: null,        // "HH:MM" when on
   evening: null,
@@ -208,6 +215,28 @@ export function buildNudges(state, { days = 7, now = Date.now() } = {}) {
         actions: [ACTIONS.urge, ACTIONS.open],
       });
     });
+
+    // --- a habit still open at 8pm, with a small version to fall back on ---
+    // Today only: whether tomorrow's will be open is unknowable, and the schedule is rebuilt every
+    // time something is ticked, so finishing the habit withdraws the note. One note however many are
+    // open — a note per habit is how an evening becomes a list of reproaches.
+    if (notify.rescue && offset === 0 && !inQuietHours("20:00", notify)) {
+      const open = agendaForDate(tasks, date, dayLog, "build")
+        .filter((t) => !isDone(t, date, dayLog) && t.twoMin && !t.archivedAt && reminderMode(t, srbai) !== "faded");
+      if (open.length) {
+        const [first, ...rest] = open;
+        out.push({
+          id: `rescue:${date}`,
+          kind: "rescue",
+          taskId: first.id,
+          date,
+          at: at(date, "20:00"),
+          title: `${first.text} is still open`,
+          body: `The small version counts: ${first.twoMin}.${rest.length ? ` (${rest.length} more still open.)` : ""}`,
+          actions: actionsFor(first),
+        });
+      }
+    }
 
     // --- a "do it" day in a running experiment ---
     // Only the days that ask for something. A "normal day" needs no reminder, and a stream of

@@ -18,6 +18,8 @@ import {
 import { Card, Checkbox, EmptyState, IconButton, ProgressRing, SectionLabel } from "../components/ui.jsx";
 import TaskRow from "../components/TaskRow.jsx";
 import ExperimentCard from "../components/ExperimentCard.jsx";
+// Loaded after Today has drawn: the radar and its wording are only needed once something is up.
+const RadarCards = lazy(() => import("../components/RadarCards.jsx"));
 import RecoveryCard from "../components/RecoveryCard.jsx";
 import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
 import {
@@ -205,6 +207,13 @@ export default function TodayView({
       {onboarding && !onboarding.complete && !onboarding.dismissed && onStartOnboarding && (
         <OnboardingPrompt onStart={onStartOnboarding} onDismiss={onDismissOnboarding} />
       )}
+
+      {/* The two that are about right now come first: a hard stretch coming for a habit being quit,
+          and a habit about to slip with a small version to fall back on. */}
+      <Suspense fallback={null}>
+        <RadarCards state={state} onUrge={onUrge} onOpenTask={onOpenTask}
+          onDoSmall={(t) => onToggleTask(t, undefined, { minimal: true })} />
+      </Suspense>
 
       {woopNeeded.length > 0 && onStartWoop && (
         <WoopPrompt goals={woopNeeded} onStart={onStartWoop} />

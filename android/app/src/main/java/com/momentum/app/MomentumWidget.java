@@ -16,7 +16,9 @@ import android.widget.RemoteViews;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 
 /**
@@ -174,6 +176,37 @@ public class MomentumWidget extends AppWidgetProvider {
         return detail.toString();
     }
 
+    private static String clockOf(int minuteOfDay) {
+        Calendar c = Calendar.getInstance();
+        c.set(Calendar.HOUR_OF_DAY, minuteOfDay / 60);
+        c.set(Calendar.MINUTE, minuteOfDay % 60);
+        c.set(Calendar.SECOND, 0);
+        return DateFormat.getTimeInstance(DateFormat.SHORT).format(c.getTime());
+    }
+
+    /**
+     * When the habit usually pulls at you: "Risk window opens in 25 min · 8:00 PM". The app sends the
+     * window as a time of day, and this works out where now falls in it each time the widget draws, so
+     * it stays right for days without the app writing anything. Empty until the app has learned one.
+     */
+    static String riskLine(JSONObject q, long now) {
+        JSONObject r = q.optJSONObject("risk");
+        if (r == null) return "";
+        int start = r.optInt("startMin", -1);
+        int end = r.optInt("endMin", -1);
+        if (start < 0 || end < 0 || start > 1439 || end > 1439) return "";
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(now);
+        int current = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
+        // A window can cross midnight (11pm to 1:30am), in which case it ends at an earlier minute than it starts.
+        boolean wraps = end <= start;
+        boolean inside = wraps ? (current >= start || current < end) : (current >= start && current < end);
+        if (inside) return "In your risk window \u00B7 until " + clockOf(end);
+        int until = (start - current + 1440) % 1440;
+        if (until <= 90) return "Risk window opens in " + until + " min \u00B7 " + clockOf(start);
+        return "Risk window " + clockOf(start) + "\u2013" + clockOf(end);
+    }
+
     /**
      * Builds what the widget shows. Separate from putting it on the screen so the instrumentation
      * test can inflate exactly this on an emulator and look at it.
@@ -191,6 +224,7 @@ public class MomentumWidget extends AppWidgetProvider {
         int[] quitTimes = { R.id.quit_0_time, R.id.quit_1_time };
         int[] quitNames = { R.id.quit_0_name, R.id.quit_1_name };
         int[] quitDetails = { R.id.quit_0_detail, R.id.quit_1_detail };
+        int[] quitRisks = { R.id.quit_0_risk, R.id.quit_1_risk };
         int[] quitButtons = { R.id.quit_0_urge, R.id.quit_1_urge };
         for (int rowId : quitRows) views.setViewVisibility(rowId, View.GONE);
         views.setViewVisibility(R.id.quit_divider, View.GONE);
@@ -218,6 +252,9 @@ public class MomentumWidget extends AppWidgetProvider {
                     views.setTextColor(quitTimes[i], slipped ? COLOR_SLIPPED : COLOR_CLEAN);
                     views.setTextViewText(quitNames[i], q.optString("text", ""));
                     views.setTextViewText(quitDetails[i], quitDetail(context, q, now));
+                    String risk = riskLine(q, now);
+                    views.setTextViewText(quitRisks[i], risk);
+                    views.setViewVisibility(quitRisks[i], risk.isEmpty() ? View.GONE : View.VISIBLE);
                     views.setViewVisibility(quitRows[i], View.VISIBLE);
 
                     // Each button needs its own PendingIntent. Android decides two are "the same"

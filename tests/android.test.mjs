@@ -292,6 +292,10 @@ t.group("the keys the Java reads are the keys the app writes");
   const top = new Set(Object.keys(snap));
   const item = new Set(Object.keys(snap.items[0] || {}));
   const quit = new Set(Object.keys(snap.quitting[0] || {}));
+  const risk = new Set(Object.keys(widgetSnapshot({
+    tasks: [{ id: "q1", kind: "break", text: "x", recurrence: daily, startDate: "2026-09-01", createdAt: 1 }],
+    dayLog: {}, urgeLog: [],
+  }, "2026-09-28", { usualWindow: () => ({ startMin: 1200, endMin: 1320 }) }).quitting[0].risk || {}));
 
   const read = (java) => [...java.matchAll(/\b(\w+)\.opt(?:String|Int|Long|Boolean|JSONArray|JSONObject)\("(\w+)"/g)]
     .map((m) => ({ on: m[1], key: m[2] }));
@@ -300,9 +304,12 @@ t.group("the keys the Java reads are the keys the app writes");
   const topReads = reads.filter((r) => r.on === "snapshot").map((r) => r.key);
   const itemReads = reads.filter((r) => r.on === "item").map((r) => r.key);
   const quitReads = reads.filter((r) => r.on === "q").map((r) => r.key);
+  const riskReads = reads.filter((r) => r.on === "r").map((r) => r.key);
   t.eq("top-level keys all exist", topReads.filter((k) => !top.has(k)), []);
   t.eq("task keys all exist", itemReads.filter((k) => !item.has(k)), []);
   t.eq("habit-being-broken keys all exist", quitReads.filter((k) => !quit.has(k)), []);
+  t.eq("risk-window keys all exist", riskReads.filter((k) => !risk.has(k)), []);
+  t.ok("...and both were actually read", riskReads.includes("startMin") && riskReads.includes("endMin"), riskReads);
   t.ok("...and each group was actually checked", topReads.length && itemReads.length && quitReads.length,
     { topReads, itemReads, quitReads });
 }
@@ -371,4 +378,13 @@ t.group("getting a backup out of the app");
   const srcFiles = ["lib/backup.js", "lib/journal.js", "lib/money.js", "views/SettingsView.jsx", "views/JournalView.jsx", "views/MoneyView.jsx"];
   const offenders = srcFiles.filter((f) => /createObjectURL|\.download\s*=/.test(readFileSync(join(ROOT, "src", f), "utf8")));
   t.eq("only files.js makes download links", offenders, []);
+}
+
+t.group("the risk line on the widget");
+{
+  t.ok("it has a line of its own under each habit", /quit_0_risk/.test(layout) && /quit_1_risk/.test(layout));
+  t.ok("hidden until there's something to say", /name="MomentumWidgetQuitRisk"[\s\S]*?visibility">gone/.test(styles));
+  t.ok("the Java hides it again when the window is unknown", /risk\.isEmpty\(\) \? View\.GONE : View\.VISIBLE/.test(widgetJava));
+  t.ok("it works out where now falls itself, so it stays right without the app", /Calendar\.HOUR_OF_DAY/.test(widgetJava) && /riskLine\(q, now\)/.test(widgetJava));
+  t.ok("and handles a window that crosses midnight", /end <= start/.test(widgetJava));
 }

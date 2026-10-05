@@ -28,6 +28,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.util.Calendar;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -168,12 +169,18 @@ public class WidgetTest {
         for (String name : undone) items.append(task(name, false)).append(',');
         items.append(task("Walk", true)).append(',').append(task("Stretch", true));
         long slip = now - (4 * DAY + 6 * HOUR + 10 * 60_000L);
+        Calendar nowCal = Calendar.getInstance();
+        nowCal.setTimeInMillis(now);
+        int cur = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE);
+        // A window opening in 25 minutes, so the line is the countdown whatever time the test runs at.
+        int riskStart = (cur + 25) % 1440;
+        int riskEnd = (cur + 145) % 1440;
         long urge = now - 2 * HOUR - 5 * 60_000L;
         return "{\"date\":\"2026-09-28\",\"done\":2,\"total\":9,\"streak\":12,"
                 + "\"items\":[" + items + "],"
                 + "\"quitting\":["
                 + "{\"id\":\"q1\",\"text\":\"Doomscrolling\",\"state\":\"open\",\"lastSlipAt\":" + slip
-                + ",\"lastUrgeAt\":" + urge + ",\"limit\":0,\"count\":0,\"everSlipped\":true},"
+                + ",\"lastUrgeAt\":" + urge + ",\"limit\":0,\"count\":0,\"everSlipped\":true,\"risk\":{\"startMin\":" + riskStart + ",\"endMin\":" + riskEnd + "}},"
                 + "{\"id\":\"q2\",\"text\":\"Smoking\",\"state\":\"slipped\",\"lastSlipAt\":" + (now - 25 * 60_000L)
                 + ",\"lastUrgeAt\":null,\"limit\":5,\"count\":6,\"everSlipped\":true}"
                 + "],\"updatedAt\":" + now + "}";
@@ -209,6 +216,57 @@ public class WidgetTest {
 
         JSONObject slipped = new JSONObject("{\"state\":\"slipped\",\"everSlipped\":true,\"limit\":0}");
         assertEquals("since you slipped today · no urges logged yet", MomentumWidget.quitDetail(context, slipped, now));
+    }
+
+    // ---- the risk line, with no host needed -------------------------------------------------
+
+    private static long at(int hour, int minute) {
+        Calendar c = Calendar.getInstance();
+        c.set(Calendar.HOUR_OF_DAY, hour);
+        c.set(Calendar.MINUTE, minute);
+        c.set(Calendar.SECOND, 30);
+        return c.getTimeInMillis();
+    }
+
+    private static JSONObject window(int startMin, int endMin) throws Exception {
+        return new JSONObject("{\"risk\":{\"startMin\":" + startMin + ",\"endMin\":" + endMin + "}}");
+    }
+
+    @Test
+    public void theRiskLineCountsDownByItself() throws Exception {
+        // A window of 8:00pm to 10:30pm, as the app sends it: minutes since midnight.
+        JSONObject evening = window(20 * 60, 22 * 60 + 30);
+        assertEquals("in the afternoon, just the span", true,
+                MomentumWidget.riskLine(evening, at(15, 0)).startsWith("Risk window ") && MomentumWidget.riskLine(evening, at(15, 0)).contains("\u2013"));
+        assertEquals("forty minutes out, the countdown", true, MomentumWidget.riskLine(evening, at(19, 20)).startsWith("Risk window opens in 40 min \u00B7 "));
+        assertEquals("a minute out", true, MomentumWidget.riskLine(evening, at(19, 59)).startsWith("Risk window opens in 1 min"));
+        assertEquals("inside it", true, MomentumWidget.riskLine(evening, at(21, 0)).startsWith("In your risk window \u00B7 until "));
+        assertEquals("on the first minute of it", true, MomentumWidget.riskLine(evening, at(20, 0)).startsWith("In your risk window"));
+        assertEquals("after it, back to the span: it's tomorrow's now", true, MomentumWidget.riskLine(evening, at(23, 0)).startsWith("Risk window 8:00"));
+        String ended = MomentumWidget.riskLine(evening, at(22, 30));
+        assertEquals("on the minute it ends it is over: the span, not 'in your window'", true,
+                ended.startsWith("Risk window ") && !ended.startsWith("Risk window opens") && !ended.startsWith("In your"));
+    }
+
+    @Test
+    public void aRiskWindowThatCrossesMidnightIsHandled() throws Exception {
+        // 11pm to 1:30am: it ends at an earlier minute than it starts.
+        JSONObject late = window(23 * 60, 90);
+        assertEquals("at half past eleven: inside", true, MomentumWidget.riskLine(late, at(23, 30)).startsWith("In your risk window \u00B7 until "));
+        assertEquals("at half past midnight: still inside", true, MomentumWidget.riskLine(late, at(0, 30)).startsWith("In your risk window"));
+        assertEquals("at noon: just the span", true, MomentumWidget.riskLine(late, at(12, 0)).startsWith("Risk window "));
+        assertEquals("at twenty past ten: forty minutes out", true, MomentumWidget.riskLine(late, at(22, 20)).startsWith("Risk window opens in 40 min"));
+        String passed = MomentumWidget.riskLine(late, at(2, 0));
+        assertEquals("at two in the morning it has passed", true, passed.startsWith("Risk window ") && !passed.startsWith("Risk window opens") && !passed.startsWith("In your"));
+    }
+
+    @Test
+    public void noRiskLineUntilThereIsAWindowToShow() throws Exception {
+        long now = System.currentTimeMillis();
+        assertEquals("no window learned yet", "", MomentumWidget.riskLine(new JSONObject("{}"), now));
+        assertEquals("a null one", "", MomentumWidget.riskLine(new JSONObject("{\"risk\":null}"), now));
+        assertEquals("one with a missing end", "", MomentumWidget.riskLine(new JSONObject("{\"risk\":{\"startMin\":1200}}"), now));
+        assertEquals("nonsense minutes", "", MomentumWidget.riskLine(window(-5, 99999), now));
     }
 
     // ---- the list service, with no host needed --------------------------------------------
@@ -251,6 +309,15 @@ public class WidgetTest {
 
         waitFor("the counter to appear", () -> "4d 6h".equals(text(R.id.quit_0_time)));
         assertEquals("the day's progress", "2 / 9", text(R.id.widget_progress));
+        assertTrue("the first habit shows when its risk window opens (" + text(R.id.quit_0_risk) + ")",
+                text(R.id.quit_0_risk) != null && text(R.id.quit_0_risk).startsWith("Risk window opens in 25 min"));
+        final int[] riskVisible = new int[2];
+        inst.runOnMainSync(() -> {
+            riskVisible[0] = hostView.findViewById(R.id.quit_0_risk).getVisibility();
+            riskVisible[1] = hostView.findViewById(R.id.quit_1_risk).getVisibility();
+        });
+        assertEquals("...visible", View.VISIBLE, riskVisible[0]);
+        assertEquals("the second has no learned window, so no line", View.GONE, riskVisible[1]);
         assertEquals("the habit's name sits beside its counter", "Doomscrolling", text(R.id.quit_0_name));
         assertTrue("the second habit is shown too", text(R.id.quit_1_time) != null && !text(R.id.quit_1_time).isEmpty());
         assertEquals("a slip today shows the (short) time since it", "25m", text(R.id.quit_1_time));
