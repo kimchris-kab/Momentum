@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useMemo, useState } from "react";
 import {
   Ban, CalendarCheck, CalendarDays, CalendarRange, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock4, Crosshair, Fingerprint, Flame, ListChecks, PartyPopper, PenLine, RefreshCw, Snowflake,
-  Search, Settings, Sparkles, Sun, Target, Waves,
+  FlaskConical, Search, Settings, Sparkles, Sun, Target, Waves,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, pillarOf } from "../data/constants.js";
@@ -17,6 +17,7 @@ import {
 } from "../lib/planning.js";
 import { Card, Checkbox, EmptyState, IconButton, ProgressRing, SectionLabel } from "../components/ui.jsx";
 import TaskRow from "../components/TaskRow.jsx";
+import ExperimentCard from "../components/ExperimentCard.jsx";
 import RecoveryCard from "../components/RecoveryCard.jsx";
 import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
 import {
@@ -49,6 +50,7 @@ export default function TodayView({
   onOpenSettings, onOpenSearch, freshStart: fresh, onAcceptFreshStart, onDismissFreshStart,
   comebacks = [], onAckComebacks, startSmall, woopNeeded = [], onStartWoop,
   onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
+  onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -212,6 +214,11 @@ export default function TodayView({
         <SrbaiPrompt tasks={srbaiDue} onRate={onRateHabit} />
       )}
 
+      {onOpenExperiments && (
+        <ExperimentCard state={state} onFollow={onFollowExperiment} onOpen={onOpenExperiments}
+          onDismissTeaser={onDismissExperimentTeaser} />
+      )}
+
       <RecoveryCard
         missed={missed} freezes={freezes} streak={streak}
         onFreeze={onFreeze} onRepair={onRepair} onStartMinimal={onStartRitual}
@@ -361,6 +368,7 @@ export default function TodayView({
           <IconButton onClick={onOpenPlan} title="Plan"><Target size={15} /></IconButton>
           <IconButton onClick={onOpenIdentity} title="Identity"><Fingerprint size={15} /></IconButton>
           <IconButton onClick={onOpenHabits} title="Habits"><CalendarDays size={15} /></IconButton>
+          {onOpenExperiments && <IconButton onClick={onOpenExperiments} title="Experiments"><FlaskConical size={15} /></IconButton>}
           <IconButton onClick={onOpenTasks} title="All tasks"><ListChecks size={15} /></IconButton>
         </div>
       </div>

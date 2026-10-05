@@ -48,6 +48,7 @@ export function summarise(data) {
     ["Recurring entries", count(data.recurring)],
     ["Goals", count(data.goals) + count(data.strategies)],
     ["Saved views", count(data.savedViews)],
+    ["Experiments", count(data.experiments)],
   ];
   return rows.filter(([, n]) => n > 0);
 }

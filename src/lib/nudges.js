@@ -4,6 +4,7 @@ import { isDone, tasksForDate } from "./tasks.js";
 import { missedYesterday } from "./habits.js";
 import { reminderMode } from "./automaticity.js";
 import { cueOf } from "./cues.js";
+import { todayAssignment } from "./experimentPlan.js";
 import { urgeWindow } from "./breakInsights.js";
 import { calmNoteParts } from "./urges.js";
 
@@ -28,6 +29,12 @@ export const NUDGE_KINDS = [
     id: "urges",
     label: "Warning before an urge",
     desc: "Once the app has seen when a habit you're quitting usually pulls at you, it nudges you about 20 minutes before — with your own words. Sent even in quiet hours, since that's often when it hits.",
+    kind: "toggle",
+  },
+  {
+    id: "experiments",
+    label: "Experiment days",
+    desc: "On the days a running experiment asks you to do the change — and only those — a note in the morning, so you don't have to remember which kind of day it is.",
     kind: "toggle",
   },
   {
@@ -57,6 +64,7 @@ export const DEFAULT_NOTIFY = {
   habits: true,
   comeback: true,
   urges: true,
+  experiments: true,
   morning: null,        // "HH:MM" when on
   evening: null,
   weekly: null,         // { day, time } when on
@@ -200,6 +208,26 @@ export function buildNudges(state, { days = 7, now = Date.now() } = {}) {
         actions: [ACTIONS.urge, ACTIONS.open],
       });
     });
+
+    // --- a "do it" day in a running experiment ---
+    // Only the days that ask for something. A "normal day" needs no reminder, and a stream of
+    // "nothing to do today" is how notifications get muted.
+    if (notify.experiments) {
+      const when = notify.morning || "08:30";
+      (state.experiments || []).forEach((exp) => {
+        if (todayAssignment(exp, date) !== "do" || exp.followed?.[date]) return;
+        if (inQuietHours(when, notify)) return;
+        out.push({
+          id: `exp:${exp.id}:${date}`,
+          kind: "experiments",
+          date,
+          at: at(date, when),
+          title: `Experiment: ${exp.title}`,
+          body: `Today's a “do it” day — ${exp.change}.`,
+          actions: [ACTIONS.open],
+        });
+      });
+    }
 
     // --- morning plan ---
     if (notify.morning && !inQuietHours(notify.morning, notify)) {

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { msUntilMidnight, todayStr } from "../lib/date.js";
 
@@ -159,10 +160,16 @@ export function Sheet({ open, onClose, title, children, footer }) {
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  // Rendered at the top of the page, not where the sheet is written. A view keeps a 3D transform
+  // from its entry animation, and a fixed element inside a transformed ancestor is positioned
+  // against that ancestor instead of the screen — so a sheet opened from inside a short view came
+  // up cut off, with its top above the screen. Only the task editor, which sits outside the views,
+  // had been immune. The font and colour are set here because they were being inherited from the page.
+  const sheet = (
     <div className="mtm-backdrop" onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(8,7,13,0.66)", backdropFilter: "blur(3px)",
       zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center",
+      fontFamily: F.body, color: C.text,
     }}>
       <div className="mtm-sheet" onClick={(e) => e.stopPropagation()} style={{
         width: "100%", maxWidth: 460, maxHeight: "88vh", overflowY: "auto",
@@ -183,6 +190,7 @@ export function Sheet({ open, onClose, title, children, footer }) {
       </div>
     </div>
   );
+  return typeof document === "undefined" ? sheet : createPortal(sheet, document.body);
 }
 
 export function Toast({ toast, onAction, onDismiss }) {

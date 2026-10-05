@@ -4,7 +4,7 @@ import { C, MOTION_CSS, styles } from "./theme.js";
 import { MANTRAS, PILLARS } from "./data/constants.js";
 import { addDays, dstr, formatTime12, hashIdx, todayStr } from "./lib/date.js";
 import {
-  heatmapDays, isDone, isFlexible, newTask, reorderTasks, settleEnds, tasksForDate, toggleDoneReducer, voteTally,
+  heatmapDays, isDone, isFlexible, newTask, reorderTasks, settleEnds, tasksForDate, toggleDoneReducer, voteTally, weeklyRule,
 } from "./lib/tasks.js";
 import {
   MILESTONES, freezesLeft, habitStreakProtected, isMilestoneFor, protectedStreak,
@@ -23,6 +23,7 @@ import { lapsesOn, limitOf, newLapse, newUrge, syncSlip, withCalmNote } from "./
 import { notificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import { bury, mergeStates, unbury } from "./lib/merge.js";
+import { setFollowed, stopExperiment } from "./lib/experimentPlan.js";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
 import UrgeSheet from "./components/UrgeSheet.jsx";
@@ -61,6 +62,8 @@ const SettingsView = lazy(() => import("./views/SettingsView.jsx"));
 // it arrives as its own chunk the first time it's wanted. It's mounted for good after that, so
 // closing and reopening costs nothing.
 const TaskSheet = lazy(() => import("./components/TaskSheet.jsx"));
+// Experiments live on yourself: a screen most days never opens, so it arrives when asked for.
+const ExperimentsView = lazy(() => import("./views/ExperimentsView.jsx"));
 
 const ViewLoading = () => (
   <div style={{ ...styles.page, color: C.faint, fontSize: 12.5 }}>Loading…</div>
@@ -391,6 +394,21 @@ export default function Momentum() {
     setState((s) => ({ ...s, tasks: [...s.tasks, task] }));
     return task;
   }, []);
+
+  // ---- Experiments ----
+  const addExperiment = useCallback((exp) => {
+    setState((s) => ({ ...s, experiments: [...(s.experiments || []), exp] }));
+    show("Experiment started");
+  }, [show]);
+  const followExperiment = useCallback((id, date, followed) => setState((s) => ({
+    ...s, experiments: (s.experiments || []).map((e) => (e.id === id ? setFollowed(e, date, followed) : e)),
+  })), []);
+  const endExperiment = useCallback((id) => setState((s) => ({
+    ...s, experiments: (s.experiments || []).map((e) => (e.id === id ? stopExperiment(e) : e)),
+  })), []);
+  const removeExperiment = useCallback((id) => setState((s) => ({
+    ...s, experiments: (s.experiments || []).filter((e) => e.id !== id), graveyard: bury(s.graveyard, id),
+  })), []);
 
   // Every edit is stamped. Merging two devices resolves a record edited on both by which
   // edit came last, so an unstamped write is one a merge has to guess about.
@@ -875,6 +893,9 @@ export default function Momentum() {
                 tally={tally} heatmap={heatmap} needsRest={needsRest}
                 onToggleTask={toggleTask} onOpenTask={(t) => setEditing(t.id)} onToggleStar={toggleStar}
                 onCheckin={() => setView("checkin")} onOpenHabits={() => setView("habits")}
+                onOpenExperiments={() => setView("experiments")}
+                onFollowExperiment={followExperiment}
+                onDismissExperimentTeaser={() => patch({ settings: { ...state.settings, experimentsTeaserDismissed: true } })}
                 onOpenIdentity={() => setView("identity")} onOpenTasks={() => setView("tasks")}
                 onRerollMantra={rerollMantra}
                 onFreeze={freezeYesterday} onRepair={repairDay}
@@ -1025,6 +1046,17 @@ export default function Momentum() {
                   // automatic one does: the next push compares against it to tell "nobody has
                   // touched this" from "the other device has been busy".
                   onPushed: setLastPush,
+                }}
+              />
+            )}
+            {view === "experiments" && (
+              <ExperimentsView
+                state={state} onBack={() => setView("today")}
+                onCreate={addExperiment} onFollow={followExperiment} onStop={endExperiment}
+                onDelete={removeExperiment}
+                onAddHabit={(text) => {
+                  addTask({ kind: "build", text, recurrence: weeklyRule(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]), startDate: todayStr() });
+                  show(`Added “${text}” to your habits`);
                 }}
               />
             )}
