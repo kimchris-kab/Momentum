@@ -110,5 +110,6 @@
         android:layout_marginTop="8dp"
         android:textColor="#6B6683"
         android:textSize="12sp"
+        android:visibility="gone"
         android:text="@string/widget_empty" />
 </LinearLayout>

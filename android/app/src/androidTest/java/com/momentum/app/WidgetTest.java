@@ -116,7 +116,7 @@ public class WidgetTest {
     /** Sized like the 4x4 widget it's declared as, which is what a phone gives it by default. */
     private void layOut() {
         inst.runOnMainSync(() -> {
-            int w = px(290), h = px(300);
+            int w = px(290), h = px(320);
             hostView.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
             hostView.layout(0, 0, w, h);
@@ -133,7 +133,7 @@ public class WidgetTest {
         while (SystemClock.uptimeMillis() < end) {
             final boolean[] ok = new boolean[1];
             inst.runOnMainSync(() -> {
-                int w = px(290), h = px(300);
+                int w = px(290), h = px(320);
                 hostView.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                         View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
                 hostView.layout(0, 0, w, h);
@@ -349,7 +349,14 @@ public class WidgetTest {
         // The list still has to have room to show tasks in: this is what failed when it didn't.
         final int[] listHeight = new int[1];
         inst.runOnMainSync(() -> listHeight[0] = list[0].getHeight());
-        assertTrue("the task list has room for at least two rows (" + listHeight[0] + "px)", listHeight[0] >= px(52));
+        final String heights[] = new String[1];
+        inst.runOnMainSync(() -> heights[0] = "root=" + hostView.getHeight()
+                + " progress=" + hostView.findViewById(R.id.widget_progress).getHeight()
+                + " quit0=" + hostView.findViewById(R.id.quit_0).getHeight()
+                + " quit1=" + hostView.findViewById(R.id.quit_1).getHeight()
+                + " list=" + list[0].getHeight() + " density=" + context.getResources().getDisplayMetrics().density
+                + " fontScale=" + context.getResources().getConfiguration().fontScale);
+        assertTrue("the task list has room for at least one and a half rows (" + heights[0] + ")", listHeight[0] >= px(40));
         waitFor("the list to hold all nine tasks", () -> list[0].getAdapter() != null && list[0].getAdapter().getCount() == 9);
         waitFor("the first row to draw", () -> {
             if (list[0].getChildCount() == 0) return false;

@@ -23,7 +23,7 @@
     <style name="MomentumWidgetQuitRow">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:layout_marginTop">6dp</item>
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:visibility">gone</item>
@@ -57,7 +57,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">#A29DB8</item>
         <item name="android:textSize">11sp</item>
-        <item name="android:maxLines">2</item>
+        <item name="android:maxLines">1</item>
         <item name="android:ellipsize">end</item>
     </style>
 

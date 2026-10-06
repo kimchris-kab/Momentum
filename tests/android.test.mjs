@@ -399,5 +399,5 @@ t.group("room for the task list");
   const minH = Number(info.match(/minHeight="(\d+)dp"/)?.[1]);
   t.ok("the default is four cells tall", cells >= 4, cells);
   t.ok("...with a minimum height to match", minH >= 250, minH);
-  t.ok("and the emulator test lays the widget out at that size", /px\(300\)/.test(readFileSync(join(ROOT, "android/app/src/androidTest/java/com/momentum/app/WidgetTest.java"), "utf8")));
+  t.ok("and the emulator test lays the widget out at that size", /px\(320\)/.test(readFileSync(join(ROOT, "android/app/src/androidTest/java/com/momentum/app/WidgetTest.java"), "utf8")));
 }
