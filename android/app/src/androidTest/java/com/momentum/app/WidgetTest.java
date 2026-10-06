@@ -150,11 +150,23 @@ public class WidgetTest {
         return v instanceof TextView ? ((TextView) v).getText().toString() : null;
     }
 
+    /** Where the list is and what it holds: a list that is hidden or has no height draws no rows. */
+    private String listState() {
+        ListView l = hostView.findViewById(R.id.widget_list);
+        if (l == null) return "list=missing";
+        return "root=" + hostView.getHeight() + " quit0=" + hostView.findViewById(R.id.quit_0).getHeight()
+                + " quit1=" + hostView.findViewById(R.id.quit_1).getHeight()
+                + " list(h=" + l.getHeight() + " vis=" + l.getVisibility() + " children=" + l.getChildCount()
+                + " count=" + (l.getAdapter() == null ? -1 : l.getAdapter().getCount()) + ")"
+                + " density=" + context.getResources().getDisplayMetrics().density;
+    }
+
     private String describe() {
         final AtomicReference<String> out = new AtomicReference<>("");
         inst.runOnMainSync(() -> out.set("progress=" + text(R.id.widget_progress)
                 + " quit0=" + text(R.id.quit_0_time) + "/" + text(R.id.quit_0_name)
-                + " quit1=" + text(R.id.quit_1_time) + "/" + text(R.id.quit_1_name)));
+                + " quit1=" + text(R.id.quit_1_time) + "/" + text(R.id.quit_1_name)
+                + " | " + listState()));
         return out.get();
     }
 
@@ -345,19 +357,9 @@ public class WidgetTest {
         final ListView[] list = new ListView[1];
         inst.runOnMainSync(() -> list[0] = hostView.findViewById(R.id.widget_list));
         assertNotNull("the widget has a list", list[0]);
-        // With two habits being broken and a risk line on one, the counters take most of the widget.
-        // The list still has to have room to show tasks in: this is what failed when it didn't.
-        final int[] listHeight = new int[1];
-        inst.runOnMainSync(() -> listHeight[0] = list[0].getHeight());
-        final String heights[] = new String[1];
-        inst.runOnMainSync(() -> heights[0] = "root=" + hostView.getHeight()
-                + " progress=" + hostView.findViewById(R.id.widget_progress).getHeight()
-                + " quit0=" + hostView.findViewById(R.id.quit_0).getHeight()
-                + " quit1=" + hostView.findViewById(R.id.quit_1).getHeight()
-                + " list=" + list[0].getHeight() + " density=" + context.getResources().getDisplayMetrics().density
-                + " fontScale=" + context.getResources().getConfiguration().fontScale);
-        assertTrue("the task list has room for at least one and a half rows (" + heights[0] + ")", listHeight[0] >= px(40));
         waitFor("the list to hold all nine tasks", () -> list[0].getAdapter() != null && list[0].getAdapter().getCount() == 9);
+        // Only now has the list been shown (it is hidden while it has nothing), so only now can it have a height.
+        waitFor("the list to be tall enough for at least one and a half rows", () -> list[0].getHeight() >= px(40));
         waitFor("the first row to draw", () -> {
             if (list[0].getChildCount() == 0) return false;
             View row = list[0].getChildAt(0).findViewById(R.id.task_text);
