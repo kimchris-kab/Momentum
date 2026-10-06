@@ -7,6 +7,7 @@ import {
 import { C, F, R, alpha, styles } from "../theme.js";
 import { MANTRAS, PILLARS, pillarOf } from "../data/constants.js";
 import { formatTime12, hashIdx, longDate, pad, todayStr } from "../lib/date.js";
+import { writeCandidate } from "../lib/pep.js";
 import { dayState, fmtSince, lapsesOn, lastSlipAt, limitOf, slipsOf, urgeTally } from "../lib/urges.js";
 import { agendaForDate, dayStats, isDone, isFlexible, tasksForDate, weekProgress } from "../lib/tasks.js";
 import {
@@ -20,6 +21,7 @@ import TaskRow from "../components/TaskRow.jsx";
 import ExperimentCard from "../components/ExperimentCard.jsx";
 // Loaded after Today has drawn: the radar and its wording are only needed once something is up.
 const RadarCards = lazy(() => import("../components/RadarCards.jsx"));
+const PepCard = lazy(() => import("../components/PepCard.jsx"));
 import RecoveryCard from "../components/RecoveryCard.jsx";
 import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
 import {
@@ -52,10 +54,12 @@ export default function TodayView({
   onOpenSettings, onOpenSearch, freshStart: fresh, onAcceptFreshStart, onDismissFreshStart,
   comebacks = [], onAckComebacks, startSmall, woopNeeded = [], onStartWoop,
   onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
-  onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser,
+  onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser, onAddPepNote,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
+  // Worked out from the state each time it changes: the card appears when a run reaches three days.
+  const writeAsk = useMemo(() => writeCandidate(state), [state.tasks, state.urgeLog, state.dayLog, state.pepNotes]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showCompleted, setShowCompleted] = useState(false);
 
 
@@ -214,6 +218,14 @@ export default function TodayView({
         <RadarCards state={state} onUrge={onUrge} onOpenTask={onOpenTask}
           onDoSmall={(t) => onToggleTask(t, undefined, { minimal: true })} />
       </Suspense>
+
+      {/* The ask to write a note to yourself: only once a habit has gone three days clean, and only until
+          one is written today. */}
+      {writeAsk && onAddPepNote && (
+        <Suspense fallback={null}>
+          <PepCard candidate={writeAsk} onSave={onAddPepNote} />
+        </Suspense>
+      )}
 
       {woopNeeded.length > 0 && onStartWoop && (
         <WoopPrompt goals={woopNeeded} onStart={onStartWoop} />

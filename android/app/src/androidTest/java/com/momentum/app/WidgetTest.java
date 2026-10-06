@@ -367,6 +367,69 @@ public class WidgetTest {
         });
     }
 
+    // ---- your notes, turning ----------------------------------------------------------------
+
+    private String withPep(long now, String pepJson) {
+        String base = busyDay(now);
+        return base.substring(0, base.lastIndexOf("}")) + ",\"pep\":" + pepJson + "}";
+    }
+
+    @Test
+    public void yourNotesTurnThroughOnTheWidget() throws Exception {
+        snapshot(withPep(System.currentTimeMillis(), "[\"I walked instead.\",\"Told a friend.\",\"I want my evenings back.\"]"));
+        placeWidget();
+        waitFor("the counter to appear", () -> "4d 6h".equals(text(R.id.quit_0_time)));
+        final int[] seen = new int[4];
+        final String[] first = new String[1];
+        final boolean[] animated = new boolean[1];
+        inst.runOnMainSync(() -> {
+            android.widget.ViewFlipper f = hostView.findViewById(R.id.pep_flipper);
+            seen[0] = f.getVisibility();
+            seen[1] = f.getChildCount();
+            seen[2] = f.getFlipInterval();
+            animated[0] = f.getInAnimation() != null && f.getOutAnimation() != null;
+            first[0] = ((TextView) f.getChildAt(0).findViewById(R.id.pep_text)).getText().toString();
+        });
+        assertEquals("the flipper shows", View.VISIBLE, seen[0]);
+        assertEquals("one turn per note", 3, seen[1]);
+        assertEquals("a slow turn, nine seconds", 9000, seen[2]);
+        assertTrue("fading in and out", animated[0]);
+        assertEquals("in your own words, in quotes", "\u201CI walked instead.\u201D", first[0]);
+        // The list still has room: the flipper must not have taken it all.
+        final int[] listHeight = new int[1];
+        waitFor("the list to be tall enough beside the notes", () -> {
+            ListView l = hostView.findViewById(R.id.widget_list);
+            listHeight[0] = l.getHeight();
+            return l.getHeight() >= px(36);
+        });
+    }
+
+    @Test
+    public void noNotesNoFlipper() throws Exception {
+        snapshot(withPep(System.currentTimeMillis(), "[]"));
+        placeWidget();
+        waitFor("the counter to appear", () -> "4d 6h".equals(text(R.id.quit_0_time)));
+        final int[] v = new int[2];
+        inst.runOnMainSync(() -> {
+            android.widget.ViewFlipper f = hostView.findViewById(R.id.pep_flipper);
+            v[0] = f.getVisibility();
+            v[1] = f.getChildCount();
+        });
+        assertEquals(View.GONE, v[0]);
+        assertEquals(0, v[1]);
+    }
+
+    @Test
+    public void blankAndExcessNotesAreHandled() throws Exception {
+        snapshot(withPep(System.currentTimeMillis(), "[\"\",\"  \",\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\"]"));
+        placeWidget();
+        waitFor("the counter to appear", () -> "4d 6h".equals(text(R.id.quit_0_time)));
+        final int[] n = new int[1];
+        inst.runOnMainSync(() -> n[0] = ((android.widget.ViewFlipper) hostView.findViewById(R.id.pep_flipper)).getChildCount());
+        // The cap counts the first six entries of the list, blanks included, then blanks are skipped.
+        assertTrue("blanks skipped, never more than " + MomentumWidget.MAX_PEP + ": " + n[0], n[0] >= 1 && n[0] <= MomentumWidget.MAX_PEP);
+    }
+
     @Test
     public void aWidgetWithNothingSavedYetDrawsInsteadOfFailing() throws Exception {
         // First launch, before the app has written anything: no snapshot at all.

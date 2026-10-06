@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Ban, Bell, BellOff, ChevronDown, ChevronUp, Copy, Flame, MoreHorizontal, Pause, Pencil,
-  Clock, Gauge, Link2, Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, Zap,
+  Clock, Feather, Gauge, Link2, Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, X, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { BREAK_TEMPLATES, DAY_PRESETS, HABIT_TEMPLATES, PILLARS, PRIORITY, WEEKDAYS, pillarOf } from "../data/constants.js";
@@ -15,6 +15,7 @@ import { graduationStatus, srbaiDue } from "../lib/automaticity.js";
 import { contextStability, cueOf, stabilityBand } from "../lib/cues.js";
 import { cleanRecord, fmtSince, lastSlipAt, lastUrgeAt, reclaimed, slipsOf } from "../lib/urges.js";
 import { urgeWindow } from "../lib/breakInsights.js";
+import { cleanDays, notesFor } from "../lib/pep.js";
 import { money } from "../lib/date.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission, scheduleReminders,
@@ -31,6 +32,7 @@ const presetFor = (days, times) => (times
 
 export default function HabitsView({
   state, onAdd, onOpenTask, onBack, onSetSetting, onDuplicate, onArchive, onDelete, onMove, onRateHabit,
+  onAddPepNote, onRemovePepNote,
 }) {
   const { tasks, dayLog, settings, freezes, srbai = [] } = state;
   const today = todayStr();
@@ -362,6 +364,8 @@ export default function HabitsView({
           {active.map((t) => (
             <HabitCard key={t.id} task={t} kind={kind} accent={accent} dayLog={dayLog} freezes={freezes}
               srbai={srbai} onRateHabit={onRateHabit} urgeLog={state.urgeLog || []}
+              notes={kind === "break" ? notesFor(state, t.id) : undefined}
+              onAddNote={onAddPepNote} onRemoveNote={onRemovePepNote}
               onOpen={() => onOpenTask(t)} onMenu={() => setMenuFor(t.id)} />
           ))}
         </div>
@@ -506,7 +510,7 @@ export default function HabitsView({
   );
 }
 
-function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = [], onOpen, onMenu, onRateHabit }) {
+function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = [], notes, onAddNote, onRemoveNote, onOpen, onMenu, onRateHabit }) {
   const streak = habitStreakProtected(task, dayLog, freezes);
   const dueToday = occursOn(task, todayStr());
   const doneToday = dueToday && isDone(task, todayStr(), dayLog);
@@ -635,7 +639,10 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
         </p>
       )}
 
-      {kind === "break" && <QuitRecord task={task} dayLog={dayLog} urgeLog={urgeLog} />}
+      {kind === "break" && (
+        <QuitRecord task={task} dayLog={dayLog} urgeLog={urgeLog}
+          notes={notes} onAddNote={onAddNote} onRemoveNote={onRemoveNote} />
+      )}
 
       {kind === "build" && (milestone || reward) && (
         <p style={{ color: C.faint, fontSize: 10.5, margin: "9px 0 0", lineHeight: 1.5 }}>
@@ -653,7 +660,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
 // A rate beside the run, and the best run beside the current one. A streak that goes to zero
 // on one slip is the abstinence violation effect with a number on it; "22 of 24 recorded days"
 // is the same history told in a way one bad evening can't wipe out.
-function QuitRecord({ task, dayLog, urgeLog }) {
+function QuitRecord({ task, dayLog, urgeLog, notes = [], onAddNote, onRemoveNote }) {
   const rec = cleanRecord(task, dayLog);
   const since = fmtSince(Date.now() - (lastSlipAt(task, urgeLog) || Date.now()));
   const everSlipped = slipsOf(task, urgeLog).length > 0;
@@ -697,6 +704,61 @@ function QuitRecord({ task, dayLog, urgeLog }) {
             ? `${Math.round(gain.minutes / 60)} hours` : `${gain.minutes} minutes`}</b> back</>}
           .
         </p>
+      )}
+      {onAddNote && <NotesToSelf task={task} urgeLog={urgeLog} notes={notes} onAdd={onAddNote} onRemove={onRemoveNote} />}
+    </div>
+  );
+}
+
+// What you've written to yourself about this habit. Folded away by default so it doesn't crowd the
+// card; the count says it's there. Anything can be added any time, not only when the app asks.
+function NotesToSelf({ task, urgeLog, notes, onAdd, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const day = cleanDays(task, urgeLog);
+  const ready = text.trim().length > 0;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} style={{ ...styles.linkBtn, color: C.gold, fontSize: 12 }}>
+        <Feather size={12} /> Notes to yourself{notes.length ? ` (${notes.length})` : ""}
+        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={280}
+              aria-label={`A note to yourself about ${task.text}`} placeholder="One thing you did well"
+              style={{ ...styles.input, flex: 1, resize: "vertical", fontFamily: F.display, fontSize: 13.5, lineHeight: 1.4 }} />
+            <button disabled={!ready} aria-label={`Add note about ${task.text}`}
+              onClick={() => { onAdd({ taskId: task.id, text, day }); setText(""); }}
+              style={{ ...styles.addBtn, background: C.gold, opacity: ready ? 1 : 0.4 }}>
+              <Plus size={16} />
+            </button>
+          </div>
+          {notes.length === 0 ? (
+            <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.5, margin: "8px 0 0" }}>
+              Nothing yet. Once you're three days clean the app will ask you for one a day, and send them
+              back to you at random.
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", margin: "10px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {notes.map((n) => (
+                <li key={n.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: C.text, fontFamily: F.display, fontSize: 14, lineHeight: 1.4, margin: 0, whiteSpace: "pre-wrap" }}>{n.text}</p>
+                    <p style={{ color: C.faint, fontSize: 10.5, margin: "2px 0 0" }}>
+                      {n.day ? `Day ${n.day} · ` : ""}{new Date(n.at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                  <button onClick={() => onRemove(n.id)} aria-label={`Delete note: ${n.text.slice(0, 30)}`}
+                    style={{ ...styles.iconBtn, width: 28, height: 28, flexShrink: 0 }}>
+                    <X size={13} color={C.faint} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

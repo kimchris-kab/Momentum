@@ -16,6 +16,7 @@ import { drainActions } from "./lib/actionQueue.js";
 import { publishWidget, takePendingLapse, takePendingUrge } from "./lib/widget.js";
 import { pinnedHabit, publishShade, setShadePin } from "./lib/shade.js";
 import { surfSettings } from "./lib/pacer.js";
+import { cleanDays, newPepNote, publishPep, takePendingPepNotes } from "./lib/pep.js";
 import { bootState, bootStep } from "./boot.js";
 import { comebacksToday, freshStart } from "./lib/rewards.js";
 import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
@@ -250,9 +251,10 @@ export default function Momentum() {
         streak: protectedStreak(state.tasks, state.dayLog, state.freezes, "build"),
       });
       publishShade(state);
+      publishPep(state);
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings]);
+  }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings, state.pepNotes]);
 
   // An automatic backup can destroy data as easily as save it, so the decision of whether to
   // push at all lives in cloud.js with its guards, and this only carries it out.
@@ -411,6 +413,26 @@ export default function Momentum() {
     setState((s) => ({ ...s, tasks: [...s.tasks, task] }));
     return task;
   }, [show]);
+
+  // ---- Notes to yourself ----
+  // The day of the run a note was written on is worked out from the log at the time it was written,
+  // so a note typed into a notification last night is still "day 4", not whatever day it is now.
+  const addPepNote = useCallback(({ taskId, text, at, day }) => setState((s) => {
+    const task = s.tasks.find((t) => t.id === taskId);
+    if (!task || !String(text || "").trim()) return s;
+    const when = at || Date.now();
+    const note = newPepNote({ taskId, text, at: when, day: day ?? cleanDays(task, s.urgeLog, when) });
+    return { ...s, pepNotes: [...(s.pepNotes || []), note] };
+  }), []);
+  const removePepNote = useCallback((id) => setState((s) => {
+    const victim = (s.pepNotes || []).find((n) => n.id === id);
+    if (victim) {
+      show("Note deleted", "Undo", () => setState((cur) => ({
+        ...cur, pepNotes: [...(cur.pepNotes || []), victim], graveyard: unbury(cur.graveyard, id),
+      })));
+    }
+    return { ...s, pepNotes: (s.pepNotes || []).filter((n) => n.id !== id), graveyard: bury(s.graveyard, id) };
+  }), [show]);
 
   // ---- Experiments ----
   const addExperiment = useCallback((exp) => {
@@ -787,6 +809,14 @@ export default function Momentum() {
       // The shade counter's I-slipped button opens the slip form for that habit, nothing logged yet.
       const lapse = await takePendingLapse();
       if (lapse) setUrging({ id: lapse, mode: "lapse" });
+      // Notes typed into a notification's reply box while the app was closed.
+      // Only those for a habit that is still here, so the count in the message is the count saved.
+      const known = new Set(tasksRef.current.map((t) => t.id));
+      const typed = (await takePendingPepNotes()).filter((n) => known.has(n.taskId));
+      if (typed.length) {
+        typed.forEach(addPepNote);
+        show(typed.length === 1 ? "Saved the note you wrote from the notification" : `Saved ${typed.length} notes you wrote from notifications`);
+      }
     };
     check();
     document.addEventListener("visibilitychange", check);
@@ -795,7 +825,7 @@ export default function Momentum() {
       document.removeEventListener("visibilitychange", check);
       window.removeEventListener("momentumWidget", check);
     };
-  }, [loaded]);
+  }, [loaded, addPepNote, show]);
 
   // ---- The break side ----
   // An urge ridden out is a win in its own right, so it's recorded as one — quitting is made
@@ -917,6 +947,7 @@ export default function Momentum() {
                 onCheckin={() => setView("checkin")} onOpenHabits={() => setView("habits")}
                 onOpenExperiments={() => setView("experiments")}
                 onFollowExperiment={followExperiment}
+                onAddPepNote={(n) => { addPepNote(n); show("Saved. That one is yours to read later."); }}
                 onDismissExperimentTeaser={() => patch({ settings: { ...state.settings, experimentsTeaserDismissed: true } })}
                 onOpenIdentity={() => setView("identity")} onOpenTasks={() => setView("tasks")}
                 onRerollMantra={rerollMantra}
@@ -974,7 +1005,8 @@ export default function Momentum() {
                 onBack={() => setView("today")}
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
                 onDuplicate={duplicateTask} onArchive={setArchived} onDelete={removeTask}
-                onMove={moveTask} onRateHabit={(t) => setRating(t.id)} />
+                onMove={moveTask} onRateHabit={(t) => setRating(t.id)}
+                onAddPepNote={addPepNote} onRemovePepNote={removePepNote} />
             )}
             {view === "identity" && (
               <IdentityView state={state} tally={tally} onPatch={patch} onBack={() => setView("today")} />

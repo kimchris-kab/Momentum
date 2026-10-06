@@ -5,6 +5,8 @@ import { suite } from "./harness.mjs";
 import { PENDING_LAPSE_KEY, PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
 import { SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
 import { PATTERNS, hapticCycle } from "../src/lib/pacer.js";
+import { PENDING_PEP_KEY, PEP_KEY } from "../src/lib/pep.js";
+import { pepPlan } from "../src/lib/pepPlan.js";
 import { newLapse, newUrge } from "../src/lib/urges.js";
 
 const t = suite("android");
@@ -40,6 +42,7 @@ const styles = read("res/values/styles.xml");
 const widgetJava = read("java/com/momentum/app/MomentumWidget.java");
 const layout = read("res/layout/momentum_widget.xml");
 const rowLayout = read("res/layout/widget_task_row.xml");
+const pepLineLayout = read("res/layout/widget_pep_line.xml");
 const serviceJava = read("java/com/momentum/app/MomentumWidgetService.java");
 
 const declaredNames = (xml, tag) =>
@@ -105,7 +108,7 @@ t.group("resource references resolve");
 
   // A missing R.id is a compile error in Java and a silent no-op in RemoteViews.
   const idsIn = (xml) => [...xml.matchAll(/android:id="@\+id\/([a-zA-Z0-9_]+)"/g)].map((m) => m[1]);
-  const layoutIds = new Set([...idsIn(layout), ...idsIn(rowLayout)]);
+  const layoutIds = new Set([...idsIn(layout), ...idsIn(rowLayout), ...idsIn(pepLineLayout)]);
   const javaIds = [...widgetJava.matchAll(/R\.id\.([a-zA-Z0-9_]+)/g), ...serviceJava.matchAll(/R\.id\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]);
   t.eq("every view the widget writes to exists in its layout",
     [...new Set(javaIds.filter((id) => !layoutIds.has(id)))], []);
@@ -182,7 +185,7 @@ t.group("the Urge button, from home screen to urge screen");
     "Button", "Chronometer", "ImageButton", "ImageView", "ProgressBar", "TextView", "ViewFlipper",
     "ListView", "GridView", "StackView", "AdapterViewFlipper", "ViewStub", "CheckBox", "Switch", "RadioButton",
     "RadioGroup", "TextClock"]);
-  const tags = [...layout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g), ...rowLayout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g)].map((m) => m[1]).filter((tag) => tag !== "?xml");
+  const tags = [...layout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g), ...rowLayout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g), ...pepLineLayout.matchAll(/<([A-Za-z][A-Za-z0-9.]*)[\s>/]/g)].map((m) => m[1]).filter((tag) => tag !== "?xml");
   t.eq("every element in the widget is one RemoteViews will inflate",
     [...new Set(tags.filter((tag) => !ALLOWED.has(tag)))], []);
 
@@ -456,4 +459,44 @@ t.group("the breathing pacer's vibration");
     const w = hapticCycle(p);
     return w.timings.length <= limits.steps && w.timings.reduce((a, b) => a + b, 0) <= limits.ms;
   }), limits);
+}
+
+t.group("notes to yourself");
+{
+  const pep = read("java/com/momentum/app/MomentumPep.java");
+  const plugin = read("java/com/momentum/app/MomentumPepPlugin.java");
+  const activity = read("java/com/momentum/app/MainActivity.java");
+  t.ok("the Java reads the plan the app writes", pep.includes(`"${PEP_KEY}"`), PEP_KEY);
+  t.ok("and leaves typed notes where the app looks", pep.includes(`"${PENDING_PEP_KEY}"`), PENDING_PEP_KEY);
+  t.ok("the plugin the app calls is registered", /name\s*=\s*"MomentumPep"/.test(plugin) && activity.includes("registerPlugin(MomentumPepPlugin.class)"));
+  const sampleState = {
+    tasks: [{ id: "q", kind: "break", text: "x", startDate: "2026-01-01", createdAt: 1, recurrence: { freq: "daily", interval: 1, weekdays: [], monthDay: null } }],
+    urgeLog: [], dayLog: {}, pepNotes: [{ id: "n", taskId: "q", text: "t", at: 1, day: 3, date: "2026-10-01" }], settings: {},
+  };
+  const plan = pepPlan(sampleState, new Date("2026-10-06T08:00:00").getTime());
+  const sentKeys = new Set(plan.flatMap((p) => Object.keys(p)));
+  const itemKeys = [...pep.matchAll(/item\.opt(?:String|Long)\("(\w+)"/g)].map((m) => m[1]);
+  t.ok("the plan has both kinds to test against", plan.some((p) => p.kind === "write") && plan.some((p) => p.kind === "remind"));
+  t.eq("everything the Java reads from an item, the plan sends", [...new Set(itemKeys)].filter((k) => !sentKeys.has(k)), []);
+  t.ok("the kinds the Java knows are the kinds the plan makes", /"write"\.equals\(kind\)/.test(pep) && /"remind"\.equals\(kind\)/.test(pep) && new Set(plan.map((p) => p.kind)).size === 2);
+  t.ok("the receiver is registered, not exported, and comes back after a restart",
+    /<receiver\s+android:name="\.MomentumPep"\s+android:exported="false">[\s\S]*?BOOT_COMPLETED[\s\S]*?MY_PACKAGE_REPLACED/.test(manifest));
+  t.ok("the reply box has a mutable PendingIntent, which a reply needs on Android 12 and up", /FLAG_MUTABLE/.test(pep) && /addRemoteInput/.test(pep));
+  t.ok("the reply is answered by replacing the notification, or the box spins", /handleReply/.test(pep) && /pep_saved_title/.test(pep));
+  const used = [...pep.matchAll(/R\.string\.(\w+)/g)].map((m) => m[1]);
+  t.eq("every string it uses is defined", [...new Set(used)].filter((n) => !strings.includes(`name="${n}"`)), []);
+  t.ok("alarms are inexact and allowed while idle, not exact", /setAndAllowWhileIdle/.test(pep) && !/setExact/.test(pep));
+  t.ok("a late alarm is dropped rather than shown stale", /STALE_MS/.test(pep));
+}
+
+t.group("your notes on the widget");
+{
+  const layoutXml = read("res/layout/momentum_widget.xml");
+  const widgetJ = read("java/com/momentum/app/MomentumWidget.java");
+  t.ok("the flipper is a ViewFlipper, which RemoteViews allows, and fades between notes", /<ViewFlipper[\s\S]*?android:id="@\+id\/pep_flipper"/.test(layoutXml) && /android:inAnimation="@android:anim\/fade_in"/.test(layoutXml) && /android:outAnimation="@android:anim\/fade_out"/.test(layoutXml));
+  t.ok("it turns by itself, slowly", /android:autoStart="true"/.test(layoutXml) && Number(layoutXml.match(/android:flipInterval="(\d+)"/)?.[1]) >= 6000);
+  t.ok("it starts out of the way", /pep_flipper[\s\S]*?android:visibility="gone"/.test(layoutXml));
+  t.ok("each turn is its own layout, filled from the snapshot", /R\.layout\.widget_pep_line/.test(widgetJ) && /addView\(R\.id\.pep_flipper/.test(widgetJ));
+  const sent = widgetSnapshot({ tasks: [], pepNotes: [] }, "2026-10-04");
+  t.ok("the key the Java reads is the one the snapshot carries", /optJSONArray\("pep"\)/.test(widgetJ) && Array.isArray(sent.pep));
 }

@@ -21,7 +21,7 @@ const MAX_ITEMS = 50;
 // Two, not four: the rows carry a button each, and the widget is already a 3×2.
 const MAX_QUITTING = 2;
 
-export function widgetSnapshot(state, date = todayStr(), { usualWindow } = {}) {
+export function widgetSnapshot(state, date = todayStr(), { usualWindow, widgetNotes } = {}) {
   const { tasks = [], dayLog = {} } = state;
   const agenda = [
     ...agendaForDate(tasks, date, dayLog, "build"),
@@ -68,6 +68,8 @@ export function widgetSnapshot(state, date = todayStr(), { usualWindow } = {}) {
         limit: limitOf(t),
         count: limitOf(t) ? lapsesOn(state.urgeLog, t.id, date).length : 0,
       })),
+    // Your own words, for the widget to turn through. Empty until there are some.
+    pep: widgetNotes ? widgetNotes(state) : [],
     updatedAt: Date.now(),
   };
 }
@@ -105,9 +107,10 @@ export async function publishWidget(state, date = todayStr()) {
   const p = prefs();
   if (!p?.set) return { published: false, reason: "not-native" };
   // The radar is loaded now, when there's something to write, rather than with the app.
-  let usualWindow;
+  let usualWindow, widgetNotes;
   try { usualWindow = (await import("./radar.js")).usualWindow; } catch { /* the widget just goes without a risk line */ }
-  const snapshot = widgetSnapshot(state, date, { usualWindow });
+  try { widgetNotes = (await import("./pepPlan.js")).widgetNotes; } catch { /* ...or without its notes */ }
+  const snapshot = widgetSnapshot(state, date, { usualWindow, widgetNotes });
   try {
     await p.set({ key: WIDGET_KEY, value: JSON.stringify(snapshot) });
     // Optional bridge: if the native side exposes a refresh, use it so the widget updates

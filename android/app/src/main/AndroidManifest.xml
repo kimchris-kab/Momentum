@@ -56,6 +56,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Notes to yourself: its own alarms, the reply box in its notification, and coming back after a
+             restart. Reached by PendingIntents the system holds, never by another app, so not exported. -->
+        <receiver
+            android:name=".MomentumPep"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

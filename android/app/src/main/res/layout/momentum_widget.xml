@@ -91,6 +91,20 @@
         android:background="#2E2A3D"
         android:visibility="gone" />
 
+    <!-- Your own notes to yourself, one at a time, fading from one to the next. A ViewFlipper (one of the
+         few things a widget may use that moves on its own); the lines are added to it from the snapshot,
+         and it stays gone when there are none. Slow on purpose: it is a glance, not an animation. -->
+    <ViewFlipper
+        android:id="@+id/pep_flipper"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:autoStart="true"
+        android:flipInterval="9000"
+        android:inAnimation="@android:anim/fade_in"
+        android:outAnimation="@android:anim/fade_out"
+        android:visibility="gone" />
+
     <!-- Every task for today. A ListView, not a fixed set of rows: it takes the room that's left
          and scrolls, so nothing is left off — the first version stopped at four. -->
     <ListView

@@ -19,4 +19,10 @@
     <string name="shade_action_slipped">I slipped</string>
     <string name="shade_private_title">Counter</string>
     <string name="shade_fresh_start">Fresh start</string>
+    <string name="pep_channel_name">Notes to yourself</string>
+    <string name="pep_channel_description">A prompt to write one line about what you did well, and your own earlier notes coming back</string>
+    <string name="pep_action_write">Write it</string>
+    <string name="pep_reply_label">One thing you did well today</string>
+    <string name="pep_saved_title">Saved</string>
+    <string name="pep_saved_text">That one is yours to read later.</string>
 </resources>

@@ -18,6 +18,7 @@ import {
 } from "../lib/notify.js";
 import { graduationStatus, reminderMode } from "../lib/automaticity.js";
 import { SHADE_MODES, pinnedHabit, shadeSettings } from "../lib/shade.js";
+import { DEFAULT_PEP, PEP_MIN_DAYS, pepSettings } from "../lib/pep.js";
 import { Card, Pill, SectionLabel } from "../components/ui.jsx";
 
 const TIER_COPY = {
@@ -115,6 +116,8 @@ export default function SettingsView({
   const quitting = useMemo(() => tasks.filter((t) => t.kind === "break" && !t.archivedAt), [tasks]);
   const pinned = useMemo(() => pinnedHabit(tasks), [tasks]);
   const allowShade = async () => setPerm(await requestNotificationPermission());
+  const pep = useMemo(() => pepSettings(settings), [settings]);
+  const setPep = (patch) => onSetSetting("pep", { ...pep, ...patch });
 
   const enable = async () => {
     const result = await requestNotificationPermission();
@@ -406,6 +409,47 @@ export default function SettingsView({
               <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
                 <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.5, margin: "0 0 8px" }}>
                   Android needs your permission to show it.
+                </p>
+                <button onClick={allowShade} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5 }}>
+                  <Bell size={14} /> Allow notifications
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* ---- Notes to yourself ---- */}
+      <SectionLabel>Notes to yourself</SectionLabel>
+      <Card>
+        <Row label="Notes to yourself"
+          desc={`Once a habit you're quitting is ${PEP_MIN_DAYS} days clean, you're asked for one line a day about what you did well. Your own notes then come back as notifications at random moments, and turn through on the widget. Notifications appear in the Android app.`}>
+          <Switch on={pep.on} label="Notes to yourself" onClick={() => setPep({ on: !pep.on })} />
+        </Row>
+        {pep.on && (
+          <>
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <Row label="Ask me to write one"
+                desc={`A prompt once a day, with a box to write in right in the notification. Not on a day you slipped.`}>
+                <Switch on={pep.write} label="Ask me to write one" onClick={() => setPep({ write: !pep.write })} />
+              </Row>
+            </div>
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <Row label="Send one of mine back"
+                desc="One of your own notes, at a random time each day. You can't predict it, which is what makes it land.">
+                <Switch on={pep.remind} label="Send one of mine back" onClick={() => setPep({ remind: !pep.remind })} />
+              </Row>
+            </div>
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <Row label="Between" desc="Both land inside these hours: a note to read comes earlier in them, the ask to write comes toward the end.">
+                <TimeInput value={pep.from} label="Notes from" onChange={(v) => setPep({ from: v || DEFAULT_PEP.from })} />
+                <TimeInput value={pep.to} label="Notes until" onChange={(v) => setPep({ to: v || DEFAULT_PEP.to })} />
+              </Row>
+            </div>
+            {perm !== "granted" && perm !== "unsupported" && (
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.5, margin: "0 0 8px" }}>
+                  Android needs your permission to show them.
                 </p>
                 <button onClick={allowShade} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5 }}>
                   <Bell size={14} /> Allow notifications

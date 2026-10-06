@@ -43,6 +43,8 @@ public class MomentumWidget extends AppWidgetProvider {
     private static final String PREFS = "CapacitorStorage";
     private static final String KEY = "momentum:widget";
     private static final int MAX_QUITTING = 2;
+    /** How many of your notes the widget turns through. */
+    static final int MAX_PEP = 6;
     /** The scheme the Urge buttons open the app with. Read back in MainActivity. */
     static final String URGE_SCHEME = "momentum";
     static final String URGE_HOST = "urge";
@@ -293,6 +295,20 @@ public class MomentumWidget extends AppWidgetProvider {
                 streakText = "";
             }
         }
+
+        // Your own words, turning through one at a time. The app sends them; the flipper does the turning.
+        views.removeAllViews(R.id.pep_flipper);
+        int pepShown = 0;
+        JSONArray pep = snapshot == null ? null : snapshot.optJSONArray("pep");
+        for (int i = 0; pep != null && i < Math.min(pep.length(), MAX_PEP); i++) {
+            String line = pep.optString(i, "").trim();
+            if (line.isEmpty()) continue;
+            RemoteViews row = new RemoteViews(context.getPackageName(), R.layout.widget_pep_line);
+            row.setTextViewText(R.id.pep_text, "\u201C" + line + "\u201D");
+            views.addView(R.id.pep_flipper, row);
+            pepShown++;
+        }
+        views.setViewVisibility(R.id.pep_flipper, pepShown > 0 ? View.VISIBLE : View.GONE);
 
         views.setTextViewText(R.id.widget_progress,
                 total > 0 ? done + " / " + total : context.getString(R.string.widget_placeholder));

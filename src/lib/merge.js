@@ -32,7 +32,7 @@ const LOGS = {
 
 /** Records that can be edited after the fact. Union by id; a conflict goes to the later edit. */
 const EDITABLE = ["tasks", "goals", "strategies", "lists", "recurring", "savedViews",
-  "transactions", "journalEntries", "experiments"];
+  "transactions", "journalEntries", "experiments", "pepNotes"];
 
 /** One row per date, rewritten in place. */
 const BY_DATE = ["checkins", "netWorthLog"];

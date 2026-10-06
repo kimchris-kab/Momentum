@@ -49,6 +49,7 @@ export function summarise(data) {
     ["Goals", count(data.goals) + count(data.strategies)],
     ["Saved views", count(data.savedViews)],
     ["Experiments", count(data.experiments)],
+    ["Notes to yourself", count(data.pepNotes)],
   ];
   return rows.filter(([, n]) => n > 0);
 }
