@@ -15,6 +15,7 @@ import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity
 import { drainActions } from "./lib/actionQueue.js";
 import { publishWidget, takePendingLapse, takePendingUrge } from "./lib/widget.js";
 import { pinnedHabit, publishShade, setShadePin } from "./lib/shade.js";
+import { surfSettings } from "./lib/pacer.js";
 import { bootState, bootStep } from "./boot.js";
 import { comebacksToday, freshStart } from "./lib/rewards.js";
 import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
@@ -27,7 +28,7 @@ import { bury, mergeStates, unbury } from "./lib/merge.js";
 import { setFollowed, stopExperiment } from "./lib/experimentPlan.js";
 import RitualSheet from "./components/RitualSheet.jsx";
 import FocusSheet from "./components/FocusSheet.jsx";
-import UrgeSheet from "./components/UrgeSheet.jsx";
+
 import SrbaiSheet from "./components/SrbaiSheet.jsx";
 import WoopSheet from "./components/WoopSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
@@ -59,6 +60,8 @@ const InsightsView = lazy(() => import("./views/InsightsView.jsx"));
 // the update channel, the merge. None of it is needed to draw Today, and all of it was
 // sitting in the chunk that has to arrive before anything appears.
 const SettingsView = lazy(() => import("./views/SettingsView.jsx"));
+// Opened mid-urge, from a button that is already waiting — so it can be fetched when wanted.
+const UrgeSheet = lazy(() => import("./components/UrgeSheet.jsx"));
 // The task editor is the largest single component and only matters once something is opened, so
 // it arrives as its own chunk the first time it's wanted. It's mounted for good after that, so
 // closing and reopening costs nothing.
@@ -733,6 +736,8 @@ export default function Momentum() {
   // exists on the very render that opens it rather than one pass later.
   const [sheetSeen, setSheetSeen] = useState(false);
   if (editingTask && !sheetSeen) setSheetSeen(true);
+  const [urgeSeen, setUrgeSeen] = useState(false);
+  if (urging && !urgeSeen) setUrgeSeen(true);
   const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
   const focusTask = focusId ? state.tasks.find((t) => t.id === focusId) : null;
   const urgeTask = urging ? state.tasks.find((t) => t.id === urging.id) : null;
@@ -1167,14 +1172,22 @@ export default function Momentum() {
           onComplete={(t) => { if (!isDone(t, todayStr(), state.dayLog)) toggleTask(t, todayStr()); }}
         />
 
-        <UrgeSheet
-          open={!!urgeTask} task={urgeTask} mode={urging?.mode}
-          urgeLog={state.urgeLog || []}
-          onLogUrge={logUrge}
-          onLogLapse={logLapse}
-          onSaveNote={saveCalmNote}
-          onClose={() => setUrging(null)}
-        />
+        {(urgeTask || urgeSeen) && (
+          <ChunkBoundary resetKey={urging?.id}>
+            <Suspense fallback={null}>
+              <UrgeSheet
+                open={!!urgeTask} task={urgeTask} mode={urging?.mode}
+                urgeLog={state.urgeLog || []}
+                surf={surfSettings(state.settings)}
+                onSurf={(v) => patch({ settings: { ...state.settings, surf: v } })}
+                onLogUrge={logUrge}
+                onLogLapse={logLapse}
+                onSaveNote={saveCalmNote}
+                onClose={() => setUrging(null)}
+              />
+            </Suspense>
+          </ChunkBoundary>
+        )}
 
         <EntrySheet
           open={!!editingEntry} entry={editingEntry}

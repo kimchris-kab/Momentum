@@ -75,4 +75,6 @@
          depend on a plugin's manifest staying as it is. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The breathing pacer's vibration. A normal permission: granted on install, no prompt. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

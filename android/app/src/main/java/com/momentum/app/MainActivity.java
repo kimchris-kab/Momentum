@@ -30,6 +30,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MomentumWidgetPlugin.class);
         registerPlugin(MomentumFilesPlugin.class);
         registerPlugin(MomentumShadePlugin.class);
+        registerPlugin(MomentumHapticsPlugin.class);
         super.onCreate(savedInstanceState);
         // A cold start from the widget: the web app isn't loaded yet, so there's nobody to tell.
         // It finds the id itself when it starts.

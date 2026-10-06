@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { Suspense, lazy, useMemo, useState } from "react";
 import { Check, Feather, Repeat, RotateCcw, Waves } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import {
@@ -6,6 +6,10 @@ import {
 } from "../lib/urges.js";
 import { TimerRing, useTimer } from "./Timer.jsx";
 import { Pill, Sheet } from "./ui.jsx";
+
+// The breathing pacer is the biggest thing on this screen and the part least often wanted, so it
+// loads when the urge screen does rather than with the app.
+const BreathPacer = lazy(() => import("./BreathPacer.jsx"));
 
 // The break side's working surface. Three steps, and which one opens depends on how you got
 // here: "urge" to ride one out, "lapse" to record a slip. Both end on the same question —
@@ -25,7 +29,7 @@ export default function UrgeSheet({ open, task, mode = "urge", ...rest }) {
   return <UrgeBody key={`${task.id}:${mode}`} task={task} mode={mode} {...rest} />;
 }
 
-function UrgeBody({ task, mode, urgeLog, onLogUrge, onLogLapse, onSaveNote, onClose }) {
+function UrgeBody({ task, mode, urgeLog, surf, onSurf, onLogUrge, onLogLapse, onSaveNote, onClose }) {
   const [step, setStep] = useState(mode === "lapse" ? "lapse" : "urge");
   const [ask, setAsk] = useState(null);
 
@@ -40,7 +44,7 @@ function UrgeBody({ task, mode, urgeLog, onLogUrge, onLogLapse, onSaveNote, onCl
     <Sheet open onClose={onClose} title={title}>
       {step === "urge" && (
         <RideItOut
-          task={task}
+          task={task} surf={surf} onSurf={onSurf}
           onPassed={(seconds) => { onLogUrge({ task, seconds, outcome: "rode-out" }); toWrite("rodeOut"); }}
           onGaveIn={(seconds) => { onLogUrge({ task, seconds, outcome: "gave-in" }); setStep("lapse"); }}
         />
@@ -63,7 +67,7 @@ function UrgeBody({ task, mode, urgeLog, onLogUrge, onLogLapse, onSaveNote, onCl
 }
 
 // ---- 1. The note, then the plan, then the clock ----
-function RideItOut({ task, onPassed, onGaveIn }) {
+function RideItOut({ task, surf, onSurf, onPassed, onGaveIn }) {
   const [minutes, setMinutes] = useState(URGE_MINUTES);
   const total = minutes * 60;
   const timer = useTimer({ totalSecs: total, resetKey: minutes, autoStart: true });
@@ -121,6 +125,13 @@ function RideItOut({ task, onPassed, onGaveIn }) {
           </button>
         )}
       </div>
+
+      {/* Something to do with the minutes, which is most of what makes them pass. */}
+      {surf && onSurf && (
+        <Suspense fallback={null}>
+          <BreathPacer surf={surf} onSurf={onSurf} />
+        </Suspense>
+      )}
 
       <button onClick={() => onPassed(timer.elapsed)} style={{
         ...styles.cta, background: `linear-gradient(135deg, ${CALM}, ${alpha(CALM, 0.72)})`,

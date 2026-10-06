@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { suite } from "./harness.mjs";
 import { PENDING_LAPSE_KEY, PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
 import { SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
+import { PATTERNS, hapticCycle } from "../src/lib/pacer.js";
 import { newLapse, newUrge } from "../src/lib/urges.js";
 
 const t = suite("android");
@@ -433,4 +434,26 @@ t.group("the notification-shade counter");
   t.eq("every string it uses is defined", [...new Set(used)].filter((n) => !strings.includes(`name="${n}"`)), []);
   t.ok("a request code of its own for each button, so one can't stand in for another", /200\)/.test(shade) && /201\)/.test(shade));
   t.ok("the widget's risk maths is shared, not copied", /MomentumWidget\.riskUntil/.test(shade) && /MomentumWidget\.riskLine/.test(shade));
+}
+
+t.group("the breathing pacer's vibration");
+{
+  const plugin = read("java/com/momentum/app/MomentumHapticsPlugin.java");
+  const activity = read("java/com/momentum/app/MainActivity.java");
+  const hapticsJs = readFileSync(join(ROOT, "src", "lib", "haptics.js"), "utf8");
+  t.ok("the plugin is registered under the name the app calls", /name\s*=\s*"MomentumHaptics"/.test(plugin) && hapticsJs.includes("Plugins?.MomentumHaptics") && activity.includes("registerPlugin(MomentumHapticsPlugin.class)"));
+  // Every method the app calls on it exists on the Java side, and nothing is called that isn't there.
+  const called = [...hapticsJs.matchAll(/(?:plugin\(\)|\bp)\??\.(\w+)\(/g)].map((m) => m[1]).filter((n) => ["play", "cancel", "capabilities"].includes(n));
+  const defined = [...plugin.matchAll(/@PluginMethod\s+public void (\w+)\(/g)].map((m) => m[1]);
+  t.eq("the methods the app calls", [...new Set(called)].sort(), ["cancel", "capabilities", "play"]);
+  t.eq("are the ones the plugin has", defined.sort(), ["cancel", "capabilities", "play"]);
+  t.ok("the argument names match", /call\.getArray\("timings"\)/.test(plugin) && /call\.getArray\("amplitudes"\)/.test(plugin) && /timings:\s*wave\.timings/.test(hapticsJs) && /amplitudes:\s*wave\.amplitudes/.test(hapticsJs));
+  t.ok("the answer fields match what the app reads", /out\.put\("motor"/.test(plugin) && /out\.put\("amplitude"/.test(plugin) && /c\.motor/.test(hapticsJs) && /c\.amplitude/.test(hapticsJs));
+  t.ok("the manifest asks for the vibrate permission", manifest.includes('android.permission.VIBRATE'));
+  const limits = { steps: Number(plugin.match(/MAX_STEPS\s*=\s*(\d+)/)?.[1]), ms: Number(plugin.match(/MAX_TOTAL_MS\s*=\s*([\d_]+)L/)?.[1].replace(/_/g, "")) };
+  t.ok("the plugin has limits on a waveform", limits.steps > 0 && limits.ms > 0, limits);
+  t.ok("and every breath the app can send fits inside them", PATTERNS.every((p) => {
+    const w = hapticCycle(p);
+    return w.timings.length <= limits.steps && w.timings.reduce((a, b) => a + b, 0) <= limits.ms;
+  }), limits);
 }
