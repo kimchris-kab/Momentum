@@ -13,4 +13,10 @@
     <string name="widget_since_slipped_today">since you slipped today</string>
     <string name="widget_no_urges">no urges logged yet</string>
     <string name="widget_urge">Urge</string>
+    <string name="shade_channel_name">Habit counter</string>
+    <string name="shade_channel_description">A quiet, always-there counter for the habit you most want to break</string>
+    <string name="shade_action_urge">Urge</string>
+    <string name="shade_action_slipped">I slipped</string>
+    <string name="shade_private_title">Counter</string>
+    <string name="shade_fresh_start">Fresh start</string>
 </resources>

@@ -176,7 +176,7 @@ public class MomentumWidget extends AppWidgetProvider {
         return detail.toString();
     }
 
-    private static String clockOf(int minuteOfDay) {
+    static String clockOf(int minuteOfDay) {
         Calendar c = Calendar.getInstance();
         c.set(Calendar.HOUR_OF_DAY, minuteOfDay / 60);
         c.set(Calendar.MINUTE, minuteOfDay % 60);
@@ -184,25 +184,43 @@ public class MomentumWidget extends AppWidgetProvider {
         return DateFormat.getTimeInstance(DateFormat.SHORT).format(c.getTime());
     }
 
+    /** Returned by {@link #riskUntil} when the app hasn't learned a window for this habit. */
+    static final int RISK_UNKNOWN = -2;
+    /** Returned by {@link #riskUntil} while the window is open. */
+    static final int RISK_NOW = -1;
+
     /**
-     * When the habit usually pulls at you: "Risk window opens in 25 min · 8:00 PM". The app sends the
-     * window as a time of day, and this works out where now falls in it each time the widget draws, so
-     * it stays right for days without the app writing anything. Empty until the app has learned one.
+     * Where now falls against the usual window: {@link #RISK_UNKNOWN}, {@link #RISK_NOW}, or the
+     * minutes until it opens. The app sends the window as a time of day and this works the rest out
+     * each time something draws, so it stays right for days without the app writing anything.
      */
-    static String riskLine(JSONObject q, long now) {
+    static int riskUntil(JSONObject q, long now) {
         JSONObject r = q.optJSONObject("risk");
-        if (r == null) return "";
+        if (r == null) return RISK_UNKNOWN;
         int start = r.optInt("startMin", -1);
         int end = r.optInt("endMin", -1);
-        if (start < 0 || end < 0 || start > 1439 || end > 1439) return "";
+        if (start < 0 || end < 0 || start > 1439 || end > 1439) return RISK_UNKNOWN;
         Calendar c = Calendar.getInstance();
         c.setTimeInMillis(now);
         int current = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
         // A window can cross midnight (11pm to 1:30am), in which case it ends at an earlier minute than it starts.
         boolean wraps = end <= start;
         boolean inside = wraps ? (current >= start || current < end) : (current >= start && current < end);
-        if (inside) return "In your risk window \u00B7 until " + clockOf(end);
-        int until = (start - current + 1440) % 1440;
+        if (inside) return RISK_NOW;
+        return (start - current + 1440) % 1440;
+    }
+
+    /**
+     * When the habit usually pulls at you: "Risk window opens in 25 min · 8:00 PM". Empty until the
+     * app has learned one.
+     */
+    static String riskLine(JSONObject q, long now) {
+        int until = riskUntil(q, now);
+        if (until == RISK_UNKNOWN) return "";
+        JSONObject r = q.optJSONObject("risk");
+        int start = r.optInt("startMin", 0);
+        int end = r.optInt("endMin", 0);
+        if (until == RISK_NOW) return "In your risk window \u00B7 until " + clockOf(end);
         if (until <= 90) return "Risk window opens in " + until + " min \u00B7 " + clockOf(start);
         return "Risk window " + clockOf(start) + "\u2013" + clockOf(end);
     }

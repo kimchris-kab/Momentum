@@ -2,7 +2,8 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { suite } from "./harness.mjs";
-import { PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
+import { PENDING_LAPSE_KEY, PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
+import { SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
 import { newLapse, newUrge } from "../src/lib/urges.js";
 
 const t = suite("android");
@@ -400,4 +401,36 @@ t.group("room for the task list");
   t.ok("the default is four cells tall", cells >= 4, cells);
   t.ok("...with a minimum height to match", minH >= 250, minH);
   t.ok("and the emulator test lays the widget out at that size", /px\(320\)/.test(readFileSync(join(ROOT, "android/app/src/androidTest/java/com/momentum/app/WidgetTest.java"), "utf8")));
+}
+
+t.group("the notification-shade counter");
+{
+  const shade = read("java/com/momentum/app/MomentumShade.java");
+  const plugin = read("java/com/momentum/app/MomentumShadePlugin.java");
+  const activity = read("java/com/momentum/app/MainActivity.java");
+  // The Java and the web app can only meet at strings. Nothing but a phone would notice if they drifted.
+  t.ok("the Java reads the key the app writes", shade.includes(`"${SHADE_KEY}"`), SHADE_KEY);
+  t.ok("the activity leaves a slip under the key the app reads", activity.includes(`"${PENDING_LAPSE_KEY}"`), PENDING_LAPSE_KEY);
+  t.ok("...which is not the key an urge uses", PENDING_LAPSE_KEY !== PENDING_URGE_KEY);
+  t.ok("the slip button's host is the one the activity listens for", /SLIP_HOST\s*=\s*"slip"/.test(shade) && activity.includes("MomentumShade.SLIP_HOST"));
+  t.ok("and the plugin the app calls is registered under the name it uses", /name\s*=\s*"MomentumShade"/.test(plugin) && activity.includes("registerPlugin(MomentumShadePlugin.class)"));
+  // Every field the Java reads is one the snapshot carries.
+  const reads = [...shade.matchAll(/s\.opt(?:String|Long|Boolean|JSONObject|Int)\("(\w+)"/g)].map((m) => m[1]);
+  const sent = Object.keys(shadeSnapshot({
+    tasks: [{ id: "q", kind: "break", text: "x", shadePin: 1, createdAt: 1 }], urgeLog: [], settings: {},
+  }, 5, { usualWindow: () => ({ startMin: 1, endMin: 2 }) }));
+  const missing = [...new Set(reads)].filter((k) => !sent.includes(k));
+  t.eq("everything the Java reads, the snapshot sends", missing, []);
+
+  t.ok("the receiver is registered and not exported", /<receiver\s+android:name="\.MomentumShade"\s+android:exported="false"/.test(manifest));
+  t.ok("it comes back after a restart and after an update", manifest.includes("android.intent.action.BOOT_COMPLETED") && manifest.includes("android.intent.action.MY_PACKAGE_REPLACED"));
+  t.ok("it declares the notification permission itself", manifest.includes("android.permission.POST_NOTIFICATIONS"));
+  t.ok("the channel is low importance, which is what keeps it silent", /IMPORTANCE_LOW/.test(shade) && !/IMPORTANCE_(DEFAULT|HIGH)/.test(shade));
+  t.ok("it is ongoing and silent", /setOngoing\(true\)/.test(shade) && /setSilent\(true\)/.test(shade));
+  t.ok("the lock screen shows a public version with no habit on it", /VISIBILITY_PRIVATE/.test(shade) && /setPublicVersion/.test(shade));
+  t.ok("the small icon exists", exists("res/drawable/ic_shade.xml") && shade.includes("R.drawable.ic_shade"));
+  const used = [...shade.matchAll(/R\.string\.(\w+)/g)].map((m) => m[1]);
+  t.eq("every string it uses is defined", [...new Set(used)].filter((n) => !strings.includes(`name="${n}"`)), []);
+  t.ok("a request code of its own for each button, so one can't stand in for another", /200\)/.test(shade) && /201\)/.test(shade));
+  t.ok("the widget's risk maths is shared, not copied", /MomentumWidget\.riskUntil/.test(shade) && /MomentumWidget\.riskLine/.test(shade));
 }

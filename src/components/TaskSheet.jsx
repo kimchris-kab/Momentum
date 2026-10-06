@@ -52,7 +52,7 @@ function Field({ label, children }) {
   );
 }
 
-export default function TaskSheet({ open, task, lists, goals = [], dayLog = {}, onClose, onChange, onDelete, onStartFocus }) {
+export default function TaskSheet({ open, task, lists, goals = [], dayLog = {}, shadePin = null, onClose, onChange, onDelete, onStartFocus }) {
   const [subText, setSubText] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [perm, setPerm] = useState("default");
@@ -630,6 +630,26 @@ export default function TaskSheet({ open, task, lists, goals = [], dayLog = {}, 
                   </div>
                 ))}
               </div>
+
+              {/* One habit at a time gets the notification shade. Pinning this one lets go of whichever had
+                  it — they aren't touched, the later pin simply outranks the earlier — so the line says so. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={shadePin?.id === task.id}
+                  onChange={async (e) => {
+                    set({ shadePin: e.target.checked ? Date.now() : null });
+                    // Android asks once, and the shade shows nothing until it's been allowed.
+                    if (e.target.checked && perm !== "granted") setPerm(await requestNotificationPermission());
+                  }}
+                  style={{ width: 18, height: 18, accentColor: C.teal }} />
+                <span style={{ color: C.muted, fontSize: 12, lineHeight: 1.45 }}>
+                  Keep this on my notification shade
+                  <span style={{ display: "block", color: C.faint, fontSize: 11 }}>
+                    {shadePin && shadePin.id !== task.id
+                      ? `Pinning it takes it off ${shadePin.text}. One habit at a time.`
+                      : "A quiet counter of how long you've been clean, with an Urge button."}
+                  </span>
+                </span>
+              </label>
 
               {/* The warning itself needs no setup — it's learned from the urges logged — so
                   all that's here is the way to turn it off for this one habit. */}

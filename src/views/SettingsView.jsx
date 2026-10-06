@@ -17,6 +17,7 @@ import {
   sendTestReminder,
 } from "../lib/notify.js";
 import { graduationStatus, reminderMode } from "../lib/automaticity.js";
+import { SHADE_MODES, pinnedHabit, shadeSettings } from "../lib/shade.js";
 import { Card, Pill, SectionLabel } from "../components/ui.jsx";
 
 const TIER_COPY = {
@@ -57,6 +58,29 @@ function Switch({ on, onClick, label }) {
   );
 }
 
+// One of several exclusive choices, as a row. A radio in everything but the element, so it reads as
+// "this one" on a phone and a screen reader still hears it as a choice.
+function Choice({ on, label, desc, onClick }) {
+  return (
+    <button onClick={onClick} role="radio" aria-checked={!!on} style={{
+      display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", cursor: "pointer",
+      padding: "10px 12px", borderRadius: R.md, background: on ? C.goldSoft : "transparent",
+      border: `1px solid ${on ? C.gold : C.border}`, color: C.text, fontFamily: "inherit",
+    }}>
+      <span style={{
+        width: 18, height: 18, borderRadius: 9, flexShrink: 0, boxSizing: "border-box",
+        border: `2px solid ${on ? C.gold : C.faint}`, display: "grid", placeItems: "center",
+      }}>
+        {on && <span style={{ width: 8, height: 8, borderRadius: 4, background: C.gold }} />}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 13.5 }}>{label}</span>
+        {desc && <span style={{ display: "block", color: C.faint, fontSize: 11.5, lineHeight: 1.45, marginTop: 2 }}>{desc}</span>}
+      </span>
+    </button>
+  );
+}
+
 const TimeInput = ({ value, onChange, label }) => (
   <div style={{ ...styles.fieldShell, padding: "6px 10px" }}>
     <Clock size={12} color={C.muted} />
@@ -86,6 +110,11 @@ export default function SettingsView({
   useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [state]);
 
   const setNotify = (patch) => onSetSetting("notify", { ...notify, ...patch });
+  const shade = useMemo(() => shadeSettings(settings), [settings]);
+  const setShade = (patch) => onSetSetting("shade", { ...shade, ...patch });
+  const quitting = useMemo(() => tasks.filter((t) => t.kind === "break" && !t.archivedAt), [tasks]);
+  const pinned = useMemo(() => pinnedHabit(tasks), [tasks]);
+  const allowShade = async () => setPerm(await requestNotificationPermission());
 
   const enable = async () => {
     const result = await requestNotificationPermission();
@@ -331,6 +360,62 @@ export default function SettingsView({
       )}
 
       {/* ---- Backup and restore ---- */}
+      {/* ---- The counter in the notification shade ---- */}
+      <SectionLabel>Notification shade</SectionLabel>
+      <Card>
+        <Row label="Habit counter"
+          desc="A quiet notification with how long you've been clean, and an Urge button. Silent, and it stays put. It appears in the Android app.">
+          <Switch on={shade.on} label="Habit counter" onClick={() => setShade({ on: !shade.on })} />
+        </Row>
+        {shade.on && (
+          <>
+            <div role="radiogroup" aria-label="Which habit goes on the shade" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+              {SHADE_MODES.map((m) => (
+                <Choice key={m.id} on={shade.mode === m.id} label={m.label} desc={m.desc} onClick={() => setShade({ mode: m.id })} />
+              ))}
+            </div>
+
+            {shade.mode === "pinned" && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ color: C.muted, fontSize: 11, fontWeight: 650, letterSpacing: 0.4, margin: "0 0 6px", textTransform: "uppercase" }}>
+                  Pinned habit
+                </p>
+                {quitting.length === 0 ? (
+                  <p style={{ color: C.faint, fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+                    Nothing to pin yet. A habit you set out to quit can go on the shade.
+                  </p>
+                ) : (
+                  <div role="radiogroup" aria-label="Pinned habit" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {quitting.map((t) => (
+                      <Choice key={t.id} on={pinned?.id === t.id} label={t.text}
+                        onClick={() => { onUpdateTask(t.id, { shadePin: Date.now() }); if (perm !== "granted") allowShade(); }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 12 }}>
+              <Row label="Hide the habit's name on the lock screen"
+                desc={shade.hideOnLock ? "The lock screen shows only \"Momentum · Counter\"." : "Anyone who sees your lock screen can see the habit and the number."}>
+                <Switch on={shade.hideOnLock} label="Hide the habit's name on the lock screen" onClick={() => setShade({ hideOnLock: !shade.hideOnLock })} />
+              </Row>
+            </div>
+
+            {perm !== "granted" && perm !== "unsupported" && (
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.5, margin: "0 0 8px" }}>
+                  Android needs your permission to show it.
+                </p>
+                <button onClick={allowShade} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5 }}>
+                  <Bell size={14} /> Allow notifications
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
       <SectionLabel>Your data</SectionLabel>
       <Card>
         <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "0 0 13px" }}>

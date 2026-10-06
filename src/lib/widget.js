@@ -14,6 +14,9 @@ export const WIDGET_KEY = "momentum:widget";
 // up when it comes to the front. The Java side writes this exact string; tests/android
 // checks the two haven't drifted apart, since nothing else could until it failed on a phone.
 export const PENDING_URGE_KEY = "momentum:pendingUrge";
+// The same, for the I-slipped button on the notification-shade counter. Must match PENDING_LAPSE_KEY in
+// MainActivity.java.
+export const PENDING_LAPSE_KEY = "momentum:pendingLapse";
 const MAX_ITEMS = 50;
 // Two, not four: the rows carry a button each, and the widget is already a 3×2.
 const MAX_QUITTING = 2;
@@ -71,23 +74,28 @@ export function widgetSnapshot(state, date = todayStr(), { usualWindow } = {}) {
 
 const prefs = () => (typeof window !== "undefined" ? window.Capacitor?.Plugins?.Preferences : null);
 
-/**
- * Picks up an Urge tapped on the widget, and clears it so it opens once. Returns the habit id,
- * or null. Safe to call as often as the app likes — on start and every time it comes back to
- * the front — because the key is removed the moment it's read.
- */
-export async function takePendingUrge() {
+async function takeKey(key) {
   const p = prefs();
   if (!p?.get) return null;
   try {
-    const { value } = await p.get({ key: PENDING_URGE_KEY });
+    const { value } = await p.get({ key });
     if (!value) return null;
-    await p.remove({ key: PENDING_URGE_KEY });
+    await p.remove({ key });
     return value;
   } catch {
     return null;
   }
 }
+
+/**
+ * Picks up an Urge tapped on the widget or the shade counter, and clears it so it opens once.
+ * Returns the habit id, or null. Safe to call as often as the app likes — on start and every time
+ * it comes back to the front — because the key is removed the moment it's read.
+ */
+export const takePendingUrge = () => takeKey(PENDING_URGE_KEY);
+
+/** The same for an I-slipped tapped on the shade counter: the habit whose slip form should open. */
+export const takePendingLapse = () => takeKey(PENDING_LAPSE_KEY);
 
 /**
  * Writes the snapshot and asks the widget to redraw. A no-op on the web, where there is no

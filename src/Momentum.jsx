@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Compass, ListTodo, Plus, TrendingUp, Wallet } from "lucide-react";
 import { C, MOTION_CSS, styles } from "./theme.js";
 import { MANTRAS, PILLARS } from "./data/constants.js";
@@ -13,14 +13,15 @@ import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { newSession } from "./lib/focus.js";
 import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
 import { drainActions } from "./lib/actionQueue.js";
-import { publishWidget, takePendingUrge } from "./lib/widget.js";
+import { publishWidget, takePendingLapse, takePendingUrge } from "./lib/widget.js";
+import { pinnedHabit, publishShade, setShadePin } from "./lib/shade.js";
 import { bootState, bootStep } from "./boot.js";
 import { comebacksToday, freshStart } from "./lib/rewards.js";
 import { goalsNeedingWoop, onboardingState, startSmallCheck } from "./lib/woop.js";
 import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { lapsesOn, limitOf, newLapse, newUrge, syncSlip, withCalmNote } from "./lib/urges.js";
-import { notificationPermission, scheduleNudges } from "./lib/notify.js";
+import { notificationPermission, requestNotificationPermission, scheduleNudges } from "./lib/notify.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import { bury, mergeStates, unbury } from "./lib/merge.js";
 import { setFollowed, stopExperiment } from "./lib/experimentPlan.js";
@@ -176,6 +177,9 @@ export default function Momentum() {
   const [moneyJump, setMoneyJump] = useState(null);
 
   const { toast, show, dismiss, act } = useToast();
+  // What the callbacks that must stay put need to know about the tasks, without being rebuilt each time they change.
+  const tasksRef = useRef(state.tasks);
+  tasksRef.current = state.tasks;
   // The views all read todayStr() themselves; this is what makes them do it again when the
   // day turns under an app that was left open. It also gates the two effects below, which
   // are about the day rather than about the data.
@@ -242,6 +246,7 @@ export default function Momentum() {
         ...state,
         streak: protectedStreak(state.tasks, state.dayLog, state.freezes, "build"),
       });
+      publishShade(state);
     }, 800);
     return () => clearTimeout(t);
   }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings]);
@@ -390,10 +395,19 @@ export default function Momentum() {
 
   // ---- Task actions ----
   const addTask = useCallback((patchObj) => {
-    const task = newTask({ ...patchObj, order: Date.now() });
+    let task = newTask({ ...patchObj, order: Date.now() });
+    // The first habit someone sets out to quit goes on the notification shade, so it is something they
+    // have on rather than a feature they have to find. One tap takes it off again, and the toast says so.
+    // Android asks permission once; until it's given the shade simply shows nothing.
+    if (task.kind === "break" && !pinnedHabit(tasksRef.current)) {
+      const id = task.id;
+      task = { ...task, shadePin: Date.now() };
+      requestNotificationPermission();
+      show("Pinned to your notification shade", "Unpin", () => setState((s) => ({ ...s, tasks: setShadePin(s.tasks, id, false) })));
+    }
     setState((s) => ({ ...s, tasks: [...s.tasks, task] }));
     return task;
-  }, []);
+  }, [show]);
 
   // ---- Experiments ----
   const addExperiment = useCallback((exp) => {
@@ -765,6 +779,9 @@ export default function Momentum() {
       if (document.hidden) return;
       const id = await takePendingUrge();
       if (id) setUrging({ id, mode: "urge" });
+      // The shade counter's I-slipped button opens the slip form for that habit, nothing logged yet.
+      const lapse = await takePendingLapse();
+      if (lapse) setUrging({ id: lapse, mode: "lapse" });
     };
     check();
     document.addEventListener("visibilitychange", check);
@@ -1111,6 +1128,7 @@ export default function Momentum() {
             <Suspense fallback={null}>
               <TaskSheet
                 open={!!editingTask} task={editingTask} lists={state.lists} goals={state.goals} dayLog={state.dayLog}
+                shadePin={pinnedHabit(state.tasks)}
                 onClose={() => setEditing(null)} onChange={updateTask} onDelete={removeTask}
                 onStartFocus={(t) => setFocusId(t.id)}
               />

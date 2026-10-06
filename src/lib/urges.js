@@ -298,12 +298,14 @@ export function lastUrgeAt(task, urgeLog) {
   return events.length ? events[events.length - 1].at : null;
 }
 
+/** When the habit began: its start date if it has one, otherwise when it was made. */
+export const startedAt = (task) =>
+  (task.startDate ? new Date(`${task.startDate}T00:00:00`).getTime() : task.createdAt) || null;
+
 /** When the last slip was, or when the habit started if there hasn't been one. */
 export function lastSlipAt(task, urgeLog) {
   const last = slipsOf(task, urgeLog).reduce((a, r) => Math.max(a, r.at), 0);
-  if (last) return last;
-  const start = task.startDate ? new Date(`${task.startDate}T00:00:00`).getTime() : task.createdAt;
-  return start || null;
+  return last || startedAt(task);
 }
 
 /** "4d 6h", "3h 20m", "12m" — the most motivating number in quitting, kept honest to the minute. */

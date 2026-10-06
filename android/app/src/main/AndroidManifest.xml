@@ -45,6 +45,17 @@
             android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
 
+        <!-- The habit counter in the notification shade. Driven by its own refresh alarm and by the
+             system after a restart or an update, never by another app, so it isn't exported. -->
+        <receiver
+            android:name=".MomentumShade"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -59,4 +70,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13 and up won't show the habit counter without it. The local-notifications plugin
+         declares both of these too; they're repeated so this app's own notification doesn't
+         depend on a plugin's manifest staying as it is. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

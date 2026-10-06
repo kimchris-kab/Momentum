@@ -14,6 +14,11 @@ public class MainActivity extends BridgeActivity {
      * src/lib/widget.js exactly — tests/android.test.mjs checks the two are the same string.
      */
     static final String PENDING_URGE_KEY = "momentum:pendingUrge";
+    /**
+     * Where the habit id from the shade notification's I-slipped button is left. Must match
+     * PENDING_LAPSE_KEY in src/lib/shade.js.
+     */
+    static final String PENDING_LAPSE_KEY = "momentum:pendingLapse";
     /** Capacitor Preferences' file, which is what the web app reads through. */
     private static final String PREFS = "CapacitorStorage";
 
@@ -23,6 +28,7 @@ public class MainActivity extends BridgeActivity {
         // built, which is why this sits above the super call.
         registerPlugin(MomentumWidgetPlugin.class);
         registerPlugin(MomentumFilesPlugin.class);
+        registerPlugin(MomentumShadePlugin.class);
         super.onCreate(savedInstanceState);
         // A cold start from the widget: the web app isn't loaded yet, so there's nobody to tell.
         // It finds the id itself when it starts.
@@ -45,16 +51,22 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    /** Leaves the habit id where the web app looks for it. True if the intent carried one. */
+    /**
+     * Leaves the habit id where the web app looks for it: under one key for an Urge (from the
+     * widget or the shade), under another for an I-slipped (from the shade). True if the intent
+     * carried one.
+     */
     private boolean stashUrge(Intent intent) {
         if (intent == null) return false;
         Uri data = intent.getData();
-        if (data == null
-                || !MomentumWidget.URGE_SCHEME.equals(data.getScheme())
-                || !MomentumWidget.URGE_HOST.equals(data.getHost())) return false;
+        if (data == null || !MomentumWidget.URGE_SCHEME.equals(data.getScheme())) return false;
+        String key;
+        if (MomentumWidget.URGE_HOST.equals(data.getHost())) key = PENDING_URGE_KEY;
+        else if (MomentumShade.SLIP_HOST.equals(data.getHost())) key = PENDING_LAPSE_KEY;
+        else return false;
         String id = data.getLastPathSegment();
         if (id == null || id.isEmpty()) return false;
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PENDING_URGE_KEY, id).apply();
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(key, id).apply();
         // Consumed: a rotation or a return from the recents screen re-delivers the same intent,
         // and it shouldn't open the urge screen a second time.
         intent.setData(null);
