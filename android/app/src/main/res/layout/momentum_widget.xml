@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Matches the app's dark palette: bg #16141F, text #F2EFFA, gold #E8B75D, calm teal #5FC7C0.
+<!-- Sized for 4x4 (see momentum_widget_info.xml). Matches the app's dark palette: bg #16141F, text #F2EFFA, gold #E8B75D, calm teal #5FC7C0.
      Top to bottom: today's progress, the habits being broken (big clean-time counter + Urge),
      then every task for today in a list that scrolls. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"

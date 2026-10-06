@@ -388,3 +388,16 @@ t.group("the risk line on the widget");
   t.ok("it works out where now falls itself, so it stays right without the app", /Calendar\.HOUR_OF_DAY/.test(widgetJava) && /riskLine\(q, now\)/.test(widgetJava));
   t.ok("and handles a window that crosses midnight", /end <= start/.test(widgetJava));
 }
+
+t.group("room for the task list");
+{
+  // Two habits being broken, each with a counter, a detail line and a risk line, take about 150dp.
+  // At 4x3 that left the list almost nothing and, on the emulator, no rows at all — which no amount
+  // of reading the XML would have said. The default has to leave the list a usable height.
+  const info = read("res/xml/momentum_widget_info.xml");
+  const cells = Number(info.match(/targetCellHeight="(\d+)"/)?.[1]);
+  const minH = Number(info.match(/minHeight="(\d+)dp"/)?.[1]);
+  t.ok("the default is four cells tall", cells >= 4, cells);
+  t.ok("...with a minimum height to match", minH >= 250, minH);
+  t.ok("and the emulator test lays the widget out at that size", /px\(300\)/.test(readFileSync(join(ROOT, "android/app/src/androidTest/java/com/momentum/app/WidgetTest.java"), "utf8")));
+}

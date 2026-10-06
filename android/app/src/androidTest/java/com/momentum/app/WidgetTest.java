@@ -113,10 +113,10 @@ public class WidgetTest {
         MomentumWidget.refresh(context);
     }
 
-    /** Sized like a 4x3 widget, so the list has room to show rows in. */
+    /** Sized like the 4x4 widget it's declared as, which is what a phone gives it by default. */
     private void layOut() {
         inst.runOnMainSync(() -> {
-            int w = px(290), h = px(260);
+            int w = px(290), h = px(300);
             hostView.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
             hostView.layout(0, 0, w, h);
@@ -133,7 +133,7 @@ public class WidgetTest {
         while (SystemClock.uptimeMillis() < end) {
             final boolean[] ok = new boolean[1];
             inst.runOnMainSync(() -> {
-                int w = px(290), h = px(260);
+                int w = px(290), h = px(300);
                 hostView.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                         View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
                 hostView.layout(0, 0, w, h);
@@ -345,6 +345,11 @@ public class WidgetTest {
         final ListView[] list = new ListView[1];
         inst.runOnMainSync(() -> list[0] = hostView.findViewById(R.id.widget_list));
         assertNotNull("the widget has a list", list[0]);
+        // With two habits being broken and a risk line on one, the counters take most of the widget.
+        // The list still has to have room to show tasks in: this is what failed when it didn't.
+        final int[] listHeight = new int[1];
+        inst.runOnMainSync(() -> listHeight[0] = list[0].getHeight());
+        assertTrue("the task list has room for at least two rows (" + listHeight[0] + "px)", listHeight[0] >= px(52));
         waitFor("the list to hold all nine tasks", () -> list[0].getAdapter() != null && list[0].getAdapter().getCount() == 9);
         waitFor("the first row to draw", () -> {
             if (list[0].getChildCount() == 0) return false;

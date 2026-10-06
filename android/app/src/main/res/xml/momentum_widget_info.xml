@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 4x3 by default: the habits being broken take the top of it with their big counters, and the
-     task list scrolls in what's left. It can be sized down to 3x2 for a smaller footprint. -->
+<!-- 4x4 by default. Two habits being broken, each with a counter, a detail line and a risk line, take
+     about 150dp between them, and the task list scrolls in what's left: at 4x3 that was almost nothing,
+     and the emulator test caught the list not drawing at all. It can still be sized down for a smaller
+     footprint, with fewer habits on it. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="180dp"
+    android:minHeight="250dp"
     android:minResizeWidth="180dp"
     android:minResizeHeight="110dp"
     android:targetCellWidth="4"
-    android:targetCellHeight="3"
+    android:targetCellHeight="4"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:initialLayout="@layout/momentum_widget"
