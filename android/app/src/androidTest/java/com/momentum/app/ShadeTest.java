@@ -10,13 +10,11 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.SystemClock;
 import android.service.notification.StatusBarNotification;
 
-import androidx.test.core.app.ActivityScenario;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
@@ -302,35 +300,41 @@ public class ShadeTest {
 
     // ---- the I-slipped button's deep link ------------------------------------------------
 
-    /** The activity leaves the habit's id where the web app picks it up, under the key for that button. */
-    private String launchWith(String host) throws Exception {
-        Intent intent = new Intent(context, MainActivity.class)
-                .setAction(Intent.ACTION_VIEW)
-                .setData(new Uri.Builder().scheme("momentum").authority(host).appendPath("habit-1").build())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        String key = "slip".equals(host) ? MainActivity.PENDING_LAPSE_KEY : MainActivity.PENDING_URGE_KEY;
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(intent)) {
-            long end = SystemClock.uptimeMillis() + 8000;
-            while (SystemClock.uptimeMillis() < end) {
-                String v = prefs.getString(key, null);
-                if (v != null) return v;
-                Thread.sleep(100);
-            }
-        }
-        return null;
+    /** What the activity does with a deep link: leaves the habit's id where the web app picks it up, under the key for that button. */
+    private Intent link(String host, String id) {
+        return new Intent(Intent.ACTION_VIEW)
+                .setData(new Uri.Builder().scheme("momentum").authority(host).appendPath(id).build());
+    }
+
+    private String stored(String key) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, null);
     }
 
     @Test
     public void iSlippedOpensTheSlipFormForThatHabit() throws Exception {
-        assertEquals("habit-1", launchWith(MomentumShade.SLIP_HOST));
-        assertNull("and it's not mistaken for an urge",
-                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(MainActivity.PENDING_URGE_KEY, null));
+        Intent intent = link(MomentumShade.SLIP_HOST, "habit-1");
+        assertTrue(MainActivity.stash(context, intent));
+        // commit-less apply(): the value is visible to the same process straight away
+        assertEquals("habit-1", stored(MainActivity.PENDING_LAPSE_KEY));
+        assertNull("and it's not mistaken for an urge", stored(MainActivity.PENDING_URGE_KEY));
+        assertNull("the intent is spent, so a re-delivery doesn't open it twice", intent.getData());
     }
 
     @Test
     public void urgeStillOpensTheUrgeScreen() throws Exception {
-        assertEquals("habit-1", launchWith(MomentumWidget.URGE_HOST));
-        assertNull(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(MainActivity.PENDING_LAPSE_KEY, null));
+        assertTrue(MainActivity.stash(context, link(MomentumWidget.URGE_HOST, "habit-2")));
+        assertEquals("habit-2", stored(MainActivity.PENDING_URGE_KEY));
+        assertNull(stored(MainActivity.PENDING_LAPSE_KEY));
+    }
+
+    @Test
+    public void otherLinksAndEmptyOnesAreIgnored() throws Exception {
+        assertFalse(MainActivity.stash(context, link("elsewhere", "habit-1")));
+        assertFalse(MainActivity.stash(context, new Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com/slip/habit-1"))));
+        assertFalse("a link with no habit in it", MainActivity.stash(context, new Intent(Intent.ACTION_VIEW, Uri.parse("momentum://slip"))));
+        assertFalse(MainActivity.stash(context, null));
+        assertFalse(MainActivity.stash(context, new Intent(Intent.ACTION_MAIN)));
+        assertNull(stored(MainActivity.PENDING_LAPSE_KEY));
+        assertNull(stored(MainActivity.PENDING_URGE_KEY));
     }
 }

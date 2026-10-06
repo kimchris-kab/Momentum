@@ -1,5 +1,6 @@
 package com.momentum.app;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -51,12 +52,16 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private boolean stashUrge(Intent intent) {
+        return stash(this, intent);
+    }
+
     /**
      * Leaves the habit id where the web app looks for it: under one key for an Urge (from the
      * widget or the shade), under another for an I-slipped (from the shade). True if the intent
-     * carried one.
+     * carried one. Static, so a test can hand it intents without starting the whole activity.
      */
-    private boolean stashUrge(Intent intent) {
+    static boolean stash(Context context, Intent intent) {
         if (intent == null) return false;
         Uri data = intent.getData();
         if (data == null || !MomentumWidget.URGE_SCHEME.equals(data.getScheme())) return false;
@@ -66,7 +71,7 @@ public class MainActivity extends BridgeActivity {
         else return false;
         String id = data.getLastPathSegment();
         if (id == null || id.isEmpty()) return false;
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(key, id).apply();
+        context.getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(key, id).apply();
         // Consumed: a rotation or a return from the recents screen re-delivers the same intent,
         // and it shouldn't open the urge screen a second time.
         intent.setData(null);
