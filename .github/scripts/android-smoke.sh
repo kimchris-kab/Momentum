@@ -96,11 +96,13 @@ stage() {  # stage <id> <marker or empty> <broken: yes|no>
   fi
   adb shell rm -rf /data/local/tmp/ota-stage
   adb push ota-stage /data/local/tmp/ota-stage >/dev/null
-  adb shell run-as "$PKG" sh -c "mkdir -p files/ota && rm -rf files/ota/$1 && cp -r /data/local/tmp/ota-stage files/ota/$1"
+  # One string for the phone's shell: adb joins its arguments with spaces and the phone re-splits them,
+  # so an unquoted "&&" would end the sh -c early.
+  adb shell "run-as $PKG sh -c 'mkdir -p files/ota && rm -rf files/ota/$1 && cp -r /data/local/tmp/ota-stage files/ota/$1'"
 }
 prefs() {  # prefs <current> <previous> <pending> <trial> <starts> <bad...>
   adb shell am force-stop "$PKG"
-  adb shell run-as "$PKG" sh -c "mkdir -p shared_prefs && cat > shared_prefs/momentum_ota.xml" <<XML
+  adb shell "run-as $PKG sh -c 'mkdir -p shared_prefs && cat > shared_prefs/momentum_ota.xml'" <<XML
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
 $( [ -n "$1" ] && echo "    <string name=\"current\">$1</string>" )
@@ -123,9 +125,9 @@ if ! adb logcat -d | grep -qF "[smoke] served-from-ota"; then
 fi
 echo "OK: it started from the downloaded build, and the web app confirmed it."
 sleep 4
-if adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml | grep -q 'name="trial"'; then
+if adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml" | grep -q 'name="trial"'; then
   echo "OTA SMOKE FAILED: the build was still on trial after the app came up."
-  adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml
+  adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml"
   exit 1
 fi
 echo "OK: the trial ended once the app was up."
@@ -155,9 +157,9 @@ if ! adb logcat -d | grep -qF "[smoke] served-from-ota"; then
   echo "OTA SMOKE FAILED: it came back up, but not on the build that worked before."
   exit 1
 fi
-if ! adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml | grep -q "smoke-broken"; then
+if ! adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml" | grep -q "smoke-broken"; then
   echo "OTA SMOKE FAILED: the broken build was not remembered as bad."
-  adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml
+  adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml"
   exit 1
 fi
 echo "OK: back on the build that worked, and the broken one will not be tried again."
