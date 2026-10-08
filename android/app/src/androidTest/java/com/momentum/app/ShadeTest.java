@@ -21,6 +21,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -275,6 +276,9 @@ public class ShadeTest {
     public void aRedZoneHoursAwayIsNamedWhenTheNotificationIsOpened() throws Exception {
         long now = System.currentTimeMillis();
         int cur = minuteOfDay(now);
+        // Five hours away has to still be today: a zone that opens after midnight is tomorrow's, and is only announced
+        // within the last hour and a half before it. So this can only be checked before 7pm.
+        Assume.assumeTrue("a zone five hours away is still today", cur + 300 < 1440);
         write(snap(now).put("zones", new JSONArray().put(new JSONObject()
                 .put("days", new JSONArray().put(0).put(1).put(2).put(3).put(4).put(5).put(6))
                 .put("startMin", (cur + 300) % 1440).put("endMin", (cur + 400) % 1440))));
