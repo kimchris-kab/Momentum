@@ -406,6 +406,22 @@ public final class MomentumOta {
         }
     }
 
+    // ---- the old service worker ----
+
+    /**
+     * The web app used to register a service worker inside the app, and one that is still there would keep serving
+     * the build it cached instead of the one that is installed. The web app now removes any it finds, but only once it
+     * is running, and a cached worker would get in the way of that first run. So, once, before the web view exists, the
+     * worker's files are deleted outright.
+     */
+    static void clearServiceWorkerOnce(Context context) {
+        SharedPreferences p = prefs(context);
+        if (p.getBoolean("swCleared", false)) return;
+        File data = context.getDataDir();
+        deleteTree(new File(data, "app_webview/Default/Service Worker"));
+        p.edit().putBoolean("swCleared", true).commit();
+    }
+
     // ---- starting up ----
 
     /**

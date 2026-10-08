@@ -561,3 +561,15 @@ t.group("publishing updates from CI");
   t.ok("the emulator smoke test exercises over-the-air updates end to end", /Over the air: a build that never starts is dropped/.test(readFileSync(join(ROOT, ".github", "scripts", "android-smoke.sh"), "utf8")));
   t.ok("the build writes the build.json the native side compares against", /fileName: "build\.json"/.test(readFileSync(join(ROOT, "vite.config.js"), "utf8")));
 }
+
+t.group("no service worker inside the Android app");
+{
+  const vite = readFileSync(join(ROOT, "vite.config.js"), "utf8");
+  const ota = read("java/com/momentum/app/MomentumOta.java");
+  const activity = read("java/com/momentum/app/MainActivity.java");
+  const main = readFileSync(join(ROOT, "src", "main.jsx"), "utf8");
+  t.ok("the build no longer injects its own registration, which would run in the app too", /injectRegister:\s*false/.test(vite));
+  t.ok("the app registers (or removes) it itself, at start", /setupServiceWorker\(\)/.test(main));
+  t.ok("an old worker's files are cleared once, before the web view exists", /clearServiceWorkerOnce/.test(ota) && activity.indexOf("clearServiceWorkerOnce") > 0 && activity.indexOf("clearServiceWorkerOnce") < activity.indexOf("super.onCreate"));
+  t.ok("it deletes the worker's folder inside the web view's data", /app_webview\/Default\/Service Worker/.test(ota));
+}

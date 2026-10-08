@@ -34,6 +34,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MomentumPepPlugin.class);
         registerPlugin(MomentumOtaPlugin.class);
         // Before the web view exists: which build of the web app to start with. See MomentumOta.
+        MomentumOta.clearServiceWorkerOnce(this);
         MomentumOta.resolveAtStartup(this, MomentumOta.bundledBuild(this));
         super.onCreate(savedInstanceState);
         // A cold start from the widget: the web app isn't loaded yet, so there's nobody to tell.

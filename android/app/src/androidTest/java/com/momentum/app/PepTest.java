@@ -54,6 +54,16 @@ public class PepTest {
         }
         assertTrue(nm.areNotificationsEnabled());
         wipe();
+        awaitNone();
+    }
+
+    /** Cancelling is queued inside the system; wait until it has happened so a test never reads the last one's notification. */
+    private void awaitNone() throws Exception {
+        long end = SystemClock.uptimeMillis() + 3000;
+        while (SystemClock.uptimeMillis() < end) {
+            if (nm.getActiveNotifications().length == 0) return;
+            Thread.sleep(50);
+        }
     }
 
     @After

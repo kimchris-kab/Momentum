@@ -57,6 +57,21 @@ public class ShadeTest {
         }
         assertTrue("notifications are allowed for the test", nm.areNotificationsEnabled());
         nm.cancel(MomentumShade.NOTIFICATION_ID);
+        awaitGone();
+    }
+
+    /**
+     * Cancelling is queued inside the system, and a read straight afterwards can still see the last test's
+     * notification. A test that then reads "the counter" would be reading the wrong one, so wait until it is gone.
+     */
+    private void awaitGone() throws Exception {
+        long end = SystemClock.uptimeMillis() + 3000;
+        while (SystemClock.uptimeMillis() < end) {
+            boolean there = false;
+            for (StatusBarNotification n : nm.getActiveNotifications()) if (n.getId() == MomentumShade.NOTIFICATION_ID) there = true;
+            if (!there) return;
+            Thread.sleep(50);
+        }
     }
 
     @After

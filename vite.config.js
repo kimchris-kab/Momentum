@@ -37,6 +37,8 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_BUILD__: JSON.stringify(BUILD),
     __APP_COMMIT__: JSON.stringify(commit),
+    // Whether this build ships a service worker at all; src/swSetup.js decides where it is registered.
+    __PWA__: JSON.stringify(!preview),
   },
   build: preview ? {
     outDir: "dist-preview",
@@ -55,6 +57,8 @@ export default defineConfig({
         srcDir: "src",
         filename: "sw.js",
         registerType: "autoUpdate",
+        // Registered by src/swSetup.js instead, which leaves it out of the Android app.
+        injectRegister: false,
         injectManifest: { globPatterns: ["**/*.{js,css,html,png,svg,woff2}"] },
         includeAssets: ["icons/*.png", "icons/*.svg"],
         manifest: {

@@ -114,6 +114,17 @@ $( [ -n "$4" ] && echo "    <string name=\"trial\">$4</string>" )
 XML
 }
 
+# What to show when an over-the-air step fails: enough to see which link in the chain broke, without a second run.
+diag() {
+  echo "----- diagnostics -----"
+  echo "-- the installer's bookkeeping:"; adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml" 2>&1 | head -20
+  echo "-- what Capacitor was told to serve:"; adb shell "run-as $PKG cat shared_prefs/CapWebViewSettings.xml" 2>&1 | head -20
+  echo "-- the downloaded folders:"; adb shell "run-as $PKG ls -la files/ota files/ota/smoke-ota-1" 2>&1 | head -30
+  echo "-- the service worker folder:"; adb shell "run-as $PKG ls app_webview/Default" 2>&1 | head -20
+  echo "-- the marker in the staged page:"; adb shell "run-as $PKG grep -c smoke files/ota/smoke-ota-1/index.html" 2>&1 | head -3
+  echo "-- what the web view was asked for first:"; adb logcat -d | grep -E "Loading app|Handling local request: https://localhost/(index|$)|MomentumOta|serverBasePath" | head -15
+}
+
 echo
 echo "===== Over the air: a downloaded build is the one that runs ====="
 stage smoke-ota-1 "[smoke] served-from-ota" no "2099-01-01T00:00:00.000Z"
@@ -121,6 +132,7 @@ prefs "" "" smoke-ota-1 "" 0
 if ! start_fresh; then echo "OTA SMOKE FAILED: the app never started from the downloaded build."; adb logcat -d | tail -40; exit 1; fi
 if ! adb logcat -d | grep -qF "[smoke] served-from-ota"; then
   echo "OTA SMOKE FAILED: the app started, but not from the downloaded build."
+  diag
   exit 1
 fi
 echo "OK: it started from the downloaded build, and the web app confirmed it."
