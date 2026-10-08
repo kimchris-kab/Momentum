@@ -1,5 +1,6 @@
 import { BACKUP_APP, exportPayload, stateFromImport, summarise } from "./backup.js";
 import { SCHEMA_VERSION } from "./migrate.js";
+import { keyProblem } from "./keys.js";
 
 // The rules around the cloud copy, kept apart from the HTTP so they can be reasoned about
 // and tested without a network.
@@ -65,6 +66,8 @@ export const readConfig = (env = {}, stored = null) => {
 
 export function configProblem(cfg) {
   if (!cfg.url && !cfg.anonKey) return "Not set up yet.";
+  const unsafe = keyProblem(cfg.anonKey);
+  if (unsafe) return unsafe;
   if (!cfg.url) return "Missing the project URL.";
   if (!cfg.anonKey) return "Missing the anon key.";
   if (!/^https:\/\/[^\s/]+\.supabase\.(co|in|net)$/i.test(cfg.url.replace(/\/+$/, ""))

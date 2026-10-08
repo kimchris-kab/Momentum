@@ -76,6 +76,8 @@ const ViewLoading = () => (
 );
 
 const SESSION_KEY = "momentum:supabase:session";
+const NUDGE_KEY = "momentum:backupNudge";
+const NUDGE_QUIET_MS = 14 * 24 * 3600 * 1000;
 // What this device last pushed, and the row stamp it left behind. Kept across reloads
 // because it is genuinely known: forgetting it every start means pulling and merging
 // once per session to re-learn something the device already knew.
@@ -197,6 +199,9 @@ export default function Momentum() {
     readConfig(import.meta.env || {}, readLocal(CONFIG_KEY)));
   const [cloudSession, setCloudSession] = useState(() => readLocal(SESSION_KEY));
   const [cloudMeta, setCloudMeta] = useState(null);
+  // "Not now" on the backup card holds it back for two weeks, then it asks once more.
+  const [backupNudgeOff, setBackupNudgeOff] = useState(() => Date.now() - (Number(readLocal(NUDGE_KEY)) || 0) < NUDGE_QUIET_MS);
+  const dismissBackupNudge = () => { writeLocal(NUDGE_KEY, Date.now()); setBackupNudgeOff(true); };
   const [lastPush, setLastPush] = useState(() => readLocal(PUSH_KEY));
 
   useEffect(() => {
@@ -279,10 +284,17 @@ export default function Momentum() {
         // into this one, and carry on — a merge never loses a record, so there is nothing
         // here worth interrupting anyone about. The push happens on the next pass and
         // carries both devices' work.
-        if (decision.needsMerge) {
+        // A new or reinstalled phone is the same thing from the other side: nothing here to lose, a
+        // whole backup waiting. Bring it down without being asked.
+        if (decision.needsMerge || decision.reason === "empty-local") {
           const pulled = await pullBackup(cloudConfig, live);
           const theirs = pulled?.data ? stateFromCloud(unwrap(pulled.data)) : null;
-          if (theirs) setState((mine) => mergeStates(mine, theirs));
+          // Nothing usable up there: stop here rather than record it as seen, or an empty device would ask again every pass.
+          if (!theirs && decision.reason === "empty-local") return;
+          if (theirs) {
+            setState((mine) => mergeStates(mine, theirs));
+            if (decision.reason === "empty-local") show("Welcome back — your backup is restored.");
+          }
           setLastPush({ fingerprint: null, at: null, remoteStamp: head?.updated_at || null });
           return;
         }
@@ -998,6 +1010,9 @@ export default function Momentum() {
                 onFollowExperiment={followExperiment}
                 onAddPepNote={(n) => { addPepNote(n); show("Saved. That one is yours to read later."); }}
                 onHoldZone={holdZone}
+                backupNudge={isConfigured(cloudConfig) && !cloudSession?.user?.id && !backupNudgeOff && weigh(state) > 0}
+                onOpenBackup={() => setView("settings")}
+                onDismissBackupNudge={dismissBackupNudge}
                 onDismissExperimentTeaser={() => patch({ settings: { ...state.settings, experimentsTeaserDismissed: true } })}
                 onOpenIdentity={() => setView("identity")} onOpenTasks={() => setView("tasks")}
                 onRerollMantra={rerollMantra}

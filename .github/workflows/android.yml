@@ -59,6 +59,11 @@ jobs:
         run: npm test
 
       - name: Build the web app
+        env:
+          # The project this app backs up to and updates from, built into the app so nobody types it in. Both are
+          # public by design (the anon key grants nothing without a sign-in); a service key here fails the build.
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: npm run build
 
       # Capacitor 8 needs JDK 21.
@@ -158,6 +163,11 @@ jobs:
       # The same build the APK was made from, so the stamp inside it matches what is published.
       - if: steps.gate.outputs.go == 'yes'
         name: Build the web app
+        env:
+          # The project this app backs up to and updates from, built into the app so nobody types it in. Both are
+          # public by design (the anon key grants nothing without a sign-in); a service key here fails the build.
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: npm run build
 
       - if: steps.gate.outputs.go == 'yes'
@@ -226,6 +236,9 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
       - uses: actions/setup-java@v4
         with:

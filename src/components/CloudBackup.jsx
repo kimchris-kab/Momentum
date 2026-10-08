@@ -213,8 +213,10 @@ export default function CloudBackup({
           <>
             <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>Sign in to back up</p>
             <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.55, margin: "5px 0 12px" }}>
-              Your data goes into your own project, under your own account. Nobody else can
-              read it — that's enforced by the database, not by this app.
+              {config.source === "build"
+                ? "This app already knows where to back up. Sign in once and it saves by itself from then on — and brings everything back if you ever set up a new phone. "
+                : "Your data goes into your own project, under your own account. "}
+              Nobody else can read it — that's enforced by the database, not by this app.
             </p>
             <input value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="Email" aria-label="Email" type="email"
@@ -233,10 +235,13 @@ export default function CloudBackup({
                 {busy === "signup" ? "…" : "Sign up"}
               </button>
             </div>
-            <button onClick={() => onSaveConfig({ url: "", anonKey: "" })}
-              style={{ ...styles.linkBtn, margin: "12px auto 0", color: C.faint }}>
-              Use a different project
-            </button>
+            {/* A build that carries its own project has nothing to switch: there is one place this app backs up to. */}
+            {config.source !== "build" && (
+              <button onClick={() => onSaveConfig({ url: "", anonKey: "" })}
+                style={{ ...styles.linkBtn, margin: "12px auto 0", color: C.faint }}>
+                Use a different project
+              </button>
+            )}
           </>
         )}
 

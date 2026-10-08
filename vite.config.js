@@ -4,6 +4,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { REQUIRES_NATIVE_API } from "./src/lib/nativeApi.js";
+import { keyProblem } from "./src/lib/keys.js";
 
 // Stamped into the bundle so a running copy can say which build it is, and compare itself
 // against whatever has been published since.
@@ -31,6 +32,16 @@ const buildInfo = {
   },
 };
 
+// A build is a public file. The one key the app takes is the anon (public) one, so a build that has been handed
+// anything else stops here rather than shipping it.
+const keyGuard = {
+  name: "momentum-key-guard",
+  configResolved(config) {
+    const bad = keyProblem(config.env?.VITE_SUPABASE_ANON_KEY);
+    if (bad) throw new Error(`VITE_SUPABASE_ANON_KEY: ${bad}`);
+  },
+};
+
 export default defineConfig({
   base: preview ? "./" : "/",
   define: {
@@ -48,6 +59,7 @@ export default defineConfig({
   } : {},
   plugins: [
     react(),
+    keyGuard,
     ...(preview ? [] : [buildInfo]),
     ...(preview ? [] : [
       VitePWA({

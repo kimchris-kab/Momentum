@@ -46,7 +46,16 @@ signup is reported as "check your email", not as a failure.
 
 ## 3. Point the app at it
 
-Either at build time, in `.env`:
+**Built in (the way the Android app is built).** Add two repository secrets under GitHub → Settings →
+Secrets and variables → Actions: `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the anon / public key, or the
+newer `sb_publishable_…` one — never the service role key; a build handed that one stops with an error).
+Every build then carries the project, so nobody types it in: Settings goes straight to sign-in, and a
+card on Today offers to turn backup on. Sign up once with an email and password. After that the app backs
+up by itself, and signing in on a new or reinstalled phone brings the whole backup back without being
+asked. For a single user it is simplest to switch off **Authentication → Sign In / Providers → Confirm
+email**, so the account works the moment it is made.
+
+Or, for a build you do the work on yourself, at build time, in `.env`:
 
 ```
 VITE_SUPABASE_URL=https://<something>.supabase.co
