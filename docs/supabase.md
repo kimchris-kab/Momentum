@@ -132,14 +132,90 @@ What "apply it" means depends on where it's running, and the app says which:
 | --- | --- |
 | Browser or installed PWA | Reload. The service worker has already fetched the new files. |
 | Preview link | Reload. |
-| The Android APK | **Nothing.** The code ships inside the APK, so a new version has to be installed the way the old one was. The app says so rather than offering a button that can't work. |
+| The Android APK | New web builds are downloaded and swapped in by the app itself (next section). Anything that needs new *native* code still needs a new APK, and the app says so. |
 
-Making the Android app update itself needs a native live-update mechanism (Capacitor's, or
-your own unzip-and-swap). That isn't implemented here, and pretending otherwise would be
-worse than not offering it.
+The installed Android app *can* update itself now: see the next section.
 
 > As with the backup, none of this has run against a real Supabase project. The deploy
 > script's request shapes follow the published Storage API; the app's half was driven
 > end-to-end in a browser against a stand-in server. One thing that stand-in got wrong the
 > first time is instructive: it demanded an API key for a *public* object, which real
 > Supabase does not.
+
+
+---
+
+# Updating the installed Android app by itself
+
+The Android app is a web app inside a native shell. The web half is what changes most, so it can be
+replaced over the air from this same Supabase project, without reinstalling and without touching your data.
+
+## What it does
+
+1. Every push to your release branch is built, tested, started on an emulator, and only then published to
+   `ota/<build id>/` in the `app` bucket, with `ota/latest.json` written last.
+2. The installed app looks at `latest.json` shortly after it starts and whenever it comes back to the front,
+   at most every six hours.
+3. If the build is newer than what it has, it downloads exactly the files listed, checks every one against the
+   SHA-256 in the manifest, and stages them in a folder of their own. A file that doesn't match stops everything
+   and leaves nothing behind.
+4. The next time you open the app it starts from the new build, and a toast offers **Restart now** if you'd
+   rather not wait. The new build is served from the same place as the old one, so everything saved on the
+   phone is where it was.
+
+It does **not** load the app from a web address. That would change the app's origin and the phone would stop
+finding what you saved.
+
+## Safety nets
+
+- **A build that doesn't start is dropped.** A new build is on trial until the web app says it came up. If it
+  fails to come up on three starts in a row, the app goes back to the build before it (or the copy inside the
+  APK) and never tries that one again.
+- **A newer APK always wins.** Reinstalling the app brings its own web build; an older download is ignored.
+- **Native changes need a new APK.** Each build says which version of the native shell it needs
+  (`src/lib/nativeApi.js`). An installed app that is older than that doesn't take the build and says it needs
+  the latest APK.
+- **Limits.** At most 400 files and 30 MB; only plain file names, never a path that climbs out of its folder;
+  only HTTPS, no redirects.
+
+## Setting it up
+
+You need the Supabase project from the first part of this guide, and its `app` bucket (public).
+
+1. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**. Add
+   `SUPABASE_URL` (the project URL) and `SUPABASE_SERVICE_KEY` (the **service role** key from Supabase →
+   Project Settings → API). These are the only places that key should ever be.
+2. Under **Variables**, add `OTA_BRANCH` with the name of the branch you ship from if it isn't `main`.
+3. Install the newest APK once. From then on, builds published from that branch reach the phone by themselves.
+
+Until the two secrets exist the publish job runs, says so, and does nothing.
+
+In the app, **Settings → This build** shows what is running, has a **Check** button, and a switch,
+**Update the app by itself**. The app uses the Supabase address you already entered for the backup.
+
+## Optional: only accept updates you signed
+
+Without this, anyone who can write to your `app` bucket can change what your app does, and the service key is
+the only thing standing in the way. Signing removes that: the app is built with a public key and refuses any
+build whose signature it can't check.
+
+```
+node scripts/ota-keygen.mjs
+```
+
+It prints a private key and a public key and writes nothing.
+
+- Put the **private** key in a repository secret called `OTA_SIGNING_KEY`. Nowhere else.
+- Commit the **public** key as `android/app/src/main/assets/ota-public-key.txt`, then install a new APK once.
+
+From then on the app only takes signed builds, and the publish job signs each one.
+
+## Trust, plainly
+
+An over-the-air update is code that runs inside your app with access to your data. The hashes protect against
+a damaged or half-finished download. They do **not** protect against someone who can write to your bucket:
+for that you need the signature above. Keep the service key in the one GitHub secret, and turn on signing.
+
+> None of this has run against a real Supabase project; the publisher's requests follow the published Storage
+> API and are checked against a stand-in, and the installer is exercised on an emulator with the downloads
+> replaced by local files.

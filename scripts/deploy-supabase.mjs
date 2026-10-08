@@ -14,6 +14,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execSync } from "node:child_process";
+import { buildManifest } from "./ota.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -73,6 +74,53 @@ const upload = async ({ base, key, bucket }, path, body, type) => {
   }
 };
 
+export const OTA_KEEP = 3;
+
+/**
+ * Publishes a build for installed Android apps to pick up: every file under ota/<id>/, then ota/latest.json last so it
+ * never points at a build whose files haven't all arrived, then the folders of builds more than OTA_KEEP back are removed.
+ * `fetcher` is injectable so the order and the requests can be checked without a project.
+ */
+export async function publishOta({ base, key, bucket = "app", dir = "dist", notes = "", privateKeyPem = "", dry = false, fetcher = fetch, log = () => {} }) {
+  const info = JSON.parse(readFileSync(join(dir, "build.json"), "utf8"));
+  const manifest = buildManifest({ dir, info, notes, privateKeyPem });
+  const prefix = `ota/${manifest.id}`;
+  log(`OTA ${manifest.id}: ${manifest.files.length} files, needs native API ${manifest.requiresNativeApi}, ${manifest.signature ? "signed" : "NOT signed"}`);
+  if (dry) {
+    manifest.files.forEach((f) => log(`  ${prefix}/${f.path}  ${contentType(f.path)}`));
+    return { manifest, uploaded: 0, pruned: [] };
+  }
+  const auth = { Authorization: `Bearer ${key}` };
+  const put = async (path, body, type) => {
+    const res = await fetcher(`${base}/storage/v1/object/${bucket}/${path}`, {
+      method: "POST", headers: { ...auth, "Content-Type": type, "Cache-Control": "no-cache", "x-upsert": "true" }, body,
+    });
+    if (!res.ok) throw new Error(`${path}: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  };
+  for (const f of manifest.files) await put(`${prefix}/${f.path}`, readFileSync(join(dir, f.path)), contentType(f.path));
+  await put("ota/latest.json", JSON.stringify(manifest), "application/json");
+
+  // Tidy up: keep the newest few builds so a phone in the middle of downloading an older one isn't cut off.
+  const pruned = [];
+  const list = async (p) => {
+    const res = await fetcher(`${base}/storage/v1/object/list/${bucket}`, {
+      method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ prefix: p, limit: 1000, offset: 0 }),
+    });
+    return res.ok ? res.json() : [];
+  };
+  const folders = (await list("ota")).filter((e) => e.id === null && e.name !== manifest.id).map((e) => e.name).sort();
+  const old = folders.slice(0, Math.max(0, folders.length - (OTA_KEEP - 1)));
+  for (const name of old) {
+    const files = (await list(`ota/${name}`)).filter((e) => e.id !== null).map((e) => `ota/${name}/${e.name}`);
+    if (!files.length) continue;
+    const res = await fetcher(`${base}/storage/v1/object/${bucket}`, {
+      method: "DELETE", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: files }),
+    });
+    if (res.ok) pruned.push(name);
+  }
+  return { manifest, uploaded: manifest.files.length + 1, pruned };
+}
+
 /** Only when run directly — importing this file (the tests do) must not deploy anything. */
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
@@ -89,16 +137,30 @@ async function main() {
     process.exit(1);
   }
 
+  if (process.argv.includes("--ota")) {
+    const r = await publishOta({
+      base, key, bucket: BUCKET, dir: DIR, notes: NOTES, dry: DRY,
+      // From the environment, like the service key, and never written anywhere.
+      privateKeyPem: (process.env.OTA_SIGNING_KEY || "").replace(/\\n/g, "\n"),
+      log: (m) => console.log(m),
+    });
+    if (!DRY) console.log(`Published ${r.manifest.id}.${r.pruned.length ? ` Removed ${r.pruned.length} old build${r.pruned.length === 1 ? "" : "s"}.` : ""}`);
+    return;
+  }
+
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const commit = (() => {
     try { return execSync("git rev-parse --short HEAD").toString().trim(); } catch { return ""; }
   })();
   
+  // The build stamp baked into the code, not the time of this deploy: an app comparing itself against this
+  // manifest is comparing against the same clock it was stamped with.
+  const stamped = (() => { try { return JSON.parse(readFileSync(join(DIR, "build.json"), "utf8")); } catch { return null; } })();
   const manifest = {
     app: "momentum",
     version: pkg.version,
-    build: new Date().toISOString(),
-    commit,
+    build: stamped?.build || new Date().toISOString(),
+    commit: stamped?.commit ?? commit,
     notes: NOTES,
   };
   

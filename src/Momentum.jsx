@@ -397,6 +397,34 @@ export default function Momentum() {
     return () => { gone = true; handle?.remove?.(); };
   }, [loaded, applyNotificationAction]);
 
+  // The installed app tells its native half that this build came up, so a build that doesn't is dropped for
+  // the one before it. Soon after it's drawn rather than later: a start that is cut short shouldn't count
+  // against a build that was fine.
+  useEffect(() => {
+    if (!loaded) return undefined;
+    const id = setTimeout(() => { try { window.Capacitor?.Plugins?.MomentumOta?.confirm?.()?.catch?.(() => {}); } catch { /* not the installed app */ } }, 1500);
+    return () => clearTimeout(id);
+  }, [loaded]);
+
+  // New builds of the web half arrive by themselves in the installed app: looked for shortly after it starts
+  // and whenever it comes back to the front, at most every six hours, from the same Supabase project the
+  // backup uses. Nothing happens in a browser, where the service worker already does this.
+  useEffect(() => {
+    if (!loaded || state.settings?.autoUpdate === false || !cloudConfig?.url || !window.Capacitor?.Plugins?.MomentumOta) return undefined;
+    let cancelled = false;
+    const look = () => {
+      if (document.hidden) return;
+      import("./lib/ota.js").then(async (m) => {
+        if (cancelled || !m.shouldCheckOta()) return;
+        const r = await m.checkAndInstallOta({ cfg: cloudConfig });
+        if (!cancelled && r.state === "installed") show("A new version is ready", "Restart now", () => m.applyOtaNow());
+      }).catch(() => {});
+    };
+    const first = setTimeout(look, 6000);
+    document.addEventListener("visibilitychange", look);
+    return () => { cancelled = true; clearTimeout(first); document.removeEventListener("visibilitychange", look); };
+  }, [loaded, cloudConfig, state.settings?.autoUpdate, show]);
+
   // Rent, salary and subscriptions post themselves for every occurrence that came due
   // while the app was closed, so the ledger is complete without anyone remembering.
   useEffect(() => {

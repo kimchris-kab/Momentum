@@ -614,7 +614,7 @@ export default function SettingsView({
         />
       )}
 
-      <UpdateCheck config={cloud?.config} />
+      <UpdateCheck config={cloud?.config} autoUpdate={settings.autoUpdate !== false} onAutoUpdate={(on) => onSetSetting("autoUpdate", on)} />
 
       <SectionLabel>In the app</SectionLabel>
       <Card>

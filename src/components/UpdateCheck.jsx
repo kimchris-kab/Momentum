@@ -4,6 +4,7 @@ import { C, R, alpha, styles } from "../theme.js";
 import {
   applyPlan, applyUpdate, checkForUpdate, currentBuild, describeBuild, manifestUrl, shouldCheck,
 } from "../lib/updates.js";
+import { applyOtaNow, checkAndInstallOta, describeOta, lastOtaCheck, otaSupported } from "../lib/ota.js";
 import { SectionLabel } from "./ui.jsx";
 
 const LAST_CHECK_KEY = "momentum:update:lastCheck";
@@ -19,10 +20,13 @@ const writeLast = (at) => {
  * Whether a newer build has been published, and what that means here. Silent when there's
  * nothing to say: an update check that interrupts someone is worse than no update check.
  */
-export default function UpdateCheck({ config }) {
+export default function UpdateCheck({ config, autoUpdate = true, onAutoUpdate }) {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [checkedAt, setCheckedAt] = useState(readLast);
+  // In the installed app a new build is downloaded and swapped in by the native half, not just announced.
+  const native = otaSupported();
+  const [ota, setOta] = useState(() => (native ? lastOtaCheck() : null));
 
   const build = currentBuild();
   const url = config?.url ? manifestUrl(config) : "";
@@ -33,6 +37,14 @@ export default function UpdateCheck({ config }) {
 
   const check = useCallback(async (manual) => {
     if (!url) return;
+    if (native) {
+      setBusy(true);
+      const out = await checkAndInstallOta({ cfg: config });
+      setBusy(false);
+      setOta({ ...out, manual });
+      setCheckedAt(Date.now());
+      return;
+    }
     setBusy(true);
     const out = await checkForUpdate(url, { current: build });
     setBusy(false);
@@ -44,7 +56,7 @@ export default function UpdateCheck({ config }) {
   }, [url]);
 
   useEffect(() => {
-    if (!url || !shouldCheck(checkedAt)) return;
+    if (!url || native || !shouldCheck(checkedAt)) return;
     check(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
@@ -69,7 +81,42 @@ export default function UpdateCheck({ config }) {
           )}
         </div>
 
-        {result?.available && (
+        {native && (ota?.state === "installed" || ota?.state === "waiting") && (
+          <div style={{
+            background: alpha(C.gold, 0.08), border: `1px solid ${alpha(C.gold, 0.3)}`,
+            borderRadius: R.md, padding: "12px 13px", marginTop: 12,
+          }}>
+            <p style={{ color: C.text, fontSize: 13, fontWeight: 600, margin: 0 }}>
+              <ArrowUpCircle size={13} style={{ verticalAlign: -2, marginRight: 6 }} />
+              A new version is ready
+            </p>
+            {ota.notes && <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.55, margin: "7px 0 0" }}>{ota.notes}</p>}
+            <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.55, margin: "8px 0 0" }}>{describeOta(ota)}</p>
+            <button onClick={() => applyOtaNow()} style={{ ...styles.cta, height: 42, marginTop: 11, fontSize: 13 }}>
+              <RefreshCw size={15} /> Restart now
+            </button>
+          </div>
+        )}
+        {native && ota && ota.state !== "installed" && ota.state !== "waiting" && (ota.manual || ota.state === "needs-native" || ota.reason === "signature") && describeOta(ota) && (
+          <p style={{ color: ota.state === "failed" || ota.state === "needs-native" ? C.orange : C.muted, fontSize: 12, lineHeight: 1.5, margin: "11px 0 0" }}>
+            {ota.state === "current" && <Check size={12} color={C.green} style={{ verticalAlign: -1, marginRight: 6 }} />}
+            {describeOta(ota)}
+          </p>
+        )}
+        {native && url && onAutoUpdate && (
+          <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, cursor: "pointer" }}>
+            <input type="checkbox" checked={autoUpdate} onChange={(e) => onAutoUpdate(e.target.checked)}
+              style={{ width: 18, height: 18, accentColor: C.teal }} />
+            <span style={{ color: C.muted, fontSize: 12, lineHeight: 1.45 }}>
+              Update the app by itself
+              <span style={{ display: "block", color: C.faint, fontSize: 11 }}>
+                Looks for a newer version now and then and downloads it in the background. It starts the next time you open the app, and your data isn't touched.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {!native && result?.available && (
           <div style={{
             background: alpha(C.gold, 0.08), border: `1px solid ${alpha(C.gold, 0.3)}`,
             borderRadius: R.md, padding: "12px 13px", marginTop: 12,
@@ -95,7 +142,7 @@ export default function UpdateCheck({ config }) {
         )}
 
         {/* Only after a deliberate check: an automatic one finding nothing should say nothing. */}
-        {result && !result.available && result.manual && (
+        {!native && result && !result.available && result.manual && (
           <p style={{ color: C.muted, fontSize: 12, margin: "11px 0 0" }}>
             <Check size={12} color={C.green} style={{ verticalAlign: -1, marginRight: 6 }} />
             {result.reason === "current" ? "This is the newest build."

@@ -22,6 +22,7 @@ on:
       - "package-lock.json"
       - "capacitor.config.json"
       - "vite.config.js"
+      - "scripts/**"
       - ".github/workflows/android.yml"
       - ".github/scripts/**"
   workflow_dispatch:
@@ -112,6 +113,58 @@ jobs:
           path: momentum-*-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+  # Publishes this build for installed apps to pick up by themselves. Only from the branch you ship from
+  # (main, or whatever the repository variable OTA_BRANCH names), only once the APK has built, started on
+  # an emulator and passed its tests, and only if the repository has the secrets it needs: with none, this
+  # does nothing and says so. The service key and the signing key are repository secrets and nowhere else;
+  # neither is ever written into a file or printed.
+  publish-ota:
+    needs: [apk, starts-on-android, widget-on-android]
+    if: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == vars.OTA_BRANCH) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+      # Passed through the environment, never pasted into the script: a commit message is text anyone could write.
+      COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+    steps:
+      - name: Is publishing set up?
+        id: gate
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "SUPABASE_URL and SUPABASE_SERVICE_KEY aren't set as repository secrets, so nothing is published."
+            echo "go=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.go == 'yes'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - if: steps.gate.outputs.go == 'yes'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - if: steps.gate.outputs.go == 'yes'
+        run: npm ci
+
+      # The same build the APK was made from, so the stamp inside it matches what is published.
+      - if: steps.gate.outputs.go == 'yes'
+        name: Build the web app
+        run: npm run build
+
+      - if: steps.gate.outputs.go == 'yes'
+        name: Publish
+        run: |
+          if [ -n "$OTA_SIGNING_KEY" ]; then echo "Signing with OTA_SIGNING_KEY."; else echo "No OTA_SIGNING_KEY: publishing unsigned."; fi
+          node scripts/deploy-supabase.mjs --ota --notes "$COMMIT_MESSAGE"
 
   # Compiling isn't starting. The first APK compiled cleanly and then sat on its startup
   # screen on a real phone, so every build is now installed and opened on an emulator, and

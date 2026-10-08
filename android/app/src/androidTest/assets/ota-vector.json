@@ -1,0 +1,35 @@
+{
+  "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEcrMfC0x0AkR/mOy5iIkP3uPj0TwbW8KxV07uUK8rlsbmUfSL9l7CgpNJV+yW5LsSdl/hDzZXsygugyBxpk8erA==",
+  "manifest": {
+    "app": "momentum",
+    "id": "20990101-000000Z-vector",
+    "version": "1.0.0",
+    "build": "2099-01-01T00:00:00.000Z",
+    "commit": "vector",
+    "notes": "",
+    "requiresNativeApi": 1,
+    "files": [
+      {
+        "path": "assets/app-AbCdEf12.js",
+        "sha256": "46289932de1604479260f0178bba3a5f7019d133b263efc139c9a18d856bebf1",
+        "size": 20
+      },
+      {
+        "path": "build.json",
+        "sha256": "8c66e1474e5df88cfe2b652f50934ef12826a23def8962b8cc166173849ecbb8",
+        "size": 36
+      },
+      {
+        "path": "index.html",
+        "sha256": "a037bd7fcb9377e3e0097d0705533287e6a1c5c19e84324fa549279dab6243cc",
+        "size": 31
+      }
+    ],
+    "signature": "MEUCIQCj6yqFn2qe46yMNnbVvb2ZwLElnes79PCw6LHYyYLn3wIgN/V1pTGKBqJUbTZxVnbJ4bDKZiz+ULaBsOxtD00Bhow="
+  },
+  "contents": {
+    "assets/app-AbCdEf12.js": "console.log('hello')",
+    "build.json": "{\"build\":\"2099-01-01T00:00:00.000Z\"}",
+    "index.html": "<!doctype html><title>x</title>"
+  }
+}

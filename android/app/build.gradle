@@ -7,7 +7,10 @@ android {
         applicationId "com.momentum.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        // Counts up with every CI build. Android only lets an app be installed over itself if the number
+        // hasn't gone down, and Capacitor treats a changed number as a new binary and goes back to the
+        // web app inside it rather than a downloaded one.
+        versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

@@ -8,6 +8,8 @@ import { PATTERNS, hapticCycle } from "../src/lib/pacer.js";
 import { PENDING_PEP_KEY, PEP_KEY } from "../src/lib/pep.js";
 import { pepPlan } from "../src/lib/pepPlan.js";
 import { widgetZones, zoneFromPreset } from "../src/lib/redzone.js";
+import { REQUIRES_NATIVE_API } from "../src/lib/nativeApi.js";
+import { MAX_FILES as otaMaxFiles, MAX_TOTAL_BYTES as otaMaxBytes, SAFE_PATH, signingPayload, verifyManifest } from "../scripts/ota.mjs";
 import { newLapse, newUrge } from "../src/lib/urges.js";
 
 const t = suite("android");
@@ -515,4 +517,47 @@ t.group("red zones on the widget and the shade");
   t.ok("days are numbered 0 = Sunday on both sides", sample[0].days.join() === "0,1,2,3,4,5,6" && sample[1].days.join() === "0,6" && /DAY_OF_WEEK\) - 1/.test(widgetJ));
   t.ok("the shade uses the same maths as the widget, not its own", /MomentumWidget\.riskOf/.test(shadeJ) && /MomentumWidget\.riskUntil/.test(shadeJ));
   t.ok("a zone is told apart from a learned window in the words", /RED ZONE/.test(widgetJ) && /Red zone/.test(widgetJ) && /Your red zone is/.test(shadeJ));
+}
+
+t.group("over-the-air updates");
+{
+  const ota = read("java/com/momentum/app/MomentumOta.java");
+  const plugin = read("java/com/momentum/app/MomentumOtaPlugin.java");
+  const activity = read("java/com/momentum/app/MainActivity.java");
+  const native = Number(ota.match(/static final int NATIVE_API\s*=\s*(\d+)/)?.[1]);
+  const MAX_FILES_JS = otaMaxFiles;
+  t.ok("the shell offers at least the native API this web build needs", native >= REQUIRES_NATIVE_API, [native, REQUIRES_NATIVE_API]);
+  t.ok("the plugin the app calls is registered", /name\s*=\s*"MomentumOta"/.test(plugin) && activity.includes("registerPlugin(MomentumOtaPlugin.class)"));
+  t.ok("the choice of build is made before the web view exists", activity.indexOf("MomentumOta.resolveAtStartup") > activity.indexOf("registerPlugin(MomentumOtaPlugin.class)") && activity.indexOf("MomentumOta.resolveAtStartup") < activity.indexOf("super.onCreate"));
+  t.ok("the limits on both sides are the same", Number(ota.match(/MAX_FILES\s*=\s*(\d+)/)?.[1]) === MAX_FILES_JS && Number(ota.match(/MAX_TOTAL_BYTES\s*=\s*(\d+)L/)?.[1]) * 1024 * 1024 === otaMaxBytes);
+  t.ok("it uses the keys Capacitor itself reads to pick its web folder", /"CapWebViewSettings"/.test(ota) && /"serverBasePath"/.test(ota));
+  t.ok("the path rule is the same as the publisher's", ota.includes("^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$") && SAFE_PATH.source === "^[A-Za-z0-9._-]+(\\/[A-Za-z0-9._-]+)*$");
+  t.ok("the text that is signed is the same on both sides", ota.includes('"momentum-ota-v1\\n"') && signingPayload({ id: "i", build: "b", requiresNativeApi: 1, files: [] }).startsWith("momentum-ota-v1\n"));
+  t.ok("it works on the oldest Android this app supports: no java.util.Base64, which needs API 26", !/java\.util\.Base64/.test(ota) && /android\.util\.Base64/.test(ota));
+  t.ok("it never follows a redirect and refuses plain http", /setInstanceFollowRedirects\(false\)/.test(ota) && /startsWith\("https:\/\/"\)/.test(ota));
+  const calls = [...plugin.matchAll(/@PluginMethod\s+public void (\w+)\(/g)].map((m) => m[1]).sort();
+  const otaJs = readFileSync(join(ROOT, "src", "lib", "ota.js"), "utf8");
+  t.eq("the methods the plugin has", calls, ["apply", "confirm", "info", "install"]);
+  t.ok("and the app calls only those", [...otaJs.matchAll(/plugin\(\)\??\.(\w+)\(/g)].every((m) => calls.includes(m[1])));
+  t.ok("the test vector exists, for the signature to be checked against what Node makes", existsSync(join(ROOT, "android", "app", "src", "androidTest", "assets", "ota-vector.json")));
+  const vec = JSON.parse(readFileSync(join(ROOT, "android", "app", "src", "androidTest", "assets", "ota-vector.json"), "utf8"));
+  t.ok("and it is a valid signature as Node sees it, so a stale one would be caught here first", verifyManifest(vec.manifest, vec.publicKey));
+}
+
+t.group("publishing updates from CI");
+{
+  const wf = readFileSync(join(ROOT, ".github", "workflows", "android.yml"), "utf8");
+  const publish = wf.slice(wf.indexOf("  publish-ota:"), wf.indexOf("  starts-on-android:"));
+  t.ok("there is a publish job", publish.length > 200);
+  t.ok("it waits for the build, the emulator start and the tests", /needs:\s*\[apk, starts-on-android, widget-on-android\]/.test(publish));
+  t.ok("it only runs for pushes to the release branch", /github\.event_name == 'push'/.test(publish) && /github\.ref_name == 'main'/.test(publish) && /vars\.OTA_BRANCH/.test(publish));
+  t.ok("it does nothing, and says so, without the secrets", /aren't set as repository secrets/.test(publish) && /steps\.gate\.outputs\.go == 'yes'/.test(publish));
+  t.ok("the keys come from secrets only", /secrets\.SUPABASE_SERVICE_KEY/.test(publish) && /secrets\.OTA_SIGNING_KEY/.test(publish));
+  t.ok("a commit message never reaches the shell as text to be run", !/\$\{\{\s*github\.event\.head_commit\.message\s*\}\}.*\n.*run:/.test(publish) && /COMMIT_MESSAGE: \$\{\{ github\.event\.head_commit\.message \}\}/.test(publish) && /--notes "\$COMMIT_MESSAGE"/.test(publish));
+  t.ok("nothing echoes a key", !/echo[^\n]*\$(SUPABASE_SERVICE_KEY|OTA_SIGNING_KEY)/.test(publish));
+  t.ok("it publishes through the script that writes the manifest last", /deploy-supabase\.mjs --ota/.test(publish));
+  t.ok("the version code counts up with every build", /GITHUB_RUN_NUMBER/.test(readFileSync(join(ROOT, "android", "app", "build.gradle"), "utf8")));
+  t.ok("a change to the publishing scripts triggers the workflow", /"scripts\/\*\*"/.test(wf));
+  t.ok("the emulator smoke test exercises over-the-air updates end to end", /Over the air: a build that never starts is dropped/.test(readFileSync(join(ROOT, ".github", "scripts", "android-smoke.sh"), "utf8")));
+  t.ok("the build writes the build.json the native side compares against", /fileName: "build\.json"/.test(readFileSync(join(ROOT, "vite.config.js"), "utf8")));
 }

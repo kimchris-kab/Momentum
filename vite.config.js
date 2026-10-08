@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { REQUIRES_NATIVE_API } from "./src/lib/nativeApi.js";
 
 // Stamped into the bundle so a running copy can say which build it is, and compare itself
 // against whatever has been published since.
@@ -17,11 +18,24 @@ const commit = (() => {
 // relative asset URLs, no PWA plugin. The normal build is unchanged.
 const preview = process.env.PREVIEW === "1";
 
+// One timestamp for the whole build, so the copy baked into the code and the copy written beside it
+// as build.json can never disagree about which build this is.
+const BUILD = new Date().toISOString();
+const buildInfo = {
+  name: "momentum-build-info",
+  generateBundle() {
+    this.emitFile({
+      type: "asset", fileName: "build.json",
+      source: JSON.stringify({ app: "momentum", version: pkg.version, build: BUILD, commit, requiresNativeApi: REQUIRES_NATIVE_API }),
+    });
+  },
+};
+
 export default defineConfig({
   base: preview ? "./" : "/",
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
-    __APP_BUILD__: JSON.stringify(new Date().toISOString()),
+    __APP_BUILD__: JSON.stringify(BUILD),
     __APP_COMMIT__: JSON.stringify(commit),
   },
   build: preview ? {
@@ -32,6 +46,7 @@ export default defineConfig({
   } : {},
   plugins: [
     react(),
+    ...(preview ? [] : [buildInfo]),
     ...(preview ? [] : [
       VitePWA({
         // injectManifest, not generateSW: notification actions need a click handler in the

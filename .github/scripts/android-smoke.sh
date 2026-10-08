@@ -59,6 +59,122 @@ if grep -qE "E Capacitor: JavaScript Error|\[momentum\] crashed" logcat.txt; the
   grep -E "E Capacitor: JavaScript Error|\[momentum\] crashed" logcat.txt | head -5
   exit 1
 fi
+
+# ---------------------------------------------------------------------------------------------
+# Over-the-air updates, end to end on the real app: does Capacitor actually serve a build that was
+# downloaded into the app's own folder, and does a build that never comes up get dropped?
+#
+# No network is involved. The web app inside this APK is unpacked, given a newer build stamp and a
+# marker line, and put where a finished download would be, with the same bookkeeping the installer
+# writes. Then the app is started the way a user would start it.
+# ---------------------------------------------------------------------------------------------
+PKG=com.momentum.app
+wait_ready() {
+  for i in $(seq 1 45); do
+    sleep 2
+    if adb logcat -d | grep -q "\[momentum\] boot: ready"; then return 0; fi
+  done
+  return 1
+}
+start_fresh() {
+  adb shell am force-stop "$PKG"
+  adb logcat -c
+  adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
+  wait_ready
+}
+stage() {  # stage <id> <marker or empty> <broken: yes|no>
+  rm -rf ota-stage && mkdir -p ota-stage
+  unzip -q "$APK" 'assets/public/*' -d apkx
+  cp -r apkx/assets/public/. ota-stage/
+  rm -rf apkx
+  printf '{"app":"momentum","version":"1.0.0","build":"%s","commit":"smoke","requiresNativeApi":1}' "$4" > ota-stage/build.json
+  if [ "$3" = "yes" ]; then
+    # A build that loads but never starts the app: the page is there, the app is not.
+    printf '<!doctype html><html><body>this build is broken</body></html>' > ota-stage/index.html
+  elif [ -n "$2" ]; then
+    sed -i "s#<head>#<head><script>console.log('$2')</script>#" ota-stage/index.html
+  fi
+  adb shell rm -rf /data/local/tmp/ota-stage
+  adb push ota-stage /data/local/tmp/ota-stage >/dev/null
+  adb shell run-as "$PKG" sh -c "mkdir -p files/ota && rm -rf files/ota/$1 && cp -r /data/local/tmp/ota-stage files/ota/$1"
+}
+prefs() {  # prefs <current> <previous> <pending> <trial> <starts> <bad...>
+  adb shell am force-stop "$PKG"
+  adb shell run-as "$PKG" sh -c "mkdir -p shared_prefs && cat > shared_prefs/momentum_ota.xml" <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+$( [ -n "$1" ] && echo "    <string name=\"current\">$1</string>" )
+$( [ -n "$2" ] && echo "    <string name=\"previous\">$2</string>" )
+$( [ -n "$3" ] && echo "    <string name=\"pending\">$3</string>" )
+$( [ -n "$4" ] && echo "    <string name=\"trial\">$4</string>" )
+    <int name="trialStarts" value="$5" />
+</map>
+XML
+}
+
 echo
-echo "SMOKE PASSED: the app started and stayed up with no uncaught errors."
+echo "===== Over the air: a downloaded build is the one that runs ====="
+stage smoke-ota-1 "[smoke] served-from-ota" no "2099-01-01T00:00:00.000Z"
+prefs "" "" smoke-ota-1 "" 0
+if ! start_fresh; then echo "OTA SMOKE FAILED: the app never started from the downloaded build."; adb logcat -d | tail -40; exit 1; fi
+if ! adb logcat -d | grep -qF "[smoke] served-from-ota"; then
+  echo "OTA SMOKE FAILED: the app started, but not from the downloaded build."
+  exit 1
+fi
+echo "OK: it started from the downloaded build, and the web app confirmed it."
+sleep 4
+if adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml | grep -q 'name="trial"'; then
+  echo "OTA SMOKE FAILED: the build was still on trial after the app came up."
+  adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml
+  exit 1
+fi
+echo "OK: the trial ended once the app was up."
+
+echo
+echo "===== Over the air: a build that never starts is dropped ====="
+stage smoke-broken "" yes "2099-02-01T00:00:00.000Z"
+adb shell am force-stop "$PKG"
+# Make the broken build the one waiting, on top of the good one that is running.
+prefs smoke-ota-1 "" smoke-broken "" 0
+for n in 1 2; do
+  adb shell am force-stop "$PKG"; adb logcat -c
+  adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
+  sleep 12
+  if adb logcat -d | grep -q "\[momentum\] boot: ready"; then
+    echo "OTA SMOKE FAILED: the broken build reported ready on start $n."
+    exit 1
+  fi
+done
+echo "OK: it did not start, twice, as expected."
+if ! start_fresh; then
+  echo "OTA SMOKE FAILED: after three failed starts the app did not fall back to the build before it."
+  adb logcat -d | tail -40
+  exit 1
+fi
+if ! adb logcat -d | grep -qF "[smoke] served-from-ota"; then
+  echo "OTA SMOKE FAILED: it came back up, but not on the build that worked before."
+  exit 1
+fi
+if ! adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml | grep -q "smoke-broken"; then
+  echo "OTA SMOKE FAILED: the broken build was not remembered as bad."
+  adb shell run-as "$PKG" cat shared_prefs/momentum_ota.xml
+  exit 1
+fi
+echo "OK: back on the build that worked, and the broken one will not be tried again."
+
+echo
+echo "===== Over the air: a newer APK beats an old download ====="
+prefs smoke-ota-1 "" "" "" 0
+# The download claims to be older than the APK that is installed.
+stage smoke-old "[smoke] served-from-old-download" no "2001-01-01T00:00:00.000Z"
+prefs smoke-old "" "" "" 0
+if ! start_fresh; then echo "OTA SMOKE FAILED: the app did not start."; exit 1; fi
+if adb logcat -d | grep -qF "[smoke] served-from-old-download"; then
+  echo "OTA SMOKE FAILED: an old download was served instead of the newer web app inside the APK."
+  exit 1
+fi
+echo "OK: the web app inside the APK won over an older download."
+
+echo
+echo "SMOKE PASSED: the app started and stayed up with no uncaught errors, and over-the-air updates work."
 exit 0
