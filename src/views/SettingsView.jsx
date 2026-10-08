@@ -19,6 +19,7 @@ import {
 import { graduationStatus, reminderMode } from "../lib/automaticity.js";
 import { SHADE_MODES, pinnedHabit, shadeSettings } from "../lib/shade.js";
 import { DEFAULT_PEP, PEP_MIN_DAYS, pepSettings } from "../lib/pep.js";
+import { DEFAULT_VIRTUE, virtueSettings } from "../lib/virtue.js";
 import { INTENSITIES, redZoneSettings } from "../lib/redzone.js";
 import { Card, Pill, SectionLabel } from "../components/ui.jsx";
 
@@ -121,6 +122,8 @@ export default function SettingsView({
   const setZone = (patch) => onSetSetting("redZone", { ...zoneCfg, ...patch });
   const pep = useMemo(() => pepSettings(settings), [settings]);
   const setPep = (patch) => onSetSetting("pep", { ...pep, ...patch });
+  const virtue = useMemo(() => virtueSettings(settings), [settings]);
+  const setVirtue = (patch) => onSetSetting("virtue", { ...virtue, ...patch });
 
   const enable = async () => {
     const result = await requestNotificationPermission();
@@ -486,6 +489,33 @@ export default function SettingsView({
                 <button onClick={allowShade} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5 }}>
                   <Bell size={14} /> Allow notifications
                 </button>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* ---- Character ---- */}
+      <SectionLabel>Character</SectionLabel>
+      <Card>
+        <Row label="Virtue of the week"
+          desc="One trait to work on, one small thing to practise each day, and one question at the end of it. Shows on Today.">
+          <Switch on={virtue.on} label="Virtue of the week" onClick={() => setVirtue({ on: !virtue.on })} />
+        </Row>
+        {virtue.on && (
+          <>
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <Row label="Notifications"
+                desc="The day's practice in the morning, and in the evening a question you can answer from the notification itself.">
+                <Switch on={virtue.notify} label="Character notifications" onClick={() => setVirtue({ notify: !virtue.notify })} />
+              </Row>
+            </div>
+            {virtue.notify && (
+              <div style={{ borderTop: `1px solid ${C.border}` }}>
+                <Row label="Practice and question" desc="The evening question comes at least three hours after the practice.">
+                  <TimeInput value={virtue.morning} label="Practice at" onChange={(v) => setVirtue({ morning: v || DEFAULT_VIRTUE.morning })} />
+                  <TimeInput value={virtue.evening} label="Question at" onChange={(v) => setVirtue({ evening: v || DEFAULT_VIRTUE.evening })} />
+                </Row>
               </div>
             )}
           </>

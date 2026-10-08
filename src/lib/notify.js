@@ -79,6 +79,8 @@ async function ensureActionTypes() {
         { id: "urge", actions: [{ id: "urge", title: "Ride it out" }] },
         { id: "redzone", actions: [{ id: "urge", title: "Ride it out" }] },
         { id: "redzone-end", actions: [{ id: "held", title: "I held it" }, { id: "slipped", title: "I slipped" }] },
+        { id: "virtue", actions: [{ id: "open", title: "Open" }] },
+        { id: "virtue-check", actions: [{ id: "lived", title: "Lived it" }, { id: "partly", title: "Partly" }, { id: "missed", title: "Missed it" }] },
         { id: "simple", actions: [{ id: "open", title: "Open" }] },
       ],
     });
@@ -96,6 +98,12 @@ async function withZoneNudges(state, items, days) {
   try { return (await import("./redzone.js")).mergeZoneNudges(state, items, days); } catch { return items; }
 }
 
+/** The daily practice and the evening question, from a module that is only loaded once a virtue has been chosen. */
+async function withVirtueNudges(state, items, days) {
+  if (!state.virtue?.id) return items;
+  try { return (await import("./virtue.js")).mergeVirtueNudges(state, items, days); } catch { return items; }
+}
+
 export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
   clearPageTimers();
   const notify = notifySettings(state.settings);
@@ -105,7 +113,7 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
   const permission = await notificationPermission();
   if (permission !== "granted") return { scheduled: 0, via: "unpermitted", next: null, permission };
 
-  const items = await withZoneNudges(state, buildNudges(state, { days: daysAhead }), daysAhead);
+  const items = await withVirtueNudges(state, await withZoneNudges(state, buildNudges(state, { days: daysAhead }), daysAhead), daysAhead);
   const next = items[0] || null;
 
   if (isNative()) {
@@ -119,7 +127,8 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
           body: n.body,
           schedule: { at: n.at, allowWhileIdle: true },
           actionTypeId: n.kind === "habits" || n.kind === "comeback" || n.kind === "rescue" ? "habit"
-            : n.kind === "urges" ? "urge" : n.kind === "redzone" ? "redzone" : n.kind === "redzone-end" ? "redzone-end" : "simple",
+            : n.kind === "urges" ? "urge" : n.kind === "redzone" ? "redzone" : n.kind === "redzone-end" ? "redzone-end"
+            : n.kind === "virtue" ? "virtue" : n.kind === "virtue-check" ? "virtue-check" : "simple",
           extra: { taskId: n.taskId || null, date: n.date, kind: n.kind, zone: n.zone || null },
         })),
       });

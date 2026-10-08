@@ -34,7 +34,7 @@ const LOGS = {
 
 /** Records that can be edited after the fact. Union by id; a conflict goes to the later edit. */
 const EDITABLE = ["tasks", "goals", "strategies", "lists", "recurring", "savedViews",
-  "transactions", "journalEntries", "experiments", "pepNotes"];
+  "transactions", "journalEntries", "experiments", "pepNotes", "virtueLog", "temperLog"];
 
 /** One row per date, rewritten in place. */
 const BY_DATE = ["checkins", "netWorthLog"];
@@ -47,7 +47,7 @@ const KEYED = ["identities", "moneyPrinciples", "moneyIdeas", "categoryBudgets",
   "mantraIdxByDate", "freezes"];
 
 /** Everything else is a setting or a scalar and follows whichever state was saved later. */
-const WHOLE = ["monthlyIncome", "budgetSplit", "netWorth", "settings", "journalDraft", "lists"];
+const WHOLE = ["monthlyIncome", "budgetSplit", "netWorth", "settings", "journalDraft", "lists", "virtue"];
 
 // How long a deletion is remembered. A tombstone exists to stop the other device resurrecting
 // something you deleted; once both have synced it is dead weight, and keeping them forever

@@ -51,6 +51,8 @@ export function summarise(data) {
     ["Experiments", count(data.experiments)],
     ["Notes to yourself", count(data.pepNotes)],
     ["Red zones held", count(data.zoneLog)],
+    ["Character check-ins", count(data.virtueLog)],
+    ["Temper log entries", count(data.temperLog)],
   ];
   return rows.filter(([, n]) => n > 0);
 }

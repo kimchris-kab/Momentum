@@ -56,7 +56,9 @@ self.addEventListener("notificationclick", (event) => {
     // An urge warning isn't a tick, but it does need the page: the body tap and "Ride it out"
     // both mean "open the urge screen", so both are carried through like an action.
     const carried = action === "done" || action === "twoMin" || action === "urge" || action === "held" || action === "slipped"
-      || data.kind === "urges" || data.kind === "redzone" || data.kind === "redzone-end";
+      || action === "lived" || action === "partly" || action === "missed"
+      || data.kind === "urges" || data.kind === "redzone" || data.kind === "redzone-end"
+      || data.kind === "virtue" || data.kind === "virtue-check";
     if (clientsList.length && carried) {
       clientsList.forEach((c) => c.postMessage({ type: "momentum:action", payload }));
       await focusApp();

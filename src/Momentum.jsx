@@ -70,6 +70,7 @@ const UrgeSheet = lazy(() => import("./components/UrgeSheet.jsx"));
 const TaskSheet = lazy(() => import("./components/TaskSheet.jsx"));
 // Experiments live on yourself: a screen most days never opens, so it arrives when asked for.
 const ExperimentsView = lazy(() => import("./views/ExperimentsView.jsx"));
+const CharacterView = lazy(() => import("./views/CharacterView.jsx"));
 
 const ViewLoading = () => (
   <div style={{ ...styles.page, color: C.faint, fontSize: 12.5 }}>Loading…</div>
@@ -165,6 +166,8 @@ const tickFromNotification = (payload) => (s) => {
 
 export default function Momentum() {
   const [view, setView] = useState("today");
+  // Which half of the Character screen to open on: the card on Today and the notifications each go to their own.
+  const [characterTab, setCharacterTab] = useState("virtue");
   const [state, setState] = useState(emptyState);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -262,7 +265,7 @@ export default function Momentum() {
       publishPep(state);
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings, state.pepNotes]);
+  }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings, state.pepNotes, state.virtue, state.virtueLog]);
 
   // An automatic backup can destroy data as easily as save it, so the decision of whether to
   // push at all lives in cloud.js with its guards, and this only carries it out.
@@ -343,6 +346,32 @@ export default function Momentum() {
     }).catch(() => {});
   }, [show]);
 
+  // ---- Character ----
+  // The module holding the virtues and their wording only loads once one is used.
+  const answerVirtue = useCallback(({ date, score }) => {
+    import("./lib/virtue.js").then((m) => setState((s) => m.answered(s, { date, score }))).catch(() => {});
+  }, []);
+  const chooseVirtue = useCallback((id) => {
+    import("./lib/virtue.js").then((m) => setState((s) => ({ ...s, virtue: m.chooseVirtue(id, todayStr()) || s.virtue }))).catch(() => {});
+  }, []);
+  const keepVirtue = useCallback(() => {
+    import("./lib/virtue.js").then((m) => setState((s) => m.keepVirtue(s, todayStr()))).catch(() => {});
+  }, []);
+  const addTemper = useCallback((entry) => {
+    setState((s) => ({ ...s, temperLog: [...(s.temperLog || []), entry] }));
+    show(entry.reaction === "held" || entry.reaction === "paused" ? "Logged. That's the one to repeat." : "Logged. Noticing it is the work.");
+  }, [show]);
+  const removeTemper = useCallback((id) => setState((s) => {
+    const victim = (s.temperLog || []).find((e) => e.id === id);
+    if (victim) {
+      show("Entry deleted", "Undo", () => setState((cur) => ({
+        ...cur, temperLog: [...(cur.temperLog || []), victim], graveyard: unbury(cur.graveyard, id),
+      })));
+    }
+    return { ...s, temperLog: (s.temperLog || []).filter((e) => e.id !== id), graveyard: bury(s.graveyard, id) };
+  }), [show]);
+  const openCharacter = useCallback((tab = "virtue") => { setCharacterTab(tab); setView("character"); }, []);
+
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
   const applyNotificationAction = useCallback((payload) => {
@@ -359,8 +388,16 @@ export default function Momentum() {
       else if (payload.action === "held") holdZone(payload.taskId, payload.zone);
       return;
     }
+    // The day's practice opens the screen; the evening question is answered by the button, or opened by tapping the body.
+    if (payload?.kind === "virtue") { openCharacter("virtue"); return; }
+    if (payload?.kind === "virtue-check") {
+      const score = { lived: 2, partly: 1, missed: 0 }[payload.action];
+      if (score === undefined) openCharacter("virtue");
+      else answerVirtue({ date: payload.date || todayStr(), score });
+      return;
+    }
     setState(tickFromNotification(payload));
-  }, [holdZone]);
+  }, [holdZone, answerVirtue, openCharacter]);
 
   useEffect(() => {
     if (!loaded) return undefined;
@@ -369,7 +406,7 @@ export default function Momentum() {
       if (cancelled || !rows.length) return;
       rows.forEach(applyNotificationAction);
       // An urge warning opens a screen rather than ticking anything off, so it isn't counted.
-      const ticks = rows.filter((r) => !["urges", "redzone", "redzone-end"].includes(r.kind)).length;
+      const ticks = rows.filter((r) => !["urges", "redzone", "redzone-end", "virtue", "virtue-check"].includes(r.kind)).length;
       if (ticks) show(`${ticks} ticked off from ${ticks === 1 ? "a notification" : "notifications"}`);
     });
     const onMessage = (e) => {
@@ -1010,6 +1047,8 @@ export default function Momentum() {
                 onFollowExperiment={followExperiment}
                 onAddPepNote={(n) => { addPepNote(n); show("Saved. That one is yours to read later."); }}
                 onHoldZone={holdZone}
+                onAnswerVirtue={answerVirtue} onOpenCharacter={() => openCharacter("virtue")} onOpenTemper={() => openCharacter("temper")}
+                onDismissCharacterTeaser={() => patch({ settings: { ...state.settings, virtueTeaserDismissed: true } })}
                 backupNudge={isConfigured(cloudConfig) && !cloudSession?.user?.id && !backupNudgeOff && weigh(state) > 0}
                 onOpenBackup={() => setView("settings")}
                 onDismissBackupNudge={dismissBackupNudge}
@@ -1166,6 +1205,16 @@ export default function Momentum() {
                   // touched this" from "the other device has been busy".
                   onPushed: setLastPush,
                 }}
+              />
+            )}
+            {view === "character" && (
+              <CharacterView
+                key={characterTab} initialTab={characterTab}
+                state={state} onBack={() => setView("today")}
+                onChoose={chooseVirtue} onKeep={keepVirtue} onClear={() => patch({ virtue: null })}
+                onAnswer={answerVirtue} onAddTemper={addTemper} onRemoveTemper={removeTemper}
+                surf={surfSettings(state.settings)}
+                onSurf={(v) => patch({ settings: { ...state.settings, surf: v } })}
               />
             )}
             {view === "experiments" && (

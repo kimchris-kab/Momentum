@@ -22,6 +22,7 @@ import ExperimentCard from "../components/ExperimentCard.jsx";
 // Loaded after Today has drawn: the radar and its wording are only needed once something is up.
 const RadarCards = lazy(() => import("../components/RadarCards.jsx"));
 const PepCard = lazy(() => import("../components/PepCard.jsx"));
+const CharacterCard = lazy(() => import("../components/CharacterCard.jsx"));
 import RecoveryCard from "../components/RecoveryCard.jsx";
 import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
 import {
@@ -56,6 +57,7 @@ export default function TodayView({
   onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
   onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser, onAddPepNote, onHoldZone,
   backupNudge, onOpenBackup, onDismissBackupNudge,
+  onAnswerVirtue, onOpenCharacter, onOpenTemper, onDismissCharacterTeaser,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -238,6 +240,13 @@ export default function TodayView({
       {writeAsk && onAddPepNote && (
         <Suspense fallback={null}>
           <PepCard candidate={writeAsk} onSave={onAddPepNote} />
+        </Suspense>
+      )}
+
+      {onOpenCharacter && state.settings?.virtue?.on !== false && (
+        <Suspense fallback={null}>
+          <CharacterCard state={state} onAnswer={onAnswerVirtue} onOpen={onOpenCharacter} onOpenTemper={onOpenTemper}
+            onDismissTeaser={onDismissCharacterTeaser} />
         </Suspense>
       )}
 

@@ -1,25 +1,11 @@
 import { dstr } from "./date.js";
 import { dayState } from "./urges.js";
 import { pinnedHabit } from "./shade.js";
+import { seeded } from "./seeded.js";
 import { PEP_MIN_DAYS, cleanDays, pepSettings, quits, toMinutes } from "./pep.js";
 
 // Planning what to send and when. Kept apart from the rest of the notes code because the app only
 // needs it when it is about to hand a plan to the phone, not to start up.
-
-// ---- Chance, but the same chance every time it's asked ----
-// Seeded by the date, so rebuilding the plan after an edit leaves tomorrow's time where it was
-// rather than rolling it again every time the app is opened.
-function seeded(seed) {
-  let h = 1779033703 ^ seed.length;
-  for (let i = 0; i < seed.length; i++) { h = Math.imul(h ^ seed.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
-  let a = Math.imul(h ^ (h >>> 16), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909);
-  return () => {
-    a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const WRITE_LINES = [
   "Write one thing you did well today.",
