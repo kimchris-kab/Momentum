@@ -101,15 +101,21 @@ public class ShadeTest {
 
     /** Posts it and finds what the notification manager now holds. */
     private Notification posted() throws Exception {
+        // The system posts through a queue, so what is in the shade right after a refresh can still be the notification from a
+        // moment ago. One posted since the refresh is the answer; if none ever shows up, the latest seen is returned as before.
+        long since = System.currentTimeMillis() - 50;
         MomentumShade.refresh(context);
         long end = SystemClock.uptimeMillis() + 5000;
+        Notification seen = null;
         while (SystemClock.uptimeMillis() < end) {
             for (StatusBarNotification n : nm.getActiveNotifications()) {
-                if (n.getId() == MomentumShade.NOTIFICATION_ID) return n.getNotification();
+                if (n.getId() != MomentumShade.NOTIFICATION_ID) continue;
+                if (n.getPostTime() >= since) return n.getNotification();
+                seen = n.getNotification();
             }
             Thread.sleep(100);
         }
-        return null;
+        return seen;
     }
 
     private static String text(Notification n, String key) {
