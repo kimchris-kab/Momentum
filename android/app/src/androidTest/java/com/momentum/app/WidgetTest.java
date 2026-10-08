@@ -419,7 +419,8 @@ public class WidgetTest {
         assertEquals("Friday night", MomentumWidget.RISK_NOW, MomentumWidget.riskUntil(fri, at(2026, 10, 9, 23, 0)));
         assertEquals("1 am on Saturday is still Friday's zone", MomentumWidget.RISK_NOW, MomentumWidget.riskUntil(fri, at(2026, 10, 10, 1, 0)));
         assertEquals("but Saturday night is not", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(fri, at(2026, 10, 10, 23, 0)));
-        assertEquals("and 1 am on Friday is not either, since Thursday has none", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(fri, at(2026, 10, 9, 1, 0)));
+        // At 1 am on Friday last night's zone (Thursday's) doesn't exist, so it isn't running; tonight's is 21 hours away.
+        assertEquals("1 am on Friday is not inside it, and tonight's is 21 hours off", 21 * 60, MomentumWidget.riskUntil(fri, at(2026, 10, 9, 1, 0)));
         assertEquals("it ends when it ends", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(fri, at(2026, 10, 10, 2, 0)));
     }
 
