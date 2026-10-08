@@ -1,6 +1,7 @@
 package com.momentum.app;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -365,6 +366,112 @@ public class WidgetTest {
             View row = list[0].getChildAt(0).findViewById(R.id.task_text);
             return row instanceof TextView && ((TextView) row).getText().toString().contains("Read");
         });
+    }
+
+    // ---- red zones: hours the person set, on certain days ----------------------------------
+
+    private static long at(int y, int month, int d, int h, int mi) {
+        Calendar c = Calendar.getInstance();
+        c.clear();
+        c.set(y, month - 1, d, h, mi, 0);
+        return c.getTimeInMillis();
+    }
+
+    private static JSONObject habitWithZones(String zonesJson) throws Exception {
+        return new JSONObject("{\"id\":\"q\",\"text\":\"x\",\"zones\":" + zonesJson + "}");
+    }
+
+    private static final String EVERY_NIGHT = "[{\"days\":[0,1,2,3,4,5,6],\"startMin\":1320,\"endMin\":0}]";
+
+    @Test
+    public void insideARedZoneItSaysSoInCapitals() throws Exception {
+        // Thursday 8 Oct 2026, 22:30: ten at night to midnight, every night.
+        long now = at(2026, 10, 8, 22, 30);
+        JSONObject q = habitWithZones(EVERY_NIGHT);
+        assertEquals(MomentumWidget.RISK_NOW, MomentumWidget.riskUntil(q, now));
+        assertTrue(MomentumWidget.riskLine(q, now), MomentumWidget.riskLine(q, now).startsWith("RED ZONE \u00B7 until "));
+        assertEquals("red while it runs", 0xFFE5736B, MomentumWidget.riskColor(q, now));
+    }
+
+    @Test
+    public void aRedZoneCountsDownLikeALearnedWindowDoes() throws Exception {
+        JSONObject q = habitWithZones(EVERY_NIGHT);
+        assertTrue(MomentumWidget.riskLine(q, at(2026, 10, 8, 21, 35)), MomentumWidget.riskLine(q, at(2026, 10, 8, 21, 35)).startsWith("Red zone opens in 25 min"));
+        assertEquals("gold until it starts", 0xFFE8B75D, MomentumWidget.riskColor(q, at(2026, 10, 8, 21, 35)));
+        assertTrue("far off, it just says when", MomentumWidget.riskLine(q, at(2026, 10, 8, 15, 0)).startsWith("Red zone "));
+        assertFalse(MomentumWidget.riskLine(q, at(2026, 10, 8, 15, 0)).contains("opens in"));
+    }
+
+    @Test
+    public void aRedZoneIsOnlyOnTheDaysItWasSetFor() throws Exception {
+        // Weekends only: 6 = Saturday, 0 = Sunday.
+        JSONObject weekends = habitWithZones("[{\"days\":[0,6],\"startMin\":840,\"endMin\":1080}]");
+        assertEquals("a Saturday afternoon is inside it", MomentumWidget.RISK_NOW, MomentumWidget.riskUntil(weekends, at(2026, 10, 10, 15, 0)));
+        assertEquals("a Thursday afternoon is not", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(weekends, at(2026, 10, 8, 15, 0)));
+        assertEquals("and says nothing", "", MomentumWidget.riskLine(weekends, at(2026, 10, 8, 15, 0)));
+        assertEquals("Friday afternoon: Saturday's hours aren't a heads-up yet", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(weekends, at(2026, 10, 9, 15, 0)));
+    }
+
+    @Test
+    public void aZoneThatRunsPastMidnightBelongsToTheDayItStartedOn() throws Exception {
+        // Friday (5) 22:00 to 02:00.
+        JSONObject fri = habitWithZones("[{\"days\":[5],\"startMin\":1320,\"endMin\":120}]");
+        assertEquals("Friday night", MomentumWidget.RISK_NOW, MomentumWidget.riskUntil(fri, at(2026, 10, 9, 23, 0)));
+        assertEquals("1 am on Saturday is still Friday's zone", MomentumWidget.RISK_NOW, MomentumWidget.riskUntil(fri, at(2026, 10, 10, 1, 0)));
+        assertEquals("but Saturday night is not", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(fri, at(2026, 10, 10, 23, 0)));
+        assertEquals("and 1 am on Friday is not either, since Thursday has none", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(fri, at(2026, 10, 9, 1, 0)));
+        assertEquals("it ends when it ends", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(fri, at(2026, 10, 10, 2, 0)));
+    }
+
+    @Test
+    public void aZoneStartingJustAfterMidnightIsAHeadsUpTheNightBefore() throws Exception {
+        // Saturday (6) from 00:30: at 23:45 on Friday that is 45 minutes away.
+        JSONObject sat = habitWithZones("[{\"days\":[6],\"startMin\":30,\"endMin\":180}]");
+        assertEquals(45, MomentumWidget.riskUntil(sat, at(2026, 10, 9, 23, 45)));
+        assertEquals("but not three hours before", MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(sat, at(2026, 10, 9, 21, 0)));
+    }
+
+    @Test
+    public void theSoonestOfSeveralZonesIsTheOneShown() throws Exception {
+        JSONObject q = habitWithZones("[{\"days\":[0,1,2,3,4,5,6],\"startMin\":1320,\"endMin\":0},{\"days\":[0,1,2,3,4,5,6],\"startMin\":1050,\"endMin\":1200}]");
+        // 17:00: the 17:30 one is next, not the 22:00 one.
+        assertEquals(30, MomentumWidget.riskUntil(q, at(2026, 10, 8, 17, 0)));
+        // 18:00: inside the 17:30 to 20:00 one.
+        assertEquals(MomentumWidget.RISK_NOW, MomentumWidget.riskUntil(q, at(2026, 10, 8, 18, 0)));
+    }
+
+    @Test
+    public void aRedZoneComesBeforeTheLearnedWindow() throws Exception {
+        JSONObject q = new JSONObject("{\"zones\":" + EVERY_NIGHT + ",\"risk\":{\"startMin\":720,\"endMin\":780}}");
+        assertTrue("at 22:30 the zone, not the lunchtime window", MomentumWidget.riskLine(q, at(2026, 10, 8, 22, 30)).startsWith("RED ZONE"));
+        assertTrue("with no zone near, the learned window speaks, in its own words",
+                MomentumWidget.riskLine(new JSONObject("{\"zones\":[{\"days\":[6],\"startMin\":840,\"endMin\":1080}],\"risk\":{\"startMin\":720,\"endMin\":780}}"), at(2026, 10, 8, 11, 45)).startsWith("Risk window opens in 15 min"));
+    }
+
+    @Test
+    public void brokenZonesAreIgnoredNotACrash() throws Exception {
+        JSONObject q = habitWithZones("[{\"days\":[0,1],\"startMin\":-5,\"endMin\":60},{\"startMin\":600,\"endMin\":700},{\"days\":[0,1,2,3,4,5,6],\"startMin\":600,\"endMin\":600},\"x\",null]");
+        assertEquals(MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(q, at(2026, 10, 8, 10, 30)));
+        assertEquals("", MomentumWidget.riskLine(q, at(2026, 10, 8, 10, 30)));
+        assertEquals(MomentumWidget.RISK_UNKNOWN, MomentumWidget.riskUntil(new JSONObject("{}"), at(2026, 10, 8, 10, 30)));
+    }
+
+    @Test
+    public void theWidgetShowsARunningRedZoneOnTheHabit() throws Exception {
+        long now = System.currentTimeMillis();
+        Calendar c = Calendar.getInstance();
+        int cur = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
+        String zone = "[{\"days\":[0,1,2,3,4,5,6],\"startMin\":" + ((cur + 1430) % 1440) + ",\"endMin\":" + ((cur + 90) % 1440) + "}]";
+        String base = busyDay(now);
+        // The first habit gets a zone that is running right now, whatever time the test runs at.
+        snapshot(base.replace("\"everSlipped\":true,\"risk\":", "\"everSlipped\":true,\"zones\":" + zone + ",\"risk\":"));
+        placeWidget();
+        waitFor("the counter to appear", () -> "4d 6h".equals(text(R.id.quit_0_time)));
+        assertTrue("the red zone, not the learned window (" + text(R.id.quit_0_risk) + ")",
+                text(R.id.quit_0_risk) != null && text(R.id.quit_0_risk).startsWith("RED ZONE"));
+        final int[] color = new int[1];
+        inst.runOnMainSync(() -> color[0] = ((TextView) hostView.findViewById(R.id.quit_0_risk)).getCurrentTextColor());
+        assertEquals("in red", 0xFFE5736B, color[0]);
     }
 
     // ---- your notes, turning ----------------------------------------------------------------

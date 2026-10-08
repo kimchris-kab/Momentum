@@ -7,6 +7,7 @@ import { SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
 import { PATTERNS, hapticCycle } from "../src/lib/pacer.js";
 import { PENDING_PEP_KEY, PEP_KEY } from "../src/lib/pep.js";
 import { pepPlan } from "../src/lib/pepPlan.js";
+import { widgetZones, zoneFromPreset } from "../src/lib/redzone.js";
 import { newLapse, newUrge } from "../src/lib/urges.js";
 
 const t = suite("android");
@@ -499,4 +500,19 @@ t.group("your notes on the widget");
   t.ok("each turn is its own layout, filled from the snapshot", /R\.layout\.widget_pep_line/.test(widgetJ) && /addView\(R\.id\.pep_flipper/.test(widgetJ));
   const sent = widgetSnapshot({ tasks: [], pepNotes: [] }, "2026-10-04");
   t.ok("the key the Java reads is the one the snapshot carries", /optJSONArray\("pep"\)/.test(widgetJ) && Array.isArray(sent.pep));
+}
+
+t.group("red zones on the widget and the shade");
+{
+  const widgetJ = read("java/com/momentum/app/MomentumWidget.java");
+  const shadeJ = read("java/com/momentum/app/MomentumShade.java");
+  const sample = widgetZones({ redZones: [zoneFromPreset("late"), zoneFromPreset("weekend")] });
+  const keys = new Set(sample.flatMap((z) => Object.keys(z)));
+  const javaReads = [...widgetJ.matchAll(/z\.opt(?:Int|JSONArray)\("(\w+)"/g)].map((m) => m[1]);
+  t.ok("the Java reads a zone's days, start and end", ["days", "startMin", "endMin"].every((k) => javaReads.includes(k)), javaReads);
+  t.eq("and the app sends exactly those", [...keys].sort(), ["days", "endMin", "startMin"]);
+  t.ok("the habit's zones travel under the name the Java reads", /optJSONArray\("zones"\)/.test(widgetJ));
+  t.ok("days are numbered 0 = Sunday on both sides", sample[0].days.join() === "0,1,2,3,4,5,6" && sample[1].days.join() === "0,6" && /DAY_OF_WEEK\) - 1/.test(widgetJ));
+  t.ok("the shade uses the same maths as the widget, not its own", /MomentumWidget\.riskOf/.test(shadeJ) && /MomentumWidget\.riskUntil/.test(shadeJ));
+  t.ok("a zone is told apart from a learned window in the words", /RED ZONE/.test(widgetJ) && /Red zone/.test(widgetJ) && /Your red zone is/.test(shadeJ));
 }

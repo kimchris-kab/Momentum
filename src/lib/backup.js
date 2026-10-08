@@ -50,6 +50,7 @@ export function summarise(data) {
     ["Saved views", count(data.savedViews)],
     ["Experiments", count(data.experiments)],
     ["Notes to yourself", count(data.pepNotes)],
+    ["Red zones held", count(data.zoneLog)],
   ];
   return rows.filter(([, n]) => n > 0);
 }

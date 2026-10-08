@@ -54,7 +54,7 @@ export default function TodayView({
   onOpenSettings, onOpenSearch, freshStart: fresh, onAcceptFreshStart, onDismissFreshStart,
   comebacks = [], onAckComebacks, startSmall, woopNeeded = [], onStartWoop,
   onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
-  onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser, onAddPepNote,
+  onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser, onAddPepNote, onHoldZone,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -215,7 +215,7 @@ export default function TodayView({
       {/* The two that are about right now come first: a hard stretch coming for a habit being quit,
           and a habit about to slip with a small version to fall back on. */}
       <Suspense fallback={null}>
-        <RadarCards state={state} onUrge={onUrge} onOpenTask={onOpenTask}
+        <RadarCards state={state} onUrge={onUrge} onSlip={onSlip} onHoldZone={onHoldZone} onOpenTask={onOpenTask}
           onDoSmall={(t) => onToggleTask(t, undefined, { minimal: true })} />
       </Suspense>
 

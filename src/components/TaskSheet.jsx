@@ -1,3 +1,4 @@
+import ZoneEditor from "./ZoneEditor.jsx";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Bell, BellOff, CalendarClock, ChevronDown, ChevronUp, Clock, Gift, Link2, MapPin, Plus,
@@ -629,6 +630,24 @@ export default function TaskSheet({ open, task, lists, goals = [], dayLog = {}, 
                     />
                   </div>
                 ))}
+              </div>
+
+              {/* The hours it hits hardest, set by the person: a plan before, a nudge during, a check after. */}
+              <div style={{ marginTop: 10 }}>
+                <ZoneEditor zones={task.redZones || []} onChange={(redZones) => set({ redZones })} compact />
+                {(task.redZones || []).length > 0 && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={task.redZoneNudges !== false}
+                      onChange={(e) => set({ redZoneNudges: e.target.checked })}
+                      style={{ width: 18, height: 18, accentColor: C.red }} />
+                    <span style={{ color: C.muted, fontSize: 12, lineHeight: 1.45 }}>
+                      Nudge me during these hours
+                      <span style={{ display: "block", color: C.faint, fontSize: 11 }}>
+                        Off keeps the zones on the habit, and the widget, but sends nothing.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </div>
 
               {/* One habit at a time gets the notification shade. Pinning this one lets go of whichever had

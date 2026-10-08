@@ -41,6 +41,7 @@ export const emptyState = () => ({
   // Tests run on yourself: a change, a measure, a stored coin-flip plan, and which days it was done.
   experiments: [],
   pepNotes: [],
+  zoneLog: [],
   settings: { sortMode: "manual", showCompleted: false, reminders: true, motion: true, notify: DEFAULT_NOTIFY },
   // v3. Deleting a record has to leave a mark, or merging two devices hands it straight back:
   // one side has no idea the other meant to remove it. Pruned once it can't matter.

@@ -21,7 +21,7 @@ const MAX_ITEMS = 50;
 // Two, not four: the rows carry a button each, and the widget is already a 3×2.
 const MAX_QUITTING = 2;
 
-export function widgetSnapshot(state, date = todayStr(), { usualWindow, widgetNotes } = {}) {
+export function widgetSnapshot(state, date = todayStr(), { usualWindow, widgetNotes, widgetZones } = {}) {
   const { tasks = [], dayLog = {} } = state;
   const agenda = [
     ...agendaForDate(tasks, date, dayLog, "build"),
@@ -65,6 +65,8 @@ export function widgetSnapshot(state, date = todayStr(), { usualWindow, widgetNo
         // until the log says; supplied by the caller because working it out needs the radar module,
         // which the app only loads when it's wanted.
         risk: usualWindow ? usualWindow(t, state) : null,
+        // The hours the person set as hard, for the widget to count down to. Days as 0 = Sunday.
+        zones: widgetZones && t.redZoneNudges !== false ? widgetZones(t) : [],
         limit: limitOf(t),
         count: limitOf(t) ? lapsesOn(state.urgeLog, t.id, date).length : 0,
       })),
@@ -107,10 +109,13 @@ export async function publishWidget(state, date = todayStr()) {
   const p = prefs();
   if (!p?.set) return { published: false, reason: "not-native" };
   // The radar is loaded now, when there's something to write, rather than with the app.
-  let usualWindow, widgetNotes;
+  let usualWindow, widgetNotes, widgetZones;
   try { usualWindow = (await import("./radar.js")).usualWindow; } catch { /* the widget just goes without a risk line */ }
   try { widgetNotes = (await import("./pepPlan.js")).widgetNotes; } catch { /* ...or without its notes */ }
-  const snapshot = widgetSnapshot(state, date, { usualWindow, widgetNotes });
+  if (state.tasks?.some((t) => t.redZones?.length)) {
+    try { widgetZones = (await import("./redzone.js")).widgetZones; } catch { /* ...or without its red zones */ }
+  }
+  const snapshot = widgetSnapshot(state, date, { usualWindow, widgetNotes, widgetZones });
   try {
     await p.set({ key: WIDGET_KEY, value: JSON.stringify(snapshot) });
     // Optional bridge: if the native side exposes a refresh, use it so the widget updates

@@ -85,7 +85,7 @@ export function bestPastRunMs(task, urgeLog) {
   return best;
 }
 
-export function shadeSnapshot(state, now = Date.now(), { usualWindow, riskLevel } = {}) {
+export function shadeSnapshot(state, now = Date.now(), { usualWindow, riskLevel, widgetZones } = {}) {
   const { hideOnLock } = shadeSettings(state.settings);
   const task = shadeHabit(state, now, { riskLevel });
   if (!task) return { show: false, updatedAt: now };
@@ -99,6 +99,7 @@ export function shadeSnapshot(state, now = Date.now(), { usualWindow, riskLevel 
     lastUrgeAt: lastUrgeAt(task, state.urgeLog) || null,
     bestPastMs: bestPastRunMs(task, state.urgeLog),
     risk: usualWindow ? usualWindow(task, state, now) : null,
+    zones: widgetZones && task.redZoneNudges !== false ? widgetZones(task) : [],
     updatedAt: now,
   };
 }
@@ -115,7 +116,11 @@ export async function publishShade(state, now = Date.now()) {
     usualWindow = radar.usualWindow;
     riskLevel = (t) => radar.radar(t, state, now).level;
   } catch { /* the shade goes without a risk line, and "riskiest" falls back */ }
-  const snapshot = shadeSnapshot(state, now, { usualWindow, riskLevel });
+  let widgetZones;
+  if (state.tasks?.some((t) => t.redZones?.length)) {
+    try { widgetZones = (await import("./redzone.js")).widgetZones; } catch { /* nor its red zones */ }
+  }
+  const snapshot = shadeSnapshot(state, now, { usualWindow, riskLevel, widgetZones });
   try {
     await p.set({ key: SHADE_KEY, value: JSON.stringify(snapshot) });
     await window.Capacitor?.Plugins?.MomentumShade?.refresh?.().catch?.(() => {});

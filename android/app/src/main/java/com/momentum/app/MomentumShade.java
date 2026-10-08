@@ -176,8 +176,9 @@ public class MomentumShade extends BroadcastReceiver {
             String urge = urgeLine(s, now);
             String rest = join(best.isEmpty() ? list(urge) : urge.isEmpty() ? list(best) : list(best, urge));
             if (!rest.isEmpty()) lines.add(rest);
-        } else if (MomentumWidget.riskUntil(s, now) != MomentumWidget.RISK_UNKNOWN) {
-            lines.add("Urges usually come " + riskRange(s) + ".");
+        } else {
+            MomentumWidget.Risk r = MomentumWidget.riskOf(s, now);
+            if (r != null) lines.add((r.zone ? "Your red zone is " : "Urges usually come ") + riskRange(r) + ".");
         }
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < lines.size(); i++) {
@@ -187,10 +188,8 @@ public class MomentumShade extends BroadcastReceiver {
         return out.toString();
     }
 
-    private static String riskRange(JSONObject s) {
-        JSONObject r = s.optJSONObject("risk");
-        if (r == null) return "";
-        return MomentumWidget.clockOf(r.optInt("startMin", 0)) + "–" + MomentumWidget.clockOf(r.optInt("endMin", 0));
+    private static String riskRange(MomentumWidget.Risk r) {
+        return MomentumWidget.clockOf(r.startMin) + "\u2013" + MomentumWidget.clockOf(r.endMin);
     }
 
     private static List<String> list(String... items) {

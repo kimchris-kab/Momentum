@@ -110,6 +110,8 @@ export const ACTIONS = {
   twoMin: { id: "twoMin", title: "Just the tiny bit" },
   open: { id: "open", title: "Open" },
   urge: { id: "urge", title: "Ride it out" },
+  held: { id: "held", title: "I held it" },
+  slipped: { id: "slipped", title: "I slipped" },
 };
 
 const habitBody = (task) => {

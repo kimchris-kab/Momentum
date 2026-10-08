@@ -77,11 +77,23 @@ async function ensureActionTypes() {
           { id: "snooze", title: "In 15 min" },
         ] },
         { id: "urge", actions: [{ id: "urge", title: "Ride it out" }] },
+        { id: "redzone", actions: [{ id: "urge", title: "Ride it out" }] },
+        { id: "redzone-end", actions: [{ id: "held", title: "I held it" }, { id: "slipped", title: "I slipped" }] },
         { id: "simple", actions: [{ id: "open", title: "Open" }] },
       ],
     });
     actionTypesReady = true;
   } catch { /* older plugin versions simply show no actions */ }
+}
+
+/**
+ * Red zone nudges are planned by a module that is only loaded when a habit actually has a zone, so an
+ * app with none pays nothing for it. They replace the learned "hard hour" warning for a habit around
+ * the same time: two heads-ups for one hour is how notifications get muted.
+ */
+async function withZoneNudges(state, items, days) {
+  if (!(state.tasks || []).some((t) => t.redZones?.length)) return items;
+  try { return (await import("./redzone.js")).mergeZoneNudges(state, items, days); } catch { return items; }
 }
 
 export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
@@ -93,7 +105,7 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
   const permission = await notificationPermission();
   if (permission !== "granted") return { scheduled: 0, via: "unpermitted", next: null, permission };
 
-  const items = buildNudges(state, { days: daysAhead });
+  const items = await withZoneNudges(state, buildNudges(state, { days: daysAhead }), daysAhead);
   const next = items[0] || null;
 
   if (isNative()) {
@@ -106,8 +118,9 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
           title: n.title,
           body: n.body,
           schedule: { at: n.at, allowWhileIdle: true },
-          actionTypeId: n.kind === "habits" || n.kind === "comeback" || n.kind === "rescue" ? "habit" : n.kind === "urges" ? "urge" : "simple",
-          extra: { taskId: n.taskId || null, date: n.date, kind: n.kind },
+          actionTypeId: n.kind === "habits" || n.kind === "comeback" || n.kind === "rescue" ? "habit"
+            : n.kind === "urges" ? "urge" : n.kind === "redzone" ? "redzone" : n.kind === "redzone-end" ? "redzone-end" : "simple",
+          extra: { taskId: n.taskId || null, date: n.date, kind: n.kind, zone: n.zone || null },
         })),
       });
       return { scheduled: items.length, via: "native", next, permission };
@@ -127,7 +140,7 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
             actions: (n.actions || []).map((a) => ({ action: a.id, title: a.title })),
             // eslint-disable-next-line no-undef
             showTrigger: new TimestampTrigger(n.at.getTime()),
-            data: { taskId: n.taskId || null, date: n.date, kind: n.kind },
+            data: { taskId: n.taskId || null, date: n.date, kind: n.kind, zone: n.zone || null },
           });
         }
         return { scheduled: items.length, via: "triggers", next, permission };
@@ -146,7 +159,7 @@ export async function scheduleNudges(state, { daysAhead = 7 } = {}) {
             body: n.body,
             tag: `mtm:${n.id}`,
             actions: (n.actions || []).map((a) => ({ action: a.id, title: a.title })),
-            data: { taskId: n.taskId || null, date: n.date, kind: n.kind },
+            data: { taskId: n.taskId || null, date: n.date, kind: n.kind, zone: n.zone || null },
           });
           return;
         }
@@ -173,7 +186,7 @@ export async function deliveryReport(state) {
   const capability = reminderCapability();
   const permission = await notificationPermission();
   const notify = notifySettings(state.settings);
-  const items = state.settings?.reminders === false ? [] : buildNudges(state, { days: 7 });
+  const items = state.settings?.reminders === false ? [] : await withZoneNudges(state, buildNudges(state, { days: 7 }), 7);
   return {
     capability,
     permission,

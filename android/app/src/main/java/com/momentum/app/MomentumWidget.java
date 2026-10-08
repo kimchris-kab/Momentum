@@ -59,6 +59,7 @@ public class MomentumWidget extends AppWidgetProvider {
 
     private static final int COLOR_CLEAN = 0xFF5FC7C0;
     private static final int COLOR_SLIPPED = 0xFFE5736B;
+    private static final int COLOR_WARN = 0xFFE8B75D;
 
     private static final long MINUTE = 60_000L;
     private static final long HOUR = 60 * MINUTE;
@@ -186,45 +187,121 @@ public class MomentumWidget extends AppWidgetProvider {
         return DateFormat.getTimeInstance(DateFormat.SHORT).format(c.getTime());
     }
 
-    /** Returned by {@link #riskUntil} when the app hasn't learned a window for this habit. */
+    /** Returned by {@link #riskUntil} when there is no window to count down to. */
     static final int RISK_UNKNOWN = -2;
     /** Returned by {@link #riskUntil} while the window is open. */
     static final int RISK_NOW = -1;
 
     /**
-     * Where now falls against the usual window: {@link #RISK_UNKNOWN}, {@link #RISK_NOW}, or the
-     * minutes until it opens. The app sends the window as a time of day and this works the rest out
-     * each time something draws, so it stays right for days without the app writing anything.
+     * Where now falls against a hard stretch. {@code minutes} is {@link #RISK_NOW} while inside it, or how long until it
+     * opens. {@code zone} says whether it is hours the person set (a red zone) rather than ones the app learned.
      */
-    static int riskUntil(JSONObject q, long now) {
+    static final class Risk {
+        final int minutes;
+        final int startMin;
+        final int endMin;
+        final boolean zone;
+
+        Risk(int minutes, int startMin, int endMin, boolean zone) {
+            this.minutes = minutes;
+            this.startMin = startMin;
+            this.endMin = endMin;
+            this.zone = zone;
+        }
+    }
+
+    private static boolean hasDay(JSONArray days, int dow) {
+        if (days == null) return false;
+        for (int i = 0; i < days.length(); i++) if (days.optInt(i, -1) == dow) return true;
+        return false;
+    }
+
+    /**
+     * The red zone, if there's one today or about to be: inside one, or the nearest that opens later today
+     * or within 90 minutes after midnight. Zones belong to the day they start on, so one that began last
+     * night is still running this morning. Null when none of the habit's zones is anywhere near, in which
+     * case the learned window gets its say.
+     */
+    private static Risk zoneRisk(JSONObject q, long now) {
+        JSONArray zones = q.optJSONArray("zones");
+        if (zones == null || zones.length() == 0) return null;
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(now);
+        int dow = c.get(Calendar.DAY_OF_WEEK) - 1;          // 0 = Sunday, as the app sends it
+        int prev = (dow + 6) % 7;
+        int next = (dow + 1) % 7;
+        int current = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
+        Risk soonest = null;
+        for (int i = 0; i < zones.length(); i++) {
+            JSONObject z = zones.optJSONObject(i);
+            if (z == null) continue;
+            int start = z.optInt("startMin", -1);
+            int end = z.optInt("endMin", -1);
+            if (start < 0 || end < 0 || start > 1439 || end > 1439 || start == end) continue;
+            JSONArray days = z.optJSONArray("days");
+            boolean wraps = end <= start;
+            boolean inside = wraps
+                    ? (hasDay(days, dow) && current >= start) || (hasDay(days, prev) && current < end)
+                    : hasDay(days, dow) && current >= start && current < end;
+            if (inside) return new Risk(RISK_NOW, start, end, true);
+            int until = -1;
+            if (hasDay(days, dow) && current < start) until = start - current;
+            else if (hasDay(days, next) && 1440 - current + start <= 90) until = 1440 - current + start;
+            if (until >= 0 && (soonest == null || until < soonest.minutes)) soonest = new Risk(until, start, end, true);
+        }
+        return soonest;
+    }
+
+    private static Risk learnedRisk(JSONObject q, long now) {
         JSONObject r = q.optJSONObject("risk");
-        if (r == null) return RISK_UNKNOWN;
+        if (r == null) return null;
         int start = r.optInt("startMin", -1);
         int end = r.optInt("endMin", -1);
-        if (start < 0 || end < 0 || start > 1439 || end > 1439) return RISK_UNKNOWN;
+        if (start < 0 || end < 0 || start > 1439 || end > 1439) return null;
         Calendar c = Calendar.getInstance();
         c.setTimeInMillis(now);
         int current = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
         // A window can cross midnight (11pm to 1:30am), in which case it ends at an earlier minute than it starts.
         boolean wraps = end <= start;
         boolean inside = wraps ? (current >= start || current < end) : (current >= start && current < end);
-        if (inside) return RISK_NOW;
-        return (start - current + 1440) % 1440;
+        return new Risk(inside ? RISK_NOW : (start - current + 1440) % 1440, start, end, false);
+    }
+
+    /** The hard stretch to show for this habit: a red zone the person set if one is near, otherwise the learned window. */
+    static Risk riskOf(JSONObject q, long now) {
+        Risk z = zoneRisk(q, now);
+        return z != null ? z : learnedRisk(q, now);
     }
 
     /**
-     * When the habit usually pulls at you: "Risk window opens in 25 min · 8:00 PM". Empty until the
-     * app has learned one.
+     * Where now falls against the hard stretch: {@link #RISK_UNKNOWN}, {@link #RISK_NOW}, or the minutes until it
+     * opens. The app sends windows as times of day and this works the rest out each time something draws, so it
+     * stays right for days without the app writing anything.
+     */
+    static int riskUntil(JSONObject q, long now) {
+        Risk r = riskOf(q, now);
+        return r == null ? RISK_UNKNOWN : r.minutes;
+    }
+
+    /**
+     * "Risk window opens in 25 min · 8:00 PM", or for hours the person set, "Red zone opens in 25 min · 10:00 PM".
+     * Empty until there is something to show.
      */
     static String riskLine(JSONObject q, long now) {
-        int until = riskUntil(q, now);
-        if (until == RISK_UNKNOWN) return "";
-        JSONObject r = q.optJSONObject("risk");
-        int start = r.optInt("startMin", 0);
-        int end = r.optInt("endMin", 0);
-        if (until == RISK_NOW) return "In your risk window \u00B7 until " + clockOf(end);
-        if (until <= 90) return "Risk window opens in " + until + " min \u00B7 " + clockOf(start);
-        return "Risk window " + clockOf(start) + "\u2013" + clockOf(end);
+        Risk r = riskOf(q, now);
+        if (r == null) return "";
+        if (r.minutes == RISK_NOW) {
+            return r.zone ? "RED ZONE \u00B7 until " + clockOf(r.endMin) : "In your risk window \u00B7 until " + clockOf(r.endMin);
+        }
+        String name = r.zone ? "Red zone" : "Risk window";
+        if (r.minutes <= 90) return name + " opens in " + r.minutes + " min \u00B7 " + clockOf(r.startMin);
+        return name + " " + clockOf(r.startMin) + "\u2013" + clockOf(r.endMin);
+    }
+
+    /** Red while a red zone is running, gold otherwise: a heads-up, not bad news, until it is. */
+    static int riskColor(JSONObject q, long now) {
+        Risk r = riskOf(q, now);
+        return r != null && r.zone && r.minutes == RISK_NOW ? COLOR_SLIPPED : COLOR_WARN;
     }
 
     /**
@@ -274,6 +351,7 @@ public class MomentumWidget extends AppWidgetProvider {
                     views.setTextViewText(quitDetails[i], quitDetail(context, q, now));
                     String risk = riskLine(q, now);
                     views.setTextViewText(quitRisks[i], risk);
+                    views.setTextColor(quitRisks[i], riskColor(q, now));
                     views.setViewVisibility(quitRisks[i], risk.isEmpty() ? View.GONE : View.VISIBLE);
                     views.setViewVisibility(quitRows[i], View.VISIBLE);
 

@@ -18,6 +18,7 @@ import android.service.notification.StatusBarNotification;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
@@ -234,6 +235,32 @@ public class ShadeTest {
                 text(n, Notification.EXTRA_TEXT).startsWith("Best run"));
         assertTrue("the usual window is there when it's opened up: " + text(n, Notification.EXTRA_BIG_TEXT),
                 text(n, Notification.EXTRA_BIG_TEXT).contains("Urges usually come"));
+    }
+
+    @Test
+    public void insideARedZoneItIsGoldAndSaysSo() throws Exception {
+        long now = System.currentTimeMillis();
+        int cur = minuteOfDay(now);
+        write(snap(now).put("zones", new JSONArray().put(new JSONObject()
+                .put("days", new JSONArray().put(0).put(1).put(2).put(3).put(4).put(5).put(6))
+                .put("startMin", (cur + 1430) % 1440).put("endMin", (cur + 90) % 1440))));
+        Notification n = posted();
+        assertNotNull(n);
+        assertEquals(0xFFE8B75D, n.color);
+        assertTrue(text(n, Notification.EXTRA_TEXT), text(n, Notification.EXTRA_TEXT).startsWith("RED ZONE \u00B7 until "));
+    }
+
+    @Test
+    public void aRedZoneHoursAwayIsNamedWhenTheNotificationIsOpened() throws Exception {
+        long now = System.currentTimeMillis();
+        int cur = minuteOfDay(now);
+        write(snap(now).put("zones", new JSONArray().put(new JSONObject()
+                .put("days", new JSONArray().put(0).put(1).put(2).put(3).put(4).put(5).put(6))
+                .put("startMin", (cur + 300) % 1440).put("endMin", (cur + 400) % 1440))));
+        Notification n = posted();
+        assertNotNull(n);
+        assertEquals("calm teal", 0xFF5FC7C0, n.color);
+        assertTrue(text(n, Notification.EXTRA_BIG_TEXT), text(n, Notification.EXTRA_BIG_TEXT).contains("Your red zone is "));
     }
 
     // ---- the first hour, and the refresh -------------------------------------------------

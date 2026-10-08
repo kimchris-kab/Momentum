@@ -35,16 +35,8 @@ import WoopSheet from "./components/WoopSheet.jsx";
 import EntrySheet from "./components/EntrySheet.jsx";
 import Celebration from "./components/Celebration.jsx";
 import CaptureSheet from "./components/CaptureSheet.jsx";
-import ReviewView from "./views/ReviewView.jsx";
-import PlanView from "./views/PlanView.jsx";
 import TodayView from "./views/TodayView.jsx";
-import TasksView from "./views/TasksView.jsx";
-import HabitsView from "./views/HabitsView.jsx";
-import IdentityView from "./views/IdentityView.jsx";
-import CheckinView from "./views/CheckinView.jsx";
-import JournalView from "./views/JournalView.jsx";
 import OnboardingView from "./views/OnboardingView.jsx";
-import SearchView from "./views/SearchView.jsx";
 import ChunkBoundary from "./components/ChunkBoundary.jsx";
 import {
   CONFIG_KEY, PUSH_DEBOUNCE_MS, backupBody, deviceName, isConfigured, pushDecision,
@@ -55,6 +47,15 @@ import { headBackup, pullBackup, pushBackup, validSession } from "./lib/supabase
 // Money and Insights are the two chart-heavy views, and between them they account for most
 // of what recharts costs. Neither is where the app opens, so they load when they're first
 // opened instead of before anything is on screen.
+// Everything but Today is fetched when first opened: the home screen is the only one that has to be there at start.
+const ReviewView = lazy(() => import("./views/ReviewView.jsx"));
+const PlanView = lazy(() => import("./views/PlanView.jsx"));
+const TasksView = lazy(() => import("./views/TasksView.jsx"));
+const HabitsView = lazy(() => import("./views/HabitsView.jsx"));
+const IdentityView = lazy(() => import("./views/IdentityView.jsx"));
+const CheckinView = lazy(() => import("./views/CheckinView.jsx"));
+const JournalView = lazy(() => import("./views/JournalView.jsx"));
+const SearchView = lazy(() => import("./views/SearchView.jsx"));
 const MoneyView = lazy(() => import("./views/MoneyView.jsx"));
 const InsightsView = lazy(() => import("./views/InsightsView.jsx"));
 // Settings drags the whole cloud stack behind it — the Supabase client, the backup format,
@@ -184,6 +185,8 @@ export default function Momentum() {
   // What the callbacks that must stay put need to know about the tasks, without being rebuilt each time they change.
   const tasksRef = useRef(state.tasks);
   tasksRef.current = state.tasks;
+  const stateRef = useRef(state);
+  stateRef.current = state;
   // The views all read todayStr() themselves; this is what makes them do it again when the
   // day turns under an app that was left open. It also gates the two effects below, which
   // are about the day rather than about the data.
@@ -317,17 +320,35 @@ export default function Momentum() {
     return () => window.removeEventListener("momentum:toast", onNotice);
   }, [show]);
 
+  // "I held it", from the notification or from Today: one record per habit, zone and night, so saying it
+  // twice is the same record. The module that knows what a zone is only loads when this is used.
+  const holdZone = useCallback((taskId, zone) => {
+    import("./lib/redzone.js").then((m) => {
+      const r = m.holdResult(stateRef.current, taskId, zone);
+      if (!r) return;
+      setState((cur) => ((cur.zoneLog || []).some((h) => h.id === r.hold.id) ? cur : { ...cur, zoneLog: [...(cur.zoneLog || []), r.hold] }));
+      show(r.message);
+    }).catch(() => {});
+  }, [show]);
+
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
   const applyNotificationAction = useCallback((payload) => {
     // An urge warning isn't a tick. However it was tapped — the button or the body — it means
     // "take me to riding this out", so that's where it goes.
-    if (payload?.kind === "urges") {
+    if (payload?.kind === "urges" || payload?.kind === "redzone") {
       if (payload.taskId) setUrging({ id: payload.taskId, mode: "urge" });
       return;
     }
+    // The question at the end of a red zone. "I held it" counts it; "I slipped" opens the slip form;
+    // tapping the notification itself just opens the app, where Today asks the same thing.
+    if (payload?.kind === "redzone-end") {
+      if (payload.action === "slipped" && payload.taskId) setUrging({ id: payload.taskId, mode: "lapse" });
+      else if (payload.action === "held") holdZone(payload.taskId, payload.zone);
+      return;
+    }
     setState(tickFromNotification(payload));
-  }, []);
+  }, [holdZone]);
 
   useEffect(() => {
     if (!loaded) return undefined;
@@ -336,7 +357,7 @@ export default function Momentum() {
       if (cancelled || !rows.length) return;
       rows.forEach(applyNotificationAction);
       // An urge warning opens a screen rather than ticking anything off, so it isn't counted.
-      const ticks = rows.filter((r) => r.kind !== "urges").length;
+      const ticks = rows.filter((r) => !["urges", "redzone", "redzone-end"].includes(r.kind)).length;
       if (ticks) show(`${ticks} ticked off from ${ticks === 1 ? "a notification" : "notifications"}`);
     });
     const onMessage = (e) => {
@@ -364,7 +385,7 @@ export default function Momentum() {
     try {
       Promise.resolve(plugin.addListener("localNotificationActionPerformed", (e) => {
         const extra = e?.notification?.extra || {};
-        applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date, kind: extra.kind });
+        applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date, kind: extra.kind, zone: extra.zone });
       })).then((h) => {
         handle = h;
         // Unmounted before the handle arrived: let go of it straight away.
@@ -948,6 +969,7 @@ export default function Momentum() {
                 onOpenExperiments={() => setView("experiments")}
                 onFollowExperiment={followExperiment}
                 onAddPepNote={(n) => { addPepNote(n); show("Saved. That one is yours to read later."); }}
+                onHoldZone={holdZone}
                 onDismissExperimentTeaser={() => patch({ settings: { ...state.settings, experimentsTeaserDismissed: true } })}
                 onOpenIdentity={() => setView("identity")} onOpenTasks={() => setView("tasks")}
                 onRerollMantra={rerollMantra}

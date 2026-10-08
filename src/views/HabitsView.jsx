@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Ban, Bell, BellOff, ChevronDown, ChevronUp, Copy, Flame, MoreHorizontal, Pause, Pencil,
-  Clock, Feather, Gauge, Link2, Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, X, Zap,
+  Clock, Feather, Gauge, ShieldAlert, Link2, Play, Plus, Repeat, Scale, Sparkles, Sprout, Target, Timer, Trash2, X, Zap,
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { BREAK_TEMPLATES, DAY_PRESETS, HABIT_TEMPLATES, PILLARS, PRIORITY, WEEKDAYS, pillarOf } from "../data/constants.js";
@@ -16,6 +16,8 @@ import { contextStability, cueOf, stabilityBand } from "../lib/cues.js";
 import { cleanRecord, fmtSince, lastSlipAt, lastUrgeAt, reclaimed, slipsOf } from "../lib/urges.js";
 import { urgeWindow } from "../lib/breakInsights.js";
 import { cleanDays, notesFor } from "../lib/pep.js";
+import ZoneEditor from "../components/ZoneEditor.jsx";
+import { describeZone, zoneStats, zonesOf } from "../lib/redzone.js";
 import { money } from "../lib/date.js";
 import {
   notificationPermission, reminderCapability, requestNotificationPermission, scheduleReminders,
@@ -54,6 +56,7 @@ export default function HabitsView({
   const [pillarId, setPillarId] = useState(null);
   const [twoMin, setTwoMin] = useState("");
   const [trigger, setTrigger] = useState("");
+  const [zones, setZones] = useState([]);
   const [more, setMore] = useState(false);
 
   useEffect(() => { notificationPermission().then(setPerm); }, []);
@@ -89,7 +92,7 @@ export default function HabitsView({
   const preset = presetFor(days, times);
 
   const resetComposer = () => {
-    setText(""); setTime(""); setTwoMin(""); setTrigger(""); setPillarId(null); setMore(false);
+    setText(""); setTime(""); setTwoMin(""); setTrigger(""); setZones([]); setPillarId(null); setMore(false);
     setDays(DAY_PRESETS[0].days); setTimes(null);
   };
 
@@ -101,6 +104,7 @@ export default function HabitsView({
     pillarId: over.pillarId ?? pillarId,
     twoMin: (over.twoMin ?? twoMin) || null,
     trigger: (over.trigger ?? trigger) || null,
+    redZones: kind === "break" && zones.length ? zones : undefined,
     timerMinutes: over.timerMinutes ?? null,
     recurrence: (over.times ?? times)
       ? weeklyCountRule(over.times ?? times)
@@ -254,6 +258,14 @@ export default function HabitsView({
           ))}
         </div>
 
+        {/* Something people already know about themselves, so it's asked for here, up front, rather than
+            waiting for a log to find out: the hours it hits hardest. */}
+        {kind === "break" && (
+          <div style={{ marginTop: 12 }}>
+            <ZoneEditor zones={zones} onChange={setZones} />
+          </div>
+        )}
+
         <button onClick={() => setMore((m) => !m)} style={{ ...styles.linkBtn, marginTop: 12 }}>
           {more ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           {kind === "build" ? "Identity and two-minute version" : "What triggers it"}
@@ -363,7 +375,7 @@ export default function HabitsView({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {active.map((t) => (
             <HabitCard key={t.id} task={t} kind={kind} accent={accent} dayLog={dayLog} freezes={freezes}
-              srbai={srbai} onRateHabit={onRateHabit} urgeLog={state.urgeLog || []}
+              srbai={srbai} onRateHabit={onRateHabit} urgeLog={state.urgeLog || []} zoneLog={state.zoneLog || []}
               notes={kind === "break" ? notesFor(state, t.id) : undefined}
               onAddNote={onAddPepNote} onRemoveNote={onRemovePepNote}
               onOpen={() => onOpenTask(t)} onMenu={() => setMenuFor(t.id)} />
@@ -510,7 +522,7 @@ export default function HabitsView({
   );
 }
 
-function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = [], notes, onAddNote, onRemoveNote, onOpen, onMenu, onRateHabit }) {
+function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = [], zoneLog = [], notes, onAddNote, onRemoveNote, onOpen, onMenu, onRateHabit }) {
   const streak = habitStreakProtected(task, dayLog, freezes);
   const dueToday = occursOn(task, todayStr());
   const doneToday = dueToday && isDone(task, todayStr(), dayLog);
@@ -640,7 +652,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
       )}
 
       {kind === "break" && (
-        <QuitRecord task={task} dayLog={dayLog} urgeLog={urgeLog}
+        <QuitRecord task={task} dayLog={dayLog} urgeLog={urgeLog} zoneLog={zoneLog}
           notes={notes} onAddNote={onAddNote} onRemoveNote={onRemoveNote} />
       )}
 
@@ -660,7 +672,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
 // A rate beside the run, and the best run beside the current one. A streak that goes to zero
 // on one slip is the abstinence violation effect with a number on it; "22 of 24 recorded days"
 // is the same history told in a way one bad evening can't wipe out.
-function QuitRecord({ task, dayLog, urgeLog, notes = [], onAddNote, onRemoveNote }) {
+function QuitRecord({ task, dayLog, urgeLog, zoneLog, notes = [], onAddNote, onRemoveNote }) {
   const rec = cleanRecord(task, dayLog);
   const since = fmtSince(Date.now() - (lastSlipAt(task, urgeLog) || Date.now()));
   const everSlipped = slipsOf(task, urgeLog).length > 0;
@@ -705,7 +717,29 @@ function QuitRecord({ task, dayLog, urgeLog, notes = [], onAddNote, onRemoveNote
           .
         </p>
       )}
+      <RedZoneLine task={task} urgeLog={urgeLog} zoneLog={zoneLog} />
       {onAddNote && <NotesToSelf task={task} urgeLog={urgeLog} notes={notes} onAdd={onAddNote} onRemove={onRemoveNote} />}
+    </div>
+  );
+}
+
+// The hours this habit hits hardest, as the person set them, and how those hours have gone.
+function RedZoneLine({ task, urgeLog, zoneLog }) {
+  const zones = zonesOf(task);
+  if (!zones.length) return null;
+  const { cleared, streak } = zoneStats({ tasks: [task], urgeLog, zoneLog }, task);
+  const off = task.redZoneNudges === false;
+  return (
+    <div style={{ marginTop: 9 }}>
+      {zones.map((z) => (
+        <p key={z.id} style={{ color: C.muted, fontSize: 11.5, lineHeight: 1.5, margin: "0 0 2px", display: "flex", gap: 6, alignItems: "center" }}>
+          <ShieldAlert size={11} color={C.red} style={{ flexShrink: 0 }} />
+          <span>Red zone <b style={{ color: C.text }}>{describeZone(z)}</b></span>
+        </p>
+      ))}
+      <p style={{ color: C.faint, fontSize: 11, margin: "2px 0 0" }}>
+        {off ? "Nudges off for this habit" : cleared > 0 ? `${cleared} ${cleared === 1 ? "zone" : "zones"} held${streak > 1 ? ` · ${streak} in a row` : ""}` : "None held yet. The app will ask you after each one."}
+      </p>
     </div>
   );
 }

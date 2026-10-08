@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, Radar as RadarIcon, Waves } from "lucide-react";
+import { Check, Radar as RadarIcon, ShieldAlert, Waves } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { todayStr } from "../lib/date.js";
 import { radar, radarLine, rescueFor, hardDay } from "../lib/radar.js";
+import { activeZone, askHeld, zoneStats } from "../lib/redzone.js";
+import { calmNoteParts } from "../lib/urges.js";
 
 // A minute-by-minute clock. The radar is about "right now", so it can't be worked out once and kept.
 function useMinute() {
@@ -97,10 +99,89 @@ export function RadarCard({ state, onUrge }) {
   );
 }
 
+const clockOf = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+/**
+ * The hours the person said a habit hits hardest. While one is running, this is the first thing on Today:
+ * how long is left, their own reason, and the two buttons that matter. After it, until it's answered,
+ * it asks whether they held — the same question the notification asks, for when that was missed.
+ */
+export function RedZoneCard({ state, onUrge, onSlip, onHold }) {
+  const now = useMinute();
+  const active = useMemo(() => activeZone(state, now), [state, now]);
+  const asked = useMemo(() => (active ? null : askHeld(state, now)), [state, now, active]);
+  const hit = active || asked;
+  const stats = useMemo(() => (hit ? zoneStats(state, hit.task, now) : null), [state, now, hit]);
+  if (!hit) return null;
+  const { task, occ } = hit;
+  const left = Math.max(1, Math.ceil((occ.end - now) / 60000));
+  const why = calmNoteParts(task).find((p) => p.id === "why");
+  const color = C.red;
+
+  return (
+    <div role="group" aria-label={active ? `Red zone: ${task.text}` : `Red zone over: ${task.text}`} style={{
+      background: `linear-gradient(135deg, ${alpha(color, active ? 0.14 : 0.07)}, ${C.surface})`,
+      border: `1px solid ${alpha(color, active ? 0.45 : 0.25)}`, borderRadius: R.lg, padding: 16, marginBottom: 12,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <ShieldAlert size={14} color={color} />
+        <span style={{ color, fontSize: 11, fontWeight: 650, letterSpacing: 0.5, textTransform: "uppercase" }}>
+          {active ? `Red zone · ${task.text}` : `Red zone over · ${task.text}`}
+        </span>
+        {active && (
+          <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, padding: "3px 9px", borderRadius: 999, color: "#14131f", background: color }}>
+            {left >= 90 ? `${Math.round(left / 60)}H LEFT` : `${left} MIN LEFT`}
+          </span>
+        )}
+      </div>
+
+      <p style={{ color: C.text, fontSize: 15, fontWeight: 650, margin: "9px 0 0", fontFamily: F.display, lineHeight: 1.35 }}>
+        {active
+          ? `This is the hour you said it gets you. Until ${clockOf(occ.end)}.`
+          : "Did you hold?"}
+      </p>
+      {active && (
+        <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 0" }}>
+          {why ? <>You wrote: <i style={{ fontFamily: F.display, color: C.text }}>“{why.text}”</i></> : "An urge rises, peaks and falls, usually within 15 minutes. You don't have to do anything with it."}
+        </p>
+      )}
+      {!active && (
+        <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 0" }}>
+          The zone ended at {clockOf(occ.end)}. Tell the app and it counts. If it went the other way, a slip is information, not a verdict.
+        </p>
+      )}
+      {stats && stats.cleared > 0 && (
+        <p style={{ color: C.faint, fontSize: 11.5, margin: "8px 0 0" }}>
+          {stats.cleared} {stats.cleared === 1 ? "zone" : "zones"} held{stats.streak > 1 ? ` · ${stats.streak} in a row` : ""}
+        </p>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        {active ? (
+          <>
+            <button onClick={() => onUrge(task)} style={{ ...styles.cta, height: 42, fontSize: 13, flex: 1 }}>
+              <Waves size={15} /> Ride it out now
+            </button>
+            <button onClick={() => onSlip(task)} style={{ ...styles.ghostCta, height: 42, fontSize: 12.5, width: 104 }}>I slipped</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => onHold(task.id, `${occ.zoneId}@${occ.date}`)} style={{ ...styles.cta, height: 42, fontSize: 13, flex: 1 }}>
+              <Check size={15} /> I held it
+            </button>
+            <button onClick={() => onSlip(task)} style={{ ...styles.ghostCta, height: 42, fontSize: 12.5, width: 104 }}>I slipped</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Both cards as one piece, so Today can load them together, after it has drawn. */
-export default function RadarCards({ state, onUrge, onOpenTask, onDoSmall }) {
+export default function RadarCards({ state, onUrge, onSlip, onHoldZone, onOpenTask, onDoSmall }) {
   return (
     <>
+      {onUrge && onSlip && onHoldZone && <RedZoneCard state={state} onUrge={onUrge} onSlip={onSlip} onHold={onHoldZone} />}
       {onUrge && <RadarCard state={state} onUrge={onUrge} />}
       <RescueCard state={state} onOpenTask={onOpenTask} onDoSmall={onDoSmall} />
     </>

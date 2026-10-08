@@ -28,6 +28,8 @@ const LOGS = {
   freshStarts: "id",
   reviews: "date",
   urgeLog: "id",
+  // "I held it" for a red zone: one record per habit, zone and night, so saying it twice is one.
+  zoneLog: "id",
 };
 
 /** Records that can be edited after the fact. Union by id; a conflict goes to the later edit. */

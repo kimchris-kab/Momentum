@@ -19,6 +19,7 @@ import {
 import { graduationStatus, reminderMode } from "../lib/automaticity.js";
 import { SHADE_MODES, pinnedHabit, shadeSettings } from "../lib/shade.js";
 import { DEFAULT_PEP, PEP_MIN_DAYS, pepSettings } from "../lib/pep.js";
+import { INTENSITIES, redZoneSettings } from "../lib/redzone.js";
 import { Card, Pill, SectionLabel } from "../components/ui.jsx";
 
 const TIER_COPY = {
@@ -116,6 +117,8 @@ export default function SettingsView({
   const quitting = useMemo(() => tasks.filter((t) => t.kind === "break" && !t.archivedAt), [tasks]);
   const pinned = useMemo(() => pinnedHabit(tasks), [tasks]);
   const allowShade = async () => setPerm(await requestNotificationPermission());
+  const zoneCfg = useMemo(() => redZoneSettings(settings), [settings]);
+  const setZone = (patch) => onSetSetting("redZone", { ...zoneCfg, ...patch });
   const pep = useMemo(() => pepSettings(settings), [settings]);
   const setPep = (patch) => onSetSetting("pep", { ...pep, ...patch });
 
@@ -413,6 +416,35 @@ export default function SettingsView({
                 <button onClick={allowShade} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5 }}>
                   <Bell size={14} /> Allow notifications
                 </button>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* ---- Red zone ---- */}
+      <SectionLabel>Red zones</SectionLabel>
+      <Card>
+        <Row label="Nudge me through my red zones"
+          desc="The hours you set on a habit you're quitting. A plan before, a nudge during, and a check after. Sent even in quiet hours, since you chose these hours yourself. Notifications appear in the Android app.">
+          <Switch on={zoneCfg.on} label="Nudge me through my red zones" onClick={() => setZone({ on: !zoneCfg.on })} />
+        </Row>
+        {zoneCfg.on && (
+          <>
+            <div role="radiogroup" aria-label="How much to nudge" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+              {INTENSITIES.map((i) => (
+                <Choice key={i.id} on={zoneCfg.intensity === i.id} label={i.label} desc={i.desc} onClick={() => setZone({ intensity: i.id })} />
+              ))}
+            </div>
+            {zoneCfg.intensity !== "light" && (
+              <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 12 }}>
+                <Row label="Heads-up before it starts" desc="Time to set things up while it's still easy.">
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[15, 30, 45, 60].map((m) => (
+                      <Pill key={m} on={zoneCfg.lead === m} onClick={() => setZone({ lead: m })}>{m} min</Pill>
+                    ))}
+                  </div>
+                </Row>
               </div>
             )}
           </>
