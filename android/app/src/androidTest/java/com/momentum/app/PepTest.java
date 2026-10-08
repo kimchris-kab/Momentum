@@ -248,8 +248,15 @@ public class PepTest {
         assertEquals("trimmed", "I put the phone in the kitchen.", kept.getJSONObject(0).getString("text"));
         assertTrue(kept.getJSONObject(0).getLong("at") > 0);
 
+        // The replacement is posted through the system asynchronously, so the notification that was there a moment ago can still be what is read.
         Notification n = posted("pep:w:write");
         assertNotNull("the notification is replaced, so the reply box stops spinning", n);
+        long end = SystemClock.uptimeMillis() + 5000;
+        while (!"Saved".equals(text(n, Notification.EXTRA_TITLE)) && SystemClock.uptimeMillis() < end) {
+            Thread.sleep(100);
+            Notification again = posted0("pep:w:write");
+            if (again != null) n = again;
+        }
         assertEquals("Saved", text(n, Notification.EXTRA_TITLE));
         assertTrue("and there's no reply box left on it", n.actions == null || n.actions.length == 0);
     }

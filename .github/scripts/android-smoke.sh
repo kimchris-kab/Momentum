@@ -136,10 +136,16 @@ if ! adb logcat -d | grep -qF "[smoke] served-from-ota"; then
   exit 1
 fi
 echo "OK: it started from the downloaded build, and the web app confirmed it."
-sleep 4
+# The web app confirms a moment after it has drawn, and a slow emulator can make that moment several seconds, so look for
+# a while rather than once.
+for i in $(seq 1 15); do
+  sleep 2
+  if ! adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml" | grep -q 'name="trial"'; then break; fi
+done
 if adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml" | grep -q 'name="trial"'; then
   echo "OTA SMOKE FAILED: the build was still on trial after the app came up."
   adb shell "run-as $PKG cat shared_prefs/momentum_ota.xml"
+  adb logcat -d | grep -E "MomentumOta|boot: ready" | tail -10
   exit 1
 fi
 echo "OK: the trial ended once the app was up."
