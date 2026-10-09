@@ -787,6 +787,7 @@ function CaptureSettings({ settings, onSetSetting }) {
             </p>
           )}
           {cfg.read && status?.canRead !== false && (
+            <>
               <div style={{ borderTop: `1px solid ${C.border}`, padding: "11px 0" }}>
                 <p style={{ color: C.text, fontSize: 13.5, margin: "0 0 8px" }}>Allow it to see them</p>
                 <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.55, margin: "0 0 9px" }}>
