@@ -1,0 +1,18 @@
+[
+  { "line": "lunch 12", "today": "2026-10-12", "expect": { "amount": 12, "type": "expense", "payee": "Lunch", "date": "2026-10-12", "catId": "dining" } },
+  { "line": "taxi 8.5 uber", "today": "2026-10-12", "expect": { "amount": 8.5, "type": "expense", "payee": "Taxi Uber", "catId": "transport" } },
+  { "line": "Naivas 1,850", "today": "2026-10-12", "expect": { "amount": 1850, "payee": "Naivas", "catId": "groceries" } },
+  { "line": "coffee 2k", "today": "2026-10-12", "expect": { "amount": 2000, "payee": "Coffee", "catId": "dining" } },
+  { "line": "1.5k fuel", "today": "2026-10-12", "expect": { "amount": 1500, "payee": "Fuel", "catId": "transport" } },
+  { "line": "ksh 350 airtime", "today": "2026-10-12", "expect": { "amount": 350, "payee": "Airtime", "catId": "utilities" } },
+  { "line": "$12.99 netflix", "today": "2026-10-12", "expect": { "amount": 12.99, "payee": "Netflix", "catId": "subscriptions" } },
+  { "line": "+5000 salary", "today": "2026-10-12", "expect": { "amount": 5000, "type": "income", "payee": "Salary", "catId": "salary" } },
+  { "line": "got 800 gift from mum", "today": "2026-10-12", "expect": { "amount": 800, "type": "income", "catId": "gift" } },
+  { "line": "pizza 14 yesterday", "today": "2026-10-12", "expect": { "amount": 14, "date": "2026-10-11", "payee": "Pizza", "catId": "dining" } },
+  { "line": "bus fare 60 2 days ago", "today": "2026-10-12", "expect": { "amount": 60, "date": "2026-10-10", "payee": "Bus Fare", "catId": "transport" } },
+  { "line": "groceries 3200 on friday", "today": "2026-10-12", "expect": { "amount": 3200, "date": "2026-10-09", "catId": "groceries" } },
+  { "line": "something odd 40", "today": "2026-10-12", "expect": { "amount": 40, "payee": "Something Odd", "catId": "other_expense" } },
+  { "line": "7up 60", "today": "2026-10-12", "expect": { "amount": 60, "payee": "7up" } },
+  { "line": "lunch", "today": "2026-10-12", "expect": null },
+  { "line": "", "today": "2026-10-12", "expect": null }
+]

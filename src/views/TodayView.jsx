@@ -23,6 +23,7 @@ import ExperimentCard from "../components/ExperimentCard.jsx";
 const RadarCards = lazy(() => import("../components/RadarCards.jsx"));
 const PepCard = lazy(() => import("../components/PepCard.jsx"));
 const CharacterCard = lazy(() => import("../components/CharacterCard.jsx"));
+const QuickSpend = lazy(() => import("../components/QuickSpend.jsx"));
 import RecoveryCard from "../components/RecoveryCard.jsx";
 import { SrbaiPrompt } from "../components/SrbaiSheet.jsx";
 import {
@@ -57,7 +58,7 @@ export default function TodayView({
   onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
   onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser, onAddPepNote, onHoldZone,
   backupNudge, onOpenBackup, onDismissBackupNudge,
-  onAnswerVirtue, onOpenCharacter, onOpenTemper, onOpenLetter, onOpenExamen, onOpenWeek, onDismissCharacterTeaser,
+  onLogSpend, onAnswerVirtue, onOpenCharacter, onOpenTemper, onOpenLetter, onOpenExamen, onOpenWeek, onDismissCharacterTeaser,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -209,6 +210,12 @@ export default function TodayView({
           onAccept={() => { onAcceptFreshStart(fresh); onOpenHabits(); }}
           onDismiss={() => onDismissFreshStart(fresh)}
         />
+      )}
+
+      {onLogSpend && (
+        <Suspense fallback={null}>
+          <QuickSpend state={state} onAdd={onLogSpend} compact />
+        </Suspense>
       )}
 
       {backupNudge && onOpenBackup && (

@@ -24,6 +24,7 @@ import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { lapsesOn, limitOf, newLapse, newUrge, syncSlip, withCalmNote } from "./lib/urges.js";
 import { notificationPermission, requestNotificationPermission, scheduleNudges } from "./lib/notify.js";
+import { applyPending, publishCapture, recordFromTyped, takePending, describeMoney } from "./lib/capture.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import { bury, mergeStates, unbury } from "./lib/merge.js";
 import { setFollowed, stopExperiment } from "./lib/experimentPlan.js";
@@ -264,9 +265,10 @@ export default function Momentum() {
       });
       publishShade(state);
       publishPep(state);
+      publishCapture(state);
     }, 800);
     return () => clearTimeout(t);
-  }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings, state.pepNotes, state.virtue, state.virtueLog]);
+  }, [loaded, today, state.tasks, state.dayLog, state.urgeLog, state.srbai, state.checkins, state.freezes, state.settings, state.pepNotes, state.virtue, state.virtueLog, state.transactions]);
 
   // An automatic backup can destroy data as easily as save it, so the decision of whether to
   // push at all lives in cloud.js with its guards, and this only carries it out.
@@ -403,6 +405,30 @@ export default function Momentum() {
     }
     return { ...s, letters: (s.letters || []).filter((l) => l.id !== id), graveyard: bury(s.graveyard, id) };
   }), [show]);
+
+  // Payments the phone saved while the app was closed (read from a message, or typed into the notification), and any it was
+  // told to forget. Collected when the app opens and whenever it comes back to the front.
+  useEffect(() => {
+    if (!loaded) return undefined;
+    let gone = false;
+    const collect = async () => {
+      const got = await takePending();
+      if (gone || (!got.add.length && !got.undo.length)) return;
+      let added = 0;
+      setState((s) => {
+        const next = applyPending(s.transactions, got);
+        if (next === s.transactions) return s;
+        added = next.length - s.transactions.length;
+        return { ...s, transactions: next };
+      });
+      if (got.add.length) show(`${got.add.length} payment${got.add.length === 1 ? "" : "s"} added from your phone`);
+      void added;
+    };
+    collect();
+    const onShow = () => { if (!document.hidden) collect(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { gone = true; document.removeEventListener("visibilitychange", onShow); };
+  }, [loaded, show]);
 
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
@@ -817,6 +843,17 @@ export default function Momentum() {
     };
   }), [show]);
 
+  // A payment said in one line: added at once, with the way back one tap away. The guess is the person's own history first,
+  // so the second time something is logged it is nearly always right.
+  const logSpend = useCallback((parsed) => {
+    const id = Date.now();
+    const record = { ...recordFromTyped(parsed), id };
+    setState((s) => ({ ...s, transactions: [...s.transactions, record] }));
+    show(`Logged ${describeMoney(record)}`, "Undo", () => setState((cur) => ({
+      ...cur, transactions: cur.transactions.filter((t) => t.id !== id), graveyard: bury(cur.graveyard, id),
+    })));
+  }, [show]);
+
   const saveRule = useCallback((rule) => setState((s) => {
     if (!rule.id) {
       const created = { ...rule, id: Date.now(), createdAt: Date.now() };
@@ -1091,6 +1128,7 @@ export default function Momentum() {
                 onFollowExperiment={followExperiment}
                 onAddPepNote={(n) => { addPepNote(n); show("Saved. That one is yours to read later."); }}
                 onHoldZone={holdZone}
+                onLogSpend={state.settings?.capture?.typed === false ? null : logSpend}
                 onAnswerVirtue={answerVirtue} onOpenCharacter={() => openCharacter("virtue")} onOpenTemper={() => openCharacter("temper")}
                 onOpenLetter={(id) => openCharacter("letters", id)} onOpenExamen={() => openCharacter("examen")} onOpenWeek={() => openCharacter("week")}
                 onDismissCharacterTeaser={() => patch({ settings: { ...state.settings, virtueTeaserDismissed: true } })}
@@ -1185,7 +1223,7 @@ export default function Momentum() {
                   strategies: state.strategies.map((x) => (x.id === id ? { ...x, ...p } : x)),
                 })}
                 onRemoveStrategy={(id) => patch({ strategies: state.strategies.filter((x) => x.id !== id) })}
-                onSaveTx={saveTx} onDeleteTx={deleteTx}
+                onSaveTx={saveTx} onDeleteTx={deleteTx} onLogSpend={logSpend}
                 onSaveRule={saveRule} onDeleteRule={deleteRule}
                 onSaveNetWorth={saveNetWorthSnapshot}
               />

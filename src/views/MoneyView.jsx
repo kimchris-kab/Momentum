@@ -21,6 +21,7 @@ import {
   Card, Checkbox, EmptyState, IconButton, Pill, ProgressBar, SegmentedControl, SectionLabel,
 } from "../components/ui.jsx";
 import TxSheet from "../components/TxSheet.jsx";
+import QuickSpend from "../components/QuickSpend.jsx";
 import {
   BudgetSheet, CategoryBudgets, SafeToSpendCard, SubscriptionRadar,
 } from "../components/BudgetCards.jsx";
@@ -38,7 +39,7 @@ const blankRule = () => ({
 
 export default function MoneyView({
   state, onPatch, onAddStrategy, onUpdateStrategy, onRemoveStrategy,
-  onSaveTx, onDeleteTx, onSaveRule, onDeleteRule, onSaveNetWorth, jumpTo = null,
+  onSaveTx, onDeleteTx, onSaveRule, onDeleteRule, onSaveNetWorth, onLogSpend, jumpTo = null,
 }) {
   const {
     strategies, moneyPrinciples, moneyIdeas, netWorth, netWorthLog, transactions, recurring,
@@ -118,6 +119,10 @@ export default function MoneyView({
           { id: "goals", label: "Goals" }, { id: "learn", label: "Learn" },
         ]}
       />
+
+      {(tab === "flow" || tab === "records") && onLogSpend && state.settings?.capture?.typed !== false && (
+        <QuickSpend state={state} onAdd={onLogSpend} />
+      )}
 
       {(tab === "flow" || tab === "records") && (
         <div style={{

@@ -1,0 +1,265 @@
+[
+  {
+    "name": "M-Pesa: sent to a person",
+    "text": "SBH7K2LM9Q Confirmed. Ksh500.00 sent to JOHN DOE 0712345678 on 17/8/23 at 2:15 PM. New M-PESA balance is Ksh1,234.56. Transaction cost, Ksh7.00. Amount you can transact within the day is 499,500.00. Sign up for Lipa Na M-PESA Till online https://m-pesa.co.ke/get-till",
+    "expect": {
+      "amount": 500,
+      "cur": "KES",
+      "type": "expense",
+      "payee": "John Doe",
+      "date": "2023-08-17",
+      "time": "14:15",
+      "ref": "SBH7K2LM9Q",
+      "catId": "other_expense"
+    }
+  },
+  {
+    "name": "M-Pesa: paid at a till",
+    "text": "SBH7K2LM9R Confirmed. Ksh1,200.00 paid to NAIVAS SUPERMARKET. on 17/8/23 at 6:45 PM.New M-PESA balance is Ksh2,000.00. Transaction cost, Ksh0.00.",
+    "expect": {
+      "amount": 1200,
+      "type": "expense",
+      "payee": "Naivas Supermarket",
+      "date": "2023-08-17",
+      "time": "18:45",
+      "ref": "SBH7K2LM9R",
+      "catId": "groceries"
+    }
+  },
+  {
+    "name": "M-Pesa: paybill with an account",
+    "text": "SBH7K2LM9S Confirmed. Ksh2,500.00 sent to KENYA POWER for account 1234567 on 17/8/23 at 9:05 AM New M-PESA balance is Ksh500.00. Transaction cost, Ksh5.00.",
+    "expect": {
+      "amount": 2500,
+      "type": "expense",
+      "payee": "Kenya Power (1234567)",
+      "time": "09:05",
+      "ref": "SBH7K2LM9S",
+      "catId": "utilities"
+    }
+  },
+  {
+    "name": "M-Pesa: money received",
+    "text": "SBH7K2LM9T Confirmed.You have received Ksh3,000.00 from JANE WANJIKU 0722334455 on 17/8/23 at 11:30 AM  New M-PESA balance is Ksh4,000.00.  Separate personal and business funds through Pochi la Biashara on *334#.",
+    "expect": {
+      "amount": 3000,
+      "type": "income",
+      "payee": "Jane Wanjiku",
+      "time": "11:30",
+      "ref": "SBH7K2LM9T",
+      "catId": "other_income"
+    }
+  },
+  {
+    "name": "M-Pesa: airtime",
+    "text": "SBH7K2LM9U confirmed.You bought Ksh50.00 of airtime on 17/8/23 at 7:00 AM.New M-PESA balance is Ksh1,000.00. Transaction cost, Ksh0.00.",
+    "expect": {
+      "amount": 50,
+      "type": "expense",
+      "payee": "Airtime",
+      "ref": "SBH7K2LM9U",
+      "catId": "utilities"
+    }
+  },
+  {
+    "name": "M-Pesa: cash withdrawal",
+    "text": "SBH7K2LM9V Confirmed. on 17/8/23 at 1:10 PM Withdraw Ksh1,000.00 from 123456 - MAMA MBOGA AGENT New M-PESA balance is Ksh900.00. Transaction cost, Ksh29.00.",
+    "expect": {
+      "amount": 1000,
+      "type": "expense",
+      "payee": "Mama Mboga Agent (cash)",
+      "time": "13:10",
+      "ref": "SBH7K2LM9V"
+    }
+  },
+  {
+    "name": "M-Pesa: the fee is not the payment",
+    "text": "SBH7K2LM9W Confirmed. Ksh70.00 paid to KFC WESTGATE. on 17/8/23 at 8:20 PM.New M-PESA balance is Ksh200.00. Transaction cost, Ksh0.00.",
+    "expect": {
+      "amount": 70,
+      "payee": "KFC Westgate",
+      "catId": "dining"
+    }
+  },
+  {
+    "name": "M-Pesa: Fuliza is a loan, not a purchase",
+    "text": "SBH7K2LM9X Confirmed. Fuliza M-PESA amount is Ksh100.00. Access Fee charged Ksh1.00. Total Fuliza M-PESA outstanding amount is Ksh101.00 due on 17/9/23.",
+    "expect": null
+  },
+  {
+    "name": "Airtel Money: sent",
+    "text": "TID: AM230817.1422.X12345. You have sent KES 300.00 to JOSEPH KAMAU 0733112233 on 17-08-23 at 14:22. Fee KES 5.00. Balance KES 1,200.00.",
+    "expect": {
+      "amount": 300,
+      "cur": "KES",
+      "type": "expense",
+      "payee": "Joseph Kamau",
+      "date": "2023-08-17",
+      "time": "14:22",
+      "ref": "AM230817.1422.X12345"
+    }
+  },
+  {
+    "name": "MTN MoMo: sent",
+    "text": "You have sent UGX 10,000 to SARAH NAMUBIRU (0772123456). Transaction ID 99812345. Fee UGX 250. New balance UGX 45,000.",
+    "expect": {
+      "amount": 10000,
+      "cur": "UGX",
+      "type": "expense",
+      "payee": "Sarah Namubiru",
+      "ref": "99812345"
+    }
+  },
+  {
+    "name": "MTN MoMo: payment",
+    "text": "Payment of GHS 50.00 to MELCOM LTD successful. Ref 7788123. New balance GHS 220.50.",
+    "expect": {
+      "amount": 50,
+      "cur": "GHS",
+      "type": "expense",
+      "payee": "Melcom Ltd",
+      "ref": "7788123"
+    }
+  },
+  {
+    "name": "Bank: debit alert with a merchant",
+    "text": "Debit Alert: Acct XXXX1234 debited with KES 2,500.00 on 17-AUG-23. Info: POS/QUICKMART LANGATA. Avail Bal KES 10,000.00",
+    "expect": {
+      "amount": 2500,
+      "cur": "KES",
+      "type": "expense",
+      "payee": "Quickmart Langata",
+      "date": "2023-08-17",
+      "catId": "groceries"
+    }
+  },
+  {
+    "name": "Bank: credit",
+    "text": "Credit Alert: Your account XXXX1234 was credited with KES 50,000.00 on 25-AUG-23. Narration: SALARY AUGUST. Avail Bal KES 61,000.00",
+    "expect": {
+      "amount": 50000,
+      "type": "income",
+      "date": "2023-08-25",
+      "catId": "salary"
+    }
+  },
+  {
+    "name": "Bank: card purchase in dollars",
+    "text": "Purchase of USD 12.50 at STARBUCKS on card ending 1234. Available balance USD 800.00.",
+    "expect": {
+      "amount": 12.5,
+      "cur": "USD",
+      "type": "expense",
+      "payee": "Starbucks",
+      "catId": "dining"
+    }
+  },
+  {
+    "name": "App notification: spent",
+    "text": "You spent $45.20 at AMAZON on your card ending 4321",
+    "expect": {
+      "amount": 45.2,
+      "cur": "USD",
+      "type": "expense",
+      "payee": "Amazon",
+      "catId": "shopping"
+    }
+  },
+  {
+    "name": "App notification: you sent",
+    "text": "You sent $20.00 to Sam Wilson",
+    "expect": {
+      "amount": 20,
+      "type": "expense",
+      "payee": "Sam Wilson"
+    }
+  },
+  {
+    "name": "App notification: received",
+    "text": "You have received KES 1,500.00 from ACME LTD. Invoice 4411 settled.",
+    "expect": {
+      "amount": 1500,
+      "type": "income",
+      "payee": "Acme Ltd",
+      "catId": "freelance"
+    }
+  },
+  {
+    "name": "Bank: card transaction with a slash date",
+    "text": "Equity Bank: You have transacted KES 1,500.00 at NAIVAS via card ending 4455 on 12/10/2026 14:05. Bal KES 22,000.00",
+    "expect": {
+      "amount": 1500,
+      "cur": "KES",
+      "type": "expense",
+      "payee": "Naivas",
+      "date": "2026-10-12",
+      "time": "14:05",
+      "catId": "groceries"
+    }
+  },
+  {
+    "name": "Bank: POS purchase described in the middle",
+    "text": "KCB: Dear customer, KES 2,000.00 has been debited from your account 123*** on 12-10-2026 at 10:15 for POS Purchase at JAVA HOUSE. Bal KES 8,000.00",
+    "expect": {
+      "amount": 2000,
+      "type": "expense",
+      "payee": "Java House",
+      "date": "2026-10-12",
+      "time": "10:15",
+      "catId": "dining"
+    }
+  },
+  {
+    "name": "Bank: a credit that names who sent it",
+    "text": "Dear customer, your account has been credited with KES 5,000.00 from MPESA REF SBH7K2LM9Z on 12/10/2026 09:00. Bal KES 15,000.00",
+    "expect": {
+      "amount": 5000,
+      "type": "income",
+      "date": "2026-10-12",
+      "time": "09:00"
+    }
+  },
+  {
+    "name": "M-Pesa: buy goods",
+    "text": "SBH7K2LM9Y Confirmed. Ksh350.00 paid to JAVA HOUSE. on 12/10/26 at 1:00 PM.New M-PESA balance is Ksh650.00. Transaction cost, Ksh0.00.",
+    "expect": {
+      "amount": 350,
+      "type": "expense",
+      "payee": "Java House",
+      "date": "2026-10-12",
+      "time": "13:00",
+      "catId": "dining",
+      "ref": "SBH7K2LM9Y"
+    }
+  },
+  {
+    "name": "M-Pesa: money from a bank",
+    "text": "SBH7K2LM9A Confirmed.You have received Ksh20,000.00 from KCB BANK 0711222333 on 12/10/26 at 8:45 AM  New M-PESA balance is Ksh21,000.00.",
+    "expect": {
+      "amount": 20000,
+      "type": "income",
+      "payee": "KCB Bank",
+      "time": "08:45"
+    }
+  },
+  {
+    "name": "A one-time code is not a payment",
+    "text": "Your OTP is 482913. Do not share it. Transaction of KES 500.00 requires verification.",
+    "expect": null
+  },
+  {
+    "name": "A promotion is not a payment",
+    "text": "Congratulations! You have been awarded a loan limit of KES 50,000.00. Dial *234# to claim.",
+    "expect": null
+  },
+  {
+    "name": "An amount with no direction is not a payment",
+    "text": "Your statement balance is KES 12,500.00 as at 17-AUG-23.",
+    "expect": null
+  },
+  {
+    "name": "Plain chat is not a payment",
+    "text": "Hey, are we still on for dinner on Friday? I can pay 2000 for the table.",
+    "expect": null
+  }
+]

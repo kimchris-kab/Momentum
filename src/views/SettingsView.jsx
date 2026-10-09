@@ -22,6 +22,7 @@ import { DEFAULT_PEP, PEP_MIN_DAYS, pepSettings } from "../lib/pep.js";
 import { DEFAULT_VIRTUE, virtueSettings } from "../lib/virtue.js";
 import { DEFAULT_EXAMEN, examenSettings } from "../lib/examen.js";
 import { DEFAULT_WEEK, WEEK_DAYS, weekSettings } from "../lib/weekly.js";
+import { captureSettings, hasNativeCapture } from "../lib/capture.js";
 import { INTENSITIES, redZoneSettings } from "../lib/redzone.js";
 import { Card, Pill, SectionLabel } from "../components/ui.jsx";
 
@@ -568,6 +569,10 @@ export default function SettingsView({
         )}
       </Card>
 
+      {/* ---- Money, without the effort ---- */}
+      <SectionLabel>Logging money</SectionLabel>
+      <CaptureSettings settings={settings} onSetSetting={onSetSetting} />
+
       <SectionLabel>Your data</SectionLabel>
       <Card>
         <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "0 0 13px" }}>
@@ -713,5 +718,121 @@ export default function SettingsView({
         goal is to need these less over time, not more.
       </p>
     </div>
+  );
+}
+
+
+// ---- Logging money without effort ----
+
+function CaptureSettings({ settings, onSetSetting }) {
+  const cfg = useMemo(() => captureSettings(settings), [settings]);
+  const set = (patch) => onSetSetting("capture", { ...cfg, ...patch });
+  const native = hasNativeCapture();
+  const [status, setStatus] = useState(null);
+  const [apps, setApps] = useState([]);
+  const [sender, setSender] = useState("");
+  const plugin = () => window.Capacitor?.Plugins?.MomentumMoney;
+  const refresh = async () => {
+    try { setStatus(await plugin()?.status?.()); } catch { setStatus(null); }
+    try { setApps((await plugin()?.candidates?.())?.apps || []); } catch { setApps([]); }
+  };
+  useEffect(() => {
+    if (!native) return undefined;
+    refresh();
+    const onShow = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, [native]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addSender = () => {
+    const v = sender.trim();
+    if (!v || cfg.senders.some((x) => x.toLowerCase() === v.toLowerCase())) { setSender(""); return; }
+    set({ senders: [...cfg.senders, v] });
+    setSender("");
+  };
+  const togglePackage = (pkg) => set({ packages: cfg.packages.includes(pkg) ? cfg.packages.filter((x) => x !== pkg) : [...cfg.packages, pkg] });
+
+  return (
+    <Card>
+      <Row label="Type it in one line"
+        desc="A box on Today and in Money: 'lunch 12', 'taxi 8.5 uber', '+5000 salary'. It works out the amount, the category and the date, and shows you before it saves.">
+        <Switch on={cfg.typed} label="Type it in one line" onClick={() => set({ typed: !cfg.typed })} />
+      </Row>
+
+      {!native && (
+        <p style={{ borderTop: `1px solid ${C.border}`, color: C.faint, fontSize: 11.5, lineHeight: 1.6, margin: 0, padding: "11px 0 2px" }}>
+          The notification you can type into, and reading your bank and mobile-money messages, work in the Android app.
+        </p>
+      )}
+
+      {native && (
+        <>
+          <div style={{ borderTop: `1px solid ${C.border}` }}>
+            <Row label="Quick-spend notification"
+              desc="A quiet notification you can type into from anywhere: 'lunch 12'. It's logged without opening the app.">
+              <Switch on={cfg.quick} label="Quick-spend notification" onClick={() => set({ quick: !cfg.quick })} />
+            </Row>
+          </div>
+          <div style={{ borderTop: `1px solid ${C.border}` }}>
+            <Row label="Read payment messages"
+              desc="When your bank or mobile-money service sends a message about a payment, you get a notification with the amount and a guess at the category. One tap saves it. Read on this phone only; the message itself is never stored.">
+              <Switch on={cfg.read} label="Read payment messages" onClick={() => set({ read: !cfg.read })} />
+            </Row>
+          </div>
+          {cfg.read && (
+            <>
+              <div style={{ borderTop: `1px solid ${C.border}`, padding: "11px 0" }}>
+                <p style={{ color: C.text, fontSize: 13.5, margin: "0 0 8px" }}>Allow it to see them</p>
+                <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.55, margin: "0 0 9px" }}>
+                  Texts: {status?.sms ? "allowed" : "not allowed yet"}. App notifications: {status?.listener ? "allowed" : "not allowed yet"}.
+                </p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {!status?.sms && <button onClick={async () => { await plugin()?.requestSms?.(); refresh(); }} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5, flex: 1 }}>Allow texts</button>}
+                  {!status?.listener && <button onClick={() => plugin()?.openAccess?.()} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5, flex: 1 }}>Allow app notifications</button>}
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${C.border}` }}>
+                <Row label="Save payments" desc="Asking first is safest: nothing is recorded until you tap.">
+                  <select value={cfg.mode} onChange={(e) => set({ mode: e.target.value })} aria-label="Save payments"
+                    style={{ ...styles.input, width: "auto", padding: "8px 10px", fontSize: 13 }}>
+                    <option value="ask">Ask me first</option>
+                    <option value="auto">Add automatically</option>
+                  </select>
+                </Row>
+              </div>
+              <div style={{ borderTop: `1px solid ${C.border}`, padding: "11px 0" }}>
+                <p style={{ color: C.text, fontSize: 13.5, margin: "0 0 4px" }}>Texts from</p>
+                <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.5, margin: "0 0 9px" }}>Only these senders are read. Add your bank's name as it appears on the text.</p>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {cfg.senders.map((x) => (
+                    <button key={x} onClick={() => set({ senders: cfg.senders.filter((y) => y !== x) })} aria-label={`Stop reading texts from ${x}`}
+                      style={{ padding: "5px 10px", borderRadius: R.pill, fontSize: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, cursor: "pointer", fontFamily: F.body }}>
+                      {x} ×
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <input value={sender} onChange={(e) => setSender(e.target.value)} aria-label="Add a sender" placeholder="e.g. MyBank"
+                    onKeyDown={(e) => { if (e.key === "Enter") addSender(); }} style={{ ...styles.input, flex: 1, fontSize: 13 }} />
+                  <button onClick={addSender} style={{ ...styles.ghostCta, height: 42, width: 70, fontSize: 12.5 }}>Add</button>
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${C.border}`, padding: "11px 0 2px" }}>
+                <p style={{ color: C.text, fontSize: 13.5, margin: "0 0 4px" }}>Apps</p>
+                {apps.length === 0 ? (
+                  <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.55, margin: 0 }}>
+                    Apps that send payment notifications show up here once one arrives. Then choose which to read.
+                  </p>
+                ) : apps.map((a) => (
+                  <Row key={a.package} label={a.label || a.package} desc={`${a.count} payment${a.count === 1 ? "" : "s"} seen`}>
+                    <Switch on={cfg.packages.includes(a.package)} label={`Read ${a.label || a.package}`} onClick={() => togglePackage(a.package)} />
+                  </Row>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
