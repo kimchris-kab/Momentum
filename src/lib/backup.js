@@ -53,6 +53,8 @@ export function summarise(data) {
     ["Red zones held", count(data.zoneLog)],
     ["Character check-ins", count(data.virtueLog)],
     ["Temper log entries", count(data.temperLog)],
+    ["Letters to yourself", count(data.letters)],
+    ["Evening examens", count(data.examenLog)],
   ];
   return rows.filter(([, n]) => n > 0);
 }

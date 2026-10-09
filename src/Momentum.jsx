@@ -168,6 +168,7 @@ export default function Momentum() {
   const [view, setView] = useState("today");
   // Which half of the Character screen to open on: the card on Today and the notifications each go to their own.
   const [characterTab, setCharacterTab] = useState("virtue");
+  const [characterRef, setCharacterRef] = useState(null);
   const [state, setState] = useState(emptyState);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -370,7 +371,27 @@ export default function Momentum() {
     }
     return { ...s, temperLog: (s.temperLog || []).filter((e) => e.id !== id), graveyard: bury(s.graveyard, id) };
   }), [show]);
-  const openCharacter = useCallback((tab = "virtue") => { setCharacterTab(tab); setView("character"); }, []);
+  const openCharacter = useCallback((tab = "virtue", ref = null) => { setCharacterTab(tab); setCharacterRef(ref); setView("character"); }, []);
+  const saveExamen = useCallback((answers) => {
+    import("./lib/examen.js").then((m) => setState((s) => m.saved(s, answers))).catch(() => {});
+    show("Saved. Sleep well.");
+  }, [show]);
+  const addLetter = useCallback((letter) => {
+    setState((s) => ({ ...s, letters: [...(s.letters || []), letter] }));
+    show(letter.kind === "when" ? "Sealed. It'll be there when you need it." : "Sealed. It will arrive when it's time.");
+  }, [show]);
+  const openLetter = useCallback((id) => {
+    import("./lib/letters.js").then((m) => setState((s) => m.opened(s, id))).catch(() => {});
+  }, []);
+  const removeLetter = useCallback((id) => setState((s) => {
+    const victim = (s.letters || []).find((l) => l.id === id);
+    if (victim) {
+      show("Letter deleted", "Undo", () => setState((cur) => ({
+        ...cur, letters: [...(cur.letters || []), victim], graveyard: unbury(cur.graveyard, id),
+      })));
+    }
+    return { ...s, letters: (s.letters || []).filter((l) => l.id !== id), graveyard: bury(s.graveyard, id) };
+  }), [show]);
 
   // A "Done" tapped on a notification while the app was closed is waiting in IndexedDB;
   // one tapped while a tab is open arrives by postMessage. Both land here.
@@ -390,6 +411,8 @@ export default function Momentum() {
     }
     // The day's practice opens the screen; the evening question is answered by the button, or opened by tapping the body.
     if (payload?.kind === "virtue") { openCharacter("virtue"); return; }
+    if (payload?.kind === "letter") { openCharacter("letters", payload.ref); return; }
+    if (payload?.kind === "examen") { openCharacter("examen"); return; }
     if (payload?.kind === "virtue-check") {
       const score = { lived: 2, partly: 1, missed: 0 }[payload.action];
       if (score === undefined) openCharacter("virtue");
@@ -406,7 +429,7 @@ export default function Momentum() {
       if (cancelled || !rows.length) return;
       rows.forEach(applyNotificationAction);
       // An urge warning opens a screen rather than ticking anything off, so it isn't counted.
-      const ticks = rows.filter((r) => !["urges", "redzone", "redzone-end", "virtue", "virtue-check"].includes(r.kind)).length;
+      const ticks = rows.filter((r) => !["urges", "redzone", "redzone-end", "virtue", "virtue-check", "letter", "examen", "week", "repair"].includes(r.kind)).length;
       if (ticks) show(`${ticks} ticked off from ${ticks === 1 ? "a notification" : "notifications"}`);
     });
     const onMessage = (e) => {
@@ -434,7 +457,7 @@ export default function Momentum() {
     try {
       Promise.resolve(plugin.addListener("localNotificationActionPerformed", (e) => {
         const extra = e?.notification?.extra || {};
-        applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date, kind: extra.kind, zone: extra.zone });
+        applyNotificationAction({ action: e.actionId, taskId: extra.taskId, date: extra.date, kind: extra.kind, zone: extra.zone, ref: extra.ref });
       })).then((h) => {
         handle = h;
         // Unmounted before the handle arrived: let go of it straight away.
@@ -861,6 +884,9 @@ export default function Momentum() {
   const ritualTask = ritual ? state.tasks.find((t) => t.id === ritual) : null;
   const focusTask = focusId ? state.tasks.find((t) => t.id === focusId) : null;
   const urgeTask = urging ? state.tasks.find((t) => t.id === urging.id) : null;
+  // Letters written for this exact moment, newest first. Worked out here rather than imported: it is a filter, and the
+  // letters module is only loaded when one is written or read.
+  const urgeLetters = (state.letters || []).filter((l) => l.kind === "when" && l.when === "urge").sort((a, b) => b.createdAt - a.createdAt);
   const ratingTask = rating ? state.tasks.find((t) => t.id === rating) : null;
   const fresh = useMemo(() => (loaded ? freshStart(state) : null), [loaded, state]);
   const comebacks = useMemo(
@@ -1048,6 +1074,7 @@ export default function Momentum() {
                 onAddPepNote={(n) => { addPepNote(n); show("Saved. That one is yours to read later."); }}
                 onHoldZone={holdZone}
                 onAnswerVirtue={answerVirtue} onOpenCharacter={() => openCharacter("virtue")} onOpenTemper={() => openCharacter("temper")}
+                onOpenLetter={(id) => openCharacter("letters", id)} onOpenExamen={() => openCharacter("examen")}
                 onDismissCharacterTeaser={() => patch({ settings: { ...state.settings, virtueTeaserDismissed: true } })}
                 backupNudge={isConfigured(cloudConfig) && !cloudSession?.user?.id && !backupNudgeOff && weigh(state) > 0}
                 onOpenBackup={() => setView("settings")}
@@ -1210,10 +1237,11 @@ export default function Momentum() {
             )}
             {view === "character" && (
               <CharacterView
-                key={characterTab} initialTab={characterTab}
+                key={`${characterTab}:${characterRef}`} initialTab={characterTab} initialLetter={characterRef}
                 state={state} onBack={() => setView("today")}
                 onChoose={chooseVirtue} onKeep={keepVirtue} onClear={() => patch({ virtue: null })}
                 onAnswer={answerVirtue} onAddTemper={addTemper} onRemoveTemper={removeTemper}
+                onSaveExamen={saveExamen} onAddLetter={addLetter} onOpenLetter={openLetter} onRemoveLetter={removeLetter}
                 surf={surfSettings(state.settings)}
                 onSurf={(v) => patch({ settings: { ...state.settings, surf: v } })}
               />
@@ -1330,6 +1358,7 @@ export default function Momentum() {
                 onLogUrge={logUrge}
                 onLogLapse={logLapse}
                 onSaveNote={saveCalmNote}
+                letters={urgeLetters} onReadLetter={openLetter}
                 onClose={() => setUrging(null)}
               />
             </Suspense>

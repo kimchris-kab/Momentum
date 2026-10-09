@@ -6,6 +6,7 @@ import {
 } from "../lib/urges.js";
 import { TimerRing, useTimer } from "./Timer.jsx";
 import { Pill, Sheet } from "./ui.jsx";
+import LetterReader from "./character/LetterReader.jsx";
 
 // The breathing pacer is the biggest thing on this screen and the part least often wanted, so it
 // loads when the urge screen does rather than with the app.
@@ -29,7 +30,7 @@ export default function UrgeSheet({ open, task, mode = "urge", ...rest }) {
   return <UrgeBody key={`${task.id}:${mode}`} task={task} mode={mode} {...rest} />;
 }
 
-function UrgeBody({ task, mode, urgeLog, surf, onSurf, onLogUrge, onLogLapse, onSaveNote, onClose }) {
+function UrgeBody({ task, mode, urgeLog, surf, onSurf, letters = [], onReadLetter, onLogUrge, onLogLapse, onSaveNote, onClose }) {
   const [step, setStep] = useState(mode === "lapse" ? "lapse" : "urge");
   const [ask, setAsk] = useState(null);
 
@@ -44,7 +45,7 @@ function UrgeBody({ task, mode, urgeLog, surf, onSurf, onLogUrge, onLogLapse, on
     <Sheet open onClose={onClose} title={title}>
       {step === "urge" && (
         <RideItOut
-          task={task} surf={surf} onSurf={onSurf}
+          task={task} surf={surf} onSurf={onSurf} letters={letters} onReadLetter={onReadLetter}
           onPassed={(seconds) => { onLogUrge({ task, seconds, outcome: "rode-out" }); toWrite("rodeOut"); }}
           onGaveIn={(seconds) => { onLogUrge({ task, seconds, outcome: "gave-in" }); setStep("lapse"); }}
         />
@@ -67,7 +68,7 @@ function UrgeBody({ task, mode, urgeLog, surf, onSurf, onLogUrge, onLogLapse, on
 }
 
 // ---- 1. The note, then the plan, then the clock ----
-function RideItOut({ task, surf, onSurf, onPassed, onGaveIn }) {
+function RideItOut({ task, surf, onSurf, letters = [], onReadLetter, onPassed, onGaveIn }) {
   const [minutes, setMinutes] = useState(URGE_MINUTES);
   const total = minutes * 60;
   const timer = useTimer({ totalSecs: total, resetKey: minutes, autoStart: true });
@@ -90,6 +91,9 @@ function RideItOut({ task, surf, onSurf, onPassed, onGaveIn }) {
           exactly this moment, next time.
         </p>
       )}
+
+      {/* Written for exactly this moment, and kept sealed until it comes. */}
+      {letters.length > 0 && <LetterReader letter={letters[0]} onOpen={onReadLetter} tone={CALM} />}
 
       {instead && (
         <div style={{

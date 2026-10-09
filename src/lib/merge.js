@@ -34,7 +34,7 @@ const LOGS = {
 
 /** Records that can be edited after the fact. Union by id; a conflict goes to the later edit. */
 const EDITABLE = ["tasks", "goals", "strategies", "lists", "recurring", "savedViews",
-  "transactions", "journalEntries", "experiments", "pepNotes", "virtueLog", "temperLog"];
+  "transactions", "journalEntries", "experiments", "pepNotes", "virtueLog", "temperLog", "letters", "examenLog"];
 
 /** One row per date, rewritten in place. */
 const BY_DATE = ["checkins", "netWorthLog"];
@@ -44,7 +44,7 @@ const SETS = ["comebacksSeen", "dismissedSubs"];
 
 /** Maps whose values are replaced wholesale per key. */
 const KEYED = ["identities", "moneyPrinciples", "moneyIdeas", "categoryBudgets", "weekPlans",
-  "mantraIdxByDate", "freezes"];
+  "mantraIdxByDate", "freezes", "weekFocus"];
 
 /** Everything else is a setting or a scalar and follows whichever state was saved later. */
 const WHOLE = ["monthlyIncome", "budgetSplit", "netWorth", "settings", "journalDraft", "lists", "virtue"];

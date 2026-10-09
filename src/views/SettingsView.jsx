@@ -20,6 +20,7 @@ import { graduationStatus, reminderMode } from "../lib/automaticity.js";
 import { SHADE_MODES, pinnedHabit, shadeSettings } from "../lib/shade.js";
 import { DEFAULT_PEP, PEP_MIN_DAYS, pepSettings } from "../lib/pep.js";
 import { DEFAULT_VIRTUE, virtueSettings } from "../lib/virtue.js";
+import { DEFAULT_EXAMEN, examenSettings } from "../lib/examen.js";
 import { INTENSITIES, redZoneSettings } from "../lib/redzone.js";
 import { Card, Pill, SectionLabel } from "../components/ui.jsx";
 
@@ -124,6 +125,8 @@ export default function SettingsView({
   const setPep = (patch) => onSetSetting("pep", { ...pep, ...patch });
   const virtue = useMemo(() => virtueSettings(settings), [settings]);
   const setVirtue = (patch) => onSetSetting("virtue", { ...virtue, ...patch });
+  const examen = useMemo(() => examenSettings(settings), [settings]);
+  const setExamen = (patch) => onSetSetting("examen", { ...examen, ...patch });
 
   const enable = async () => {
     const result = await requestNotificationPermission();
@@ -525,6 +528,19 @@ export default function SettingsView({
                 <Row label="Practice and question" desc="The evening question comes at least three hours after the practice.">
                   <TimeInput value={virtue.morning} label="Practice at" onChange={(v) => setVirtue({ morning: v || DEFAULT_VIRTUE.morning })} />
                   <TimeInput value={virtue.evening} label="Question at" onChange={(v) => setVirtue({ evening: v || DEFAULT_VIRTUE.evening })} />
+                </Row>
+              </div>
+            )}
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <Row label="Evening examen"
+                desc="One notification each night once you've started using Character: what went well, where you fell short, what you'll change tomorrow. Letters you write to yourself also arrive as notifications.">
+                <Switch on={examen.on} label="Evening examen" onClick={() => setExamen({ on: !examen.on })} />
+              </Row>
+            </div>
+            {examen.on && (
+              <div style={{ borderTop: `1px solid ${C.border}` }}>
+                <Row label="Examen at" desc="Late enough that the day is done.">
+                  <TimeInput value={examen.time} label="Examen at" onChange={(v) => setExamen({ time: v || DEFAULT_EXAMEN.time })} />
                 </Row>
               </div>
             )}

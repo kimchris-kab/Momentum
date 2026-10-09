@@ -47,6 +47,7 @@ self.addEventListener("notificationclick", (event) => {
       date: data.date || null,
       kind: data.kind || null,
       zone: data.zone || null,
+      ref: data.ref || null,
       at: Date.now(),
     };
 
@@ -58,7 +59,8 @@ self.addEventListener("notificationclick", (event) => {
     const carried = action === "done" || action === "twoMin" || action === "urge" || action === "held" || action === "slipped"
       || action === "lived" || action === "partly" || action === "missed"
       || data.kind === "urges" || data.kind === "redzone" || data.kind === "redzone-end"
-      || data.kind === "virtue" || data.kind === "virtue-check";
+      || action === "repaired" || action === "repairskip"
+      || ["virtue", "virtue-check", "letter", "examen", "week", "repair"].includes(data.kind);
     if (clientsList.length && carried) {
       clientsList.forEach((c) => c.postMessage({ type: "momentum:action", payload }));
       await focusApp();

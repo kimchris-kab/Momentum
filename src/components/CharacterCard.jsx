@@ -1,8 +1,11 @@
 import React, { useMemo } from "react";
-import { Check, Compass, Flame } from "lucide-react";
+import { Check, Compass, Flame, Mail, Moon } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { todayStr } from "../lib/date.js";
 import { SCORE_WORDS, activeVirtue, dayNumber, entryFor, practiceFor, stats, virtueSettings } from "../lib/virtue.js";
+import { dueLetters } from "../lib/letters.js";
+import { examenFor, examenSettings } from "../lib/examen.js";
+import { engaged } from "../lib/character.js";
 
 const TONE = C.orange;
 
@@ -10,12 +13,44 @@ const TONE = C.orange;
  * Today's one practice for the virtue being worked on, and the day's one question. Answering is a tap,
  * from here or from the evening notification; the screen behind it has the rest. Quiet when it's switched off.
  */
-export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, onDismissTeaser }) {
+export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, onOpenLetter, onOpenExamen, onDismissTeaser }) {
   const cfg = virtueSettings(state.settings);
   const today = todayStr();
   const active = useMemo(() => activeVirtue(state), [state.virtue]); // eslint-disable-line react-hooks/exhaustive-deps
+  const due = useMemo(() => dueLetters(state), [state.letters, state.tasks, state.urgeLog]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!cfg.on) return null;
+  const ex = examenSettings(state.settings);
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const askExamen = ex.on && engaged(state) && hhmm >= ex.time && !examenFor(state, today);
 
+  return (
+    <>
+      {due.length > 0 && (
+        <div style={{ ...styles.card, borderColor: alpha(C.gold, 0.4), background: `linear-gradient(135deg, ${alpha(C.gold, 0.1)}, ${C.surface})` }}>
+          <p style={{ display: "flex", alignItems: "center", gap: 7, color: C.gold, fontSize: 11, fontWeight: 650, letterSpacing: 0.5, textTransform: "uppercase", margin: 0 }}>
+            <Mail size={13} /> A letter from you has arrived
+          </p>
+          <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "6px 0 10px" }}>
+            {due.length === 1 ? "You wrote it for today." : `${due.length} letters you wrote for today.`} Open it when you have a quiet minute.
+          </p>
+          <button onClick={() => onOpenLetter(due[0].id)} style={{ ...styles.cta, height: 40, fontSize: 13 }}>Open it</button>
+        </div>
+      )}
+      {virtueCard()}
+      {askExamen && (
+        <div style={{ ...styles.card, borderColor: alpha(C.purple, 0.3) }}>
+          <p style={{ display: "flex", alignItems: "center", gap: 7, color: C.purple, fontSize: 11, fontWeight: 650, letterSpacing: 0.5, textTransform: "uppercase", margin: 0 }}>
+            <Moon size={13} /> Evening examen
+          </p>
+          <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "6px 0 10px" }}>Sixty seconds: what went well, where you fell short, what you'll change tomorrow.</p>
+          <button onClick={onOpenExamen} style={{ ...styles.ghostCta, height: 40, fontSize: 13 }}>Do it now</button>
+        </div>
+      )}
+    </>
+  );
+
+  function virtueCard() {
   if (!active) {
     // Not before there is anything on Today at all: someone who has only just arrived has plenty to read already.
     if (state.settings?.virtueTeaserDismissed || (!(state.tasks || []).length && !Object.keys(state.dayLog || {}).length)) return null;
@@ -79,4 +114,5 @@ export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, o
       </button>
     </div>
   );
+}
 }

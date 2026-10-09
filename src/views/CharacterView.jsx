@@ -10,6 +10,10 @@ import {
   triggerLabel,
 } from "../lib/temper.js";
 import { Card, EmptyState, PageHeader, Pill, SectionLabel, SegmentedControl, Sheet } from "../components/ui.jsx";
+import { whenLetters } from "../lib/letters.js";
+import LetterReader from "../components/character/LetterReader.jsx";
+import ExamenTab from "../components/character/ExamenTab.jsx";
+import LettersTab from "../components/character/LettersTab.jsx";
 
 const BreathPacer = lazy(() => import("../components/BreathPacer.jsx"));
 const TONE = C.orange;
@@ -17,17 +21,19 @@ const SCORE_COLOR = { 2: C.green, 1: C.gold, 0: C.red };
 const LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function CharacterView({
-  state, onBack, initialTab = "virtue", onChoose, onClear, onKeep, onAnswer, onAddTemper, onRemoveTemper, surf, onSurf,
+  state, onBack, initialTab = "virtue", initialLetter = null, onChoose, onClear, onKeep, onAnswer, onAddTemper, onRemoveTemper,
+  surf, onSurf, onSaveExamen, onAddLetter, onOpenLetter, onRemoveLetter,
 }) {
   const [tab, setTab] = useState(initialTab);
   return (
     <div style={styles.page}>
       <PageHeader eyebrow="Character" title="Who you're becoming" onBack={onBack} />
       <SegmentedControl value={tab} onChange={setTab} style={{ marginBottom: 16 }}
-        options={[{ id: "virtue", label: "Virtue of the week" }, { id: "temper", label: "Temper log" }]} />
-      {tab === "virtue"
-        ? <VirtueTab state={state} onChoose={onChoose} onClear={onClear} onKeep={onKeep} onAnswer={onAnswer} />
-        : <TemperTab state={state} onAdd={onAddTemper} onRemove={onRemoveTemper} surf={surf} onSurf={onSurf} />}
+        options={[{ id: "virtue", label: "Virtue" }, { id: "temper", label: "Temper" }, { id: "examen", label: "Examen" }, { id: "letters", label: "Letters" }]} />
+      {tab === "virtue" && <VirtueTab state={state} onChoose={onChoose} onClear={onClear} onKeep={onKeep} onAnswer={onAnswer} />}
+      {tab === "temper" && <TemperTab state={state} onAdd={onAddTemper} onRemove={onRemoveTemper} surf={surf} onSurf={onSurf} onReadLetter={onOpenLetter} />}
+      {tab === "examen" && <ExamenTab state={state} onSave={onSaveExamen} />}
+      {tab === "letters" && <LettersTab state={state} initialOpen={initialLetter} onAdd={onAddLetter} onOpen={onOpenLetter} onRemove={onRemoveLetter} />}
     </div>
   );
 }
@@ -160,7 +166,7 @@ const when = (e) => {
   return `${day}, ${new Date(e.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
 };
 
-function TemperTab({ state, onAdd, onRemove, surf, onSurf }) {
+function TemperTab({ state, onAdd, onRemove, surf, onSurf, onReadLetter }) {
   const log = state.temperLog || [];
   const [logging, setLogging] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -169,6 +175,7 @@ function TemperTab({ state, onAdd, onRemove, surf, onSurf }) {
   const p = useMemo(() => patterns(log), [log]);
   const lines = useMemo(() => insights(log), [log]);
   const recent = useMemo(() => newestFirst(log).slice(0, 8), [log]);
+  const letters = useMemo(() => whenLetters(state, "temper"), [state.letters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -194,6 +201,7 @@ function TemperTab({ state, onAdd, onRemove, surf, onSurf }) {
         <Card style={{ borderColor: alpha(C.teal, 0.35) }}>
           <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: "0 0 4px" }}>Breathe before you answer</p>
           <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.55, margin: "0 0 10px" }}>A minute is enough. The feeling will have changed by the end of it.</p>
+          {letters.length > 0 && <LetterReader letter={letters[0]} onOpen={onReadLetter} tone={C.teal} />}
           <Suspense fallback={null}>{surf && onSurf && <BreathPacer surf={surf} onSurf={onSurf} />}</Suspense>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => { setPausing(false); setPaused(true); setLogging(true); }} style={{ ...styles.cta, height: 40, flex: 1, fontSize: 13 }}>I'm calmer. Log it</button>

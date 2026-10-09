@@ -46,6 +46,10 @@ export const emptyState = () => ({
   virtue: null,
   virtueLog: [],
   temperLog: [],
+  // Letters to yourself, the evening examen's answers, and the one focus picked for each week (by Monday's date).
+  letters: [],
+  examenLog: [],
+  weekFocus: {},
   settings: { sortMode: "manual", showCompleted: false, reminders: true, motion: true, notify: DEFAULT_NOTIFY },
   // v3. Deleting a record has to leave a mark, or merging two devices hands it straight back:
   // one side has no idea the other meant to remove it. Pruned once it can't matter.
