@@ -49,6 +49,8 @@ export const emptyState = () => ({
   // Letters to yourself, the evening examen's answers, and the one focus picked for each week (by Monday's date).
   letters: [],
   examenLog: [],
+  // A line typed into the habit notification: what was going on, kept with the habit it was for.
+  quickNotes: [],
   weekFocus: {},
   settings: { sortMode: "manual", showCompleted: false, reminders: true, motion: true, notify: DEFAULT_NOTIFY },
   // v3. Deleting a record has to leave a mark, or merging two devices hands it straight back:

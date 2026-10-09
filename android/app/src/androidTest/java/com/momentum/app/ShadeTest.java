@@ -8,10 +8,12 @@ import static org.junit.Assert.assertTrue;
 
 import android.app.Notification;
 import android.app.NotificationManager;
+import android.app.RemoteInput;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.SystemClock;
 import android.service.notification.StatusBarNotification;
 
@@ -207,18 +209,174 @@ public class ShadeTest {
     }
 
     @Test
-    public void thereAreTwoButtons() throws Exception {
+    public void thereAreThreeButtons() throws Exception {
         long now = System.currentTimeMillis();
         write(snap(now));
         Notification n = posted();
         assertNotNull(n);
         assertNotNull(n.actions);
-        assertEquals(2, n.actions.length);
+        assertEquals(3, n.actions.length);
         assertEquals("Urge", n.actions[0].title.toString());
         assertEquals("I slipped", n.actions[1].title.toString());
+        assertEquals("Note", n.actions[2].title.toString());
         assertNotNull("each one does something", n.actions[0].actionIntent);
         assertNotNull(n.actions[1].actionIntent);
+        assertNotNull(n.actions[2].actionIntent);
+        assertNotNull("the third has a box to type into", n.actions[2].getRemoteInputs());
+        assertEquals(MomentumShade.NOTE_KEY, n.actions[2].getRemoteInputs()[0].getResultKey());
+        assertNull("the other two do not", n.actions[0].getRemoteInputs());
         assertNotNull("tapping the body does too", n.contentIntent);
+    }
+
+    // ---- the buttons follow the hour ---------------------------------------------------------
+
+    private JSONArray zoneEnd(long endAt) throws Exception {
+        return new JSONArray().put(new JSONObject().put("key", "z1@2026-10-06").put("endAt", endAt));
+    }
+
+    @Test
+    public void afterARedZoneEndsIHeldItTakesThePlaceOfUrge() throws Exception {
+        long now = System.currentTimeMillis();
+        write(snap(now).put("zoneEnds", zoneEnd(now - 30 * MINUTE)));
+        Notification n = posted();
+        assertNotNull(n);
+        assertEquals(3, n.actions.length);
+        assertEquals("I held it", n.actions[0].title.toString());
+        assertEquals("I slipped", n.actions[1].title.toString());
+        assertEquals("Note", n.actions[2].title.toString());
+    }
+
+    @Test
+    public void whileAZoneIsStillRunningItIsStillUrge() throws Exception {
+        long now = System.currentTimeMillis();
+        write(snap(now).put("zoneEnds", zoneEnd(now + 40 * MINUTE)));
+        Notification n = posted();
+        assertNotNull(n);
+        assertEquals("Urge", n.actions[0].title.toString());
+    }
+
+    @Test
+    public void andAfterTheQuestionHasGoneStaleItIsUrgeAgain() throws Exception {
+        long now = System.currentTimeMillis();
+        write(snap(now).put("zoneEnds", zoneEnd(now - 3 * HOUR)));
+        Notification n = posted();
+        assertNotNull(n);
+        assertEquals("Urge", n.actions[0].title.toString());
+    }
+
+    @Test
+    public void holdingItIsKeptForTheAppAndTheButtonGoesAtOnce() throws Exception {
+        long now = System.currentTimeMillis();
+        write(snap(now).put("zoneEnds", zoneEnd(now - 30 * MINUTE)));
+        context.getSharedPreferences("momentum_shade_answers", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_HOLD_KEY).commit();
+        Intent held = new Intent(context, MomentumShade.class).setAction(MomentumShade.ACTION_HELD)
+                .putExtra("taskId", "habit-1").putExtra("zone", "z1@2026-10-06");
+        MomentumShade.handleHeld(context, held);
+        JSONArray kept = MomentumShade.pendingList(context, MomentumShade.PENDING_HOLD_KEY);
+        assertEquals(1, kept.length());
+        assertEquals("habit-1", kept.getJSONObject(0).getString("taskId"));
+        assertEquals("z1@2026-10-06", kept.getJSONObject(0).getString("zone"));
+        long end = SystemClock.uptimeMillis() + 5000;
+        Notification n = posted();
+        while (n != null && "I held it".equals(n.actions[0].title.toString()) && SystemClock.uptimeMillis() < end) {
+            Thread.sleep(100);
+            Notification again = posted();
+            if (again != null) n = again;
+        }
+        assertEquals("answered, so it is Urge again", "Urge", n.actions[0].title.toString());
+        context.getSharedPreferences("momentum_shade_answers", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_HOLD_KEY).commit();
+    }
+
+    @Test
+    public void aHoldWithoutAZoneIsIgnored() throws Exception {
+        write(snap(System.currentTimeMillis()));
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_HOLD_KEY).commit();
+        MomentumShade.handleHeld(context, new Intent(context, MomentumShade.class).setAction(MomentumShade.ACTION_HELD).putExtra("taskId", "habit-1"));
+        assertEquals(0, MomentumShade.pendingList(context, MomentumShade.PENDING_HOLD_KEY).length());
+    }
+
+    // ---- a line typed into it ----------------------------------------------------------------
+
+    private Intent noteWith(String typed) {
+        Intent intent = new Intent(context, MomentumShade.class).setAction(MomentumShade.ACTION_NOTE).putExtra("taskId", "habit-1");
+        Bundle results = new Bundle();
+        results.putCharSequence(MomentumShade.NOTE_KEY, typed);
+        RemoteInput.addResultsToIntent(new RemoteInput[] { new RemoteInput.Builder(MomentumShade.NOTE_KEY).build() }, intent, results);
+        return intent;
+    }
+
+    @Test
+    public void aTypedNoteIsKeptWithItsHabitForTheApp() throws Exception {
+        write(snap(System.currentTimeMillis()));
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_NOTE_KEY).commit();
+        MomentumShade.handleNote(context, noteWith("  bored at work, phone was right there  "));
+        JSONArray kept = MomentumShade.pendingList(context, MomentumShade.PENDING_NOTE_KEY);
+        assertEquals(1, kept.length());
+        assertEquals("habit-1", kept.getJSONObject(0).getString("taskId"));
+        assertEquals("trimmed", "bored at work, phone was right there", kept.getJSONObject(0).getString("text"));
+        assertTrue(kept.getJSONObject(0).getLong("at") > 0);
+        assertNotNull("and the notification is redrawn, so the box stops spinning", posted());
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_NOTE_KEY).commit();
+    }
+
+    @Test
+    public void anEmptyNoteKeepsNothingButStillEndsTheSpinner() throws Exception {
+        write(snap(System.currentTimeMillis()));
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_NOTE_KEY).commit();
+        MomentumShade.handleNote(context, noteWith("   "));
+        assertEquals(0, MomentumShade.pendingList(context, MomentumShade.PENDING_NOTE_KEY).length());
+        assertNotNull(posted());
+    }
+
+    @Test
+    public void aLongNoteIsCut() throws Exception {
+        write(snap(System.currentTimeMillis()));
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_NOTE_KEY).commit();
+        StringBuilder big = new StringBuilder();
+        for (int i = 0; i < 500; i++) big.append('x');
+        MomentumShade.handleNote(context, noteWith(big.toString()));
+        assertEquals(MomentumShade.MAX_NOTE, MomentumShade.pendingList(context, MomentumShade.PENDING_NOTE_KEY).getJSONObject(0).getString("text").length());
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(MomentumShade.PENDING_NOTE_KEY).commit();
+    }
+
+    // ---- more when it is opened up -----------------------------------------------------------
+
+    @Test
+    public void openedUpItSaysWhatTheDayHasHeld() throws Exception {
+        long now = System.currentTimeMillis();
+        write(snap(now).put("urgesToday", 3).put("zoneStreak", 4)
+                .put("practice", new JSONObject().put("name", "Patience").put("text", "Take one slow breath before answering any message today.")));
+        Notification n = posted();
+        assertNotNull(n);
+        String big = text(n, Notification.EXTRA_BIG_TEXT);
+        assertTrue(big, big.contains("3 urges ridden out today"));
+        assertTrue(big, big.contains("4 red zones held in a row"));
+        assertTrue(big, big.contains("Today's patience: Take one slow breath"));
+        assertFalse("the second line stays short", text(n, Notification.EXTRA_TEXT).contains("ridden out"));
+    }
+
+    @Test
+    public void oneUrgeIsSingular_andNothingIsAddedWhenThereIsNothingToSay() throws Exception {
+        long now = System.currentTimeMillis();
+        write(snap(now).put("urgesToday", 1).put("zoneStreak", 1));
+        String big = text(posted(), Notification.EXTRA_BIG_TEXT);
+        assertTrue(big, big.contains("1 urge ridden out today") && !big.contains("1 urges"));
+        assertFalse("a streak of one is not worth a line", big.contains("in a row"));
+        write(snap(now).put("urgesToday", 0).put("zoneStreak", 0));
+        String plain = text(posted(), Notification.EXTRA_BIG_TEXT);
+        assertTrue(plain == null || (!plain.contains("ridden out") && !plain.contains("Today's")));
+    }
+
+    @Test
+    public void theCounterWakesWhenARedZoneEnds() throws Exception {
+        long now = System.currentTimeMillis();
+        JSONObject s = snap(now).put("zoneEnds", zoneEnd(now + 10 * MINUTE));
+        assertEquals(now + 10 * MINUTE + 1000, MomentumShade.nextTickAt(s, now));
+        JSONObject later = snap(now).put("zoneEnds", zoneEnd(now - 110 * MINUTE));
+        assertEquals("and when the question stops being worth asking", now - 110 * MINUTE + MomentumShade.HELD_WINDOW_MS + 1000, MomentumShade.nextTickAt(later, now));
+        assertEquals("with nothing to wake for, the usual quarter hour", now + MomentumShade.TICK_MS, MomentumShade.nextTickAt(snap(now), now));
     }
 
     // ---- the warning ---------------------------------------------------------------------

@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { BREAK_TEMPLATES, DAY_PRESETS, HABIT_TEMPLATES, PILLARS, PRIORITY, WEEKDAYS, pillarOf } from "../data/constants.js";
-import { formatTime12, todayStr } from "../lib/date.js";
+import { formatTime12, prettyDate, todayStr } from "../lib/date.js";
 import {
   describeEnd, describeRecurrence, endProgress, isDone, isFinished, isFlexible, occursOn, weekProgress,
   weeklyCountRule, weeklyRule,
@@ -34,7 +34,7 @@ const presetFor = (days, times) => (times
 
 export default function HabitsView({
   state, onAdd, onOpenTask, onBack, onSetSetting, onDuplicate, onArchive, onDelete, onMove, onRateHabit,
-  onAddPepNote, onRemovePepNote,
+  onAddPepNote, onRemovePepNote, onRemoveJot,
 }) {
   const { tasks, dayLog, settings, freezes, srbai = [] } = state;
   const today = todayStr();
@@ -378,6 +378,8 @@ export default function HabitsView({
               srbai={srbai} onRateHabit={onRateHabit} urgeLog={state.urgeLog || []} zoneLog={state.zoneLog || []}
               notes={kind === "break" ? notesFor(state, t.id) : undefined}
               onAddNote={onAddPepNote} onRemoveNote={onRemovePepNote}
+              jots={kind === "break" ? (state.quickNotes || []).filter((n) => n.taskId === t.id).sort((a, b) => b.at - a.at) : undefined}
+              onRemoveJot={onRemoveJot}
               onOpen={() => onOpenTask(t)} onMenu={() => setMenuFor(t.id)} />
           ))}
         </div>
@@ -522,7 +524,7 @@ export default function HabitsView({
   );
 }
 
-function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = [], zoneLog = [], notes, onAddNote, onRemoveNote, onOpen, onMenu, onRateHabit }) {
+function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = [], zoneLog = [], notes, onAddNote, onRemoveNote, jots, onRemoveJot, onOpen, onMenu, onRateHabit }) {
   const streak = habitStreakProtected(task, dayLog, freezes);
   const dueToday = occursOn(task, todayStr());
   const doneToday = dueToday && isDone(task, todayStr(), dayLog);
@@ -653,7 +655,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
 
       {kind === "break" && (
         <QuitRecord task={task} dayLog={dayLog} urgeLog={urgeLog} zoneLog={zoneLog}
-          notes={notes} onAddNote={onAddNote} onRemoveNote={onRemoveNote} />
+          notes={notes} onAddNote={onAddNote} onRemoveNote={onRemoveNote} jots={jots} onRemoveJot={onRemoveJot} />
       )}
 
       {kind === "build" && (milestone || reward) && (
@@ -672,7 +674,7 @@ function HabitCard({ task, kind, accent, dayLog, freezes, srbai = [], urgeLog = 
 // A rate beside the run, and the best run beside the current one. A streak that goes to zero
 // on one slip is the abstinence violation effect with a number on it; "22 of 24 recorded days"
 // is the same history told in a way one bad evening can't wipe out.
-function QuitRecord({ task, dayLog, urgeLog, zoneLog, notes = [], onAddNote, onRemoveNote }) {
+function QuitRecord({ task, dayLog, urgeLog, zoneLog, notes = [], onAddNote, onRemoveNote, jots = [], onRemoveJot }) {
   const rec = cleanRecord(task, dayLog);
   const since = fmtSince(Date.now() - (lastSlipAt(task, urgeLog) || Date.now()));
   const everSlipped = slipsOf(task, urgeLog).length > 0;
@@ -718,6 +720,17 @@ function QuitRecord({ task, dayLog, urgeLog, zoneLog, notes = [], onAddNote, onR
         </p>
       )}
       <RedZoneLine task={task} urgeLog={urgeLog} zoneLog={zoneLog} />
+      {jots.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ color: C.faint, fontSize: 10, fontWeight: 650, letterSpacing: 0.4, textTransform: "uppercase", margin: "0 0 5px" }}>Jotted from the notification</p>
+          {jots.slice(0, 3).map((n) => (
+            <p key={n.id} style={{ color: C.muted, fontSize: 12, lineHeight: 1.5, margin: "0 0 4px", display: "flex", gap: 6 }}>
+              <span style={{ flex: 1 }}>{n.text} <span style={{ color: C.faint }}>· {prettyDate(n.date)}</span></span>
+              {onRemoveJot && <button onClick={() => onRemoveJot(n.id)} aria-label="Delete this note" style={{ background: "none", border: "none", color: C.faint, cursor: "pointer", padding: 0 }}><X size={12} /></button>}
+            </p>
+          ))}
+        </div>
+      )}
       {onAddNote && <NotesToSelf task={task} urgeLog={urgeLog} notes={notes} onAdd={onAddNote} onRemove={onRemoveNote} />}
     </div>
   );

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { suite } from "./harness.mjs";
 import { PENDING_LAPSE_KEY, PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
-import { SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
+import { PENDING_HOLD_KEY, PENDING_NOTE_KEY, SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
 import { PATTERNS, hapticCycle } from "../src/lib/pacer.js";
 import { PENDING_PEP_KEY, PEP_KEY } from "../src/lib/pep.js";
 import { CAPTURE_KEY, PENDING_DRAFT_KEY, PENDING_TX_KEY, UNDO_TX_KEY } from "../src/lib/capture.js";
@@ -619,4 +619,21 @@ t.group("money capture");
   t.ok("so does every group of data", ["currency", "currencyCodes", "filler", "acronyms", "keywords", "incomeKeywords", "clean"].every((k) => k in P));
   const cleanNames = [...parse.matchAll(/data\.clean\.optString\("(\w+)"\)/g)].map((m) => m[1]);
   t.eq("and every cleaning pattern", [...new Set(cleanNames)].filter((n) => !(n in P.clean)), []);
+}
+
+t.group("the habit notification's extras");
+{
+  const shade = read("java/com/momentum/app/MomentumShade.java");
+  t.ok("the Java leaves holds and notes where the app collects them", shade.includes(`"${PENDING_HOLD_KEY}"`) && shade.includes(`"${PENDING_NOTE_KEY}"`));
+  const snapKeys = new Set(Object.keys(shadeSnapshot(
+    { tasks: [{ id: "a", kind: "break", text: "x", shadePin: 1, startDate: "2026-01-01", createdAt: 1, recurrence: { freq: "daily", interval: 1, weekdays: [], monthDay: null } }], urgeLog: [], settings: {} },
+    Date.now(), { zoneEnds: [], zoneStreak: 0, practice: null })));
+  const read2 = [...shade.matchAll(/s\.opt(?:String|Long|Int|Boolean|JSONArray|JSONObject)\("(\w+)"/g)].map((m) => m[1]);
+  t.eq("everything the Java reads from the snapshot, the app sends", [...new Set(read2)].filter((k) => !snapKeys.has(k)), []);
+  t.ok("the note box needs a mutable PendingIntent on Android 12 and up", /FLAG_MUTABLE/.test(shade) && /addRemoteInput/.test(shade));
+  t.ok("a reply redraws the notification, or its box keeps spinning", /handleNote[\s\S]*?refresh\(context\)/.test(shade));
+  t.ok("the held button wakes the counter when a zone ends", /zoneEnds/.test(shade) && /HELD_WINDOW_MS/.test(shade));
+  const strings2 = readFileSync(join(ROOT, "android", "app", "src", "main", "res", "values", "strings.xml"), "utf8");
+  const used2 = [...shade.matchAll(/R\.string\.(\w+)/g)].map((m) => m[1]);
+  t.eq("every string it uses is defined", [...new Set(used2)].filter((n) => !strings2.includes(`name="${n}"`)), []);
 }

@@ -13,7 +13,7 @@ import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { newSession } from "./lib/focus.js";
 import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
 import { drainActions } from "./lib/actionQueue.js";
-import { publishWidget, takePendingLapse, takePendingUrge } from "./lib/widget.js";
+import { publishWidget, takePendingHolds, takePendingLapse, takePendingNotes, takePendingUrge } from "./lib/widget.js";
 import { pinnedHabit, publishShade, setShadePin } from "./lib/shade.js";
 import { surfSettings } from "./lib/pacer.js";
 import { cleanDays, newPepNote, publishPep, takePendingPepNotes } from "./lib/pep.js";
@@ -601,6 +601,16 @@ export default function Momentum() {
     return { ...s, pepNotes: (s.pepNotes || []).filter((n) => n.id !== id), graveyard: bury(s.graveyard, id) };
   }), [show]);
 
+  const removeQuickNote = useCallback((id) => setState((s) => {
+    const victim = (s.quickNotes || []).find((n) => n.id === id);
+    if (victim) {
+      show("Note deleted", "Undo", () => setState((cur) => ({
+        ...cur, quickNotes: [...(cur.quickNotes || []), victim], graveyard: unbury(cur.graveyard, id),
+      })));
+    }
+    return { ...s, quickNotes: (s.quickNotes || []).filter((n) => n.id !== id), graveyard: bury(s.graveyard, id) };
+  }), [show]);
+
   // ---- Experiments ----
   const addExperiment = useCallback((exp) => {
     setState((s) => ({ ...s, experiments: [...(s.experiments || []), exp] }));
@@ -990,6 +1000,20 @@ export default function Momentum() {
       // The shade counter's I-slipped button opens the slip form for that habit, nothing logged yet.
       const lapse = await takePendingLapse();
       if (lapse) setUrging({ id: lapse, mode: "lapse" });
+      // What the habit notification took while the app was closed: red zones held, and lines typed into it.
+      (await takePendingHolds()).forEach((h) => holdZone(h.taskId, h.zone));
+      const known0 = new Set(tasksRef.current.map((t) => t.id));
+      const jotted = (await takePendingNotes()).filter((n) => known0.has(n.taskId));
+      if (jotted.length) {
+        setState((s) => ({
+          ...s,
+          quickNotes: [...(s.quickNotes || []), ...jotted.map((n) => ({
+            id: `qn-${Number(n.at || Date.now()).toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            taskId: n.taskId, text: String(n.text).trim().slice(0, 280), at: n.at || Date.now(), date: dstr(new Date(n.at || Date.now())),
+          }))],
+        }));
+        show(jotted.length === 1 ? "Kept the note from the notification" : `Kept ${jotted.length} notes from the notification`);
+      }
       const draft = await takeDraft();
       if (draft) { setMoneyDraft(draftForEditor(draft)); setView("money"); }
       // Notes typed into a notification's reply box while the app was closed.
@@ -1008,7 +1032,7 @@ export default function Momentum() {
       document.removeEventListener("visibilitychange", check);
       window.removeEventListener("momentumWidget", check);
     };
-  }, [loaded, addPepNote, show]);
+  }, [loaded, addPepNote, holdZone, show]);
 
   // ---- The break side ----
   // An urge ridden out is a win in its own right, so it's recorded as one — quitting is made
@@ -1197,7 +1221,7 @@ export default function Momentum() {
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
                 onDuplicate={duplicateTask} onArchive={setArchived} onDelete={removeTask}
                 onMove={moveTask} onRateHabit={(t) => setRating(t.id)}
-                onAddPepNote={addPepNote} onRemovePepNote={removePepNote} />
+                onAddPepNote={addPepNote} onRemovePepNote={removePepNote} onRemoveJot={removeQuickNote} />
             )}
             {view === "identity" && (
               <IdentityView state={state} tally={tally} onPatch={patch} onBack={() => setView("today")} />

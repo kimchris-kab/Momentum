@@ -1,3 +1,4 @@
+import { dstr } from "./date.js";
 import { isFinished } from "./tasks.js";
 import { lastSlipAt, lastUrgeAt, slipsOf, startedAt } from "./urges.js";
 
@@ -6,6 +7,10 @@ import { lastSlipAt, lastUrgeAt, slipsOf, startedAt } from "./urges.js";
 // Preferences, and works out the elapsed time itself each time it draws: a timestamp does not go
 // stale the way "4d 6h" does.
 export const SHADE_KEY = "momentum:shade";
+/** "I held it" tapped on the notification: [{ taskId, zone }] for the app to record. The Java writes this exact string. */
+export const PENDING_HOLD_KEY = "momentum:pendingHold";
+/** A note typed into the notification: [{ taskId, text, at }] for the app to keep. The Java writes this exact string. */
+export const PENDING_NOTE_KEY = "momentum:pendingNote";
 
 export const SHADE_MODES = [
   { id: "pinned", label: "The one I pinned", desc: "Only shows once you've pinned a habit" },
@@ -85,7 +90,7 @@ export function bestPastRunMs(task, urgeLog) {
   return best;
 }
 
-export function shadeSnapshot(state, now = Date.now(), { usualWindow, riskLevel, widgetZones } = {}) {
+export function shadeSnapshot(state, now = Date.now(), { usualWindow, riskLevel, widgetZones, zoneEnds, zoneStreak, practice } = {}) {
   const { hideOnLock } = shadeSettings(state.settings);
   const task = shadeHabit(state, now, { riskLevel });
   if (!task) return { show: false, updatedAt: now };
@@ -100,9 +105,18 @@ export function shadeSnapshot(state, now = Date.now(), { usualWindow, riskLevel,
     bestPastMs: bestPastRunMs(task, state.urgeLog),
     risk: usualWindow ? usualWindow(task, state, now) : null,
     zones: widgetZones && task.redZoneNudges !== false ? widgetZones(task) : [],
+    // Urges ridden out today, for a line of encouragement; the zones ending soon or just ended, for "I held it"; the run of zones held;
+    // and today's practice for the virtue being worked on, until it has been answered.
+    urgesToday: urgesRodeOutOn(task, state.urgeLog, dstr(new Date(now))),
+    zoneEnds: zoneEnds || [],
+    zoneStreak: zoneStreak || 0,
+    practice: practice || null,
     updatedAt: now,
   };
 }
+
+const urgesRodeOutOn = (task, urgeLog, date) =>
+  (urgeLog || []).filter((r) => r.taskId === task.id && r.kind === "urge" && r.outcome === "rode-out" && r.date === date).length;
 
 const prefs = () => (typeof window !== "undefined" ? window.Capacitor?.Plugins?.Preferences : null);
 
@@ -116,11 +130,25 @@ export async function publishShade(state, now = Date.now()) {
     usualWindow = radar.usualWindow;
     riskLevel = (t) => radar.radar(t, state, now).level;
   } catch { /* the shade goes without a risk line, and "riskiest" falls back */ }
-  let widgetZones;
+  let widgetZones, zoneEnds, zoneStreak;
+  const habit = shadeHabit(state, now, { riskLevel });
   if (state.tasks?.some((t) => t.redZones?.length)) {
-    try { widgetZones = (await import("./redzone.js")).widgetZones; } catch { /* nor its red zones */ }
+    try {
+      const rz = await import("./redzone.js");
+      widgetZones = rz.widgetZones;
+      if (habit) { zoneEnds = rz.shadeZoneEnds(state, habit, now); zoneStreak = rz.zoneStats(state, habit, now).streak; }
+    } catch { /* nor its red zones */ }
   }
-  const snapshot = shadeSnapshot(state, now, { usualWindow, riskLevel, widgetZones });
+  let practice = null;
+  if (state.virtue?.id) {
+    try {
+      const v = await import("./virtue.js");
+      const active = v.activeVirtue(state);
+      const today = dstr(new Date(now));
+      if (active && !v.entryFor(state, active.id, today)) practice = { name: active.name, text: v.practiceFor(active, today) };
+    } catch { /* nor the day's practice */ }
+  }
+  const snapshot = shadeSnapshot(state, now, { usualWindow, riskLevel, widgetZones, zoneEnds, zoneStreak, practice });
   try {
     await p.set({ key: SHADE_KEY, value: JSON.stringify(snapshot) });
     await window.Capacitor?.Plugins?.MomentumShade?.refresh?.().catch?.(() => {});

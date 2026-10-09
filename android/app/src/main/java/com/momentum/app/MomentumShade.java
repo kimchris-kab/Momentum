@@ -10,13 +10,18 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.RemoteInput;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The habit counter in the notification shade: one habit's clean time, silent and always there,
@@ -46,6 +51,20 @@ public class MomentumShade extends BroadcastReceiver {
     static final String SLIP_HOST = "slip";
     /** A habit's window counts as "soon" from this many minutes before it opens. */
     static final int WARN_MINUTES = 60;
+    /** "I held it" tapped on the notification, and a line typed into it. */
+    static final String ACTION_HELD = "com.momentum.app.SHADE_HELD";
+    static final String ACTION_NOTE = "com.momentum.app.SHADE_NOTE";
+    /** Must match PENDING_HOLD_KEY and PENDING_NOTE_KEY in src/lib/shade.js. */
+    static final String PENDING_HOLD_KEY = "momentum:pendingHold";
+    static final String PENDING_NOTE_KEY = "momentum:pendingNote";
+    static final String NOTE_KEY = "shade_note";
+    static final String SCHEME = "momentum-shade";
+    static final int MAX_PENDING = 50;
+    static final int MAX_NOTE = 280;
+    /** How long after a red zone ends the notification still asks whether it was held. */
+    static final long HELD_WINDOW_MS = 2 * 60 * 60_000L;
+    /** Which zones were answered here, until the app has heard and stops sending them. */
+    private static final String OWN = "momentum_shade_answers";
 
     private static final int COLOR_CALM = 0xFF5FC7C0;
     private static final int COLOR_WARN = 0xFFE8B75D;
@@ -57,7 +76,11 @@ public class MomentumShade extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
-        if (TICK_ACTION.equals(action)
+        if (ACTION_HELD.equals(action)) {
+            handleHeld(context, intent);
+        } else if (ACTION_NOTE.equals(action)) {
+            handleNote(context, intent);
+        } else if (TICK_ACTION.equals(action)
                 || Intent.ACTION_BOOT_COMPLETED.equals(action)
                 || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             refresh(context);
@@ -180,6 +203,15 @@ public class MomentumShade extends BroadcastReceiver {
             MomentumWidget.Risk r = MomentumWidget.riskOf(s, now);
             if (r != null) lines.add((r.zone ? "Your red zone is " : "Urges usually come ") + riskRange(r) + ".");
         }
+        // What the day has held so far, and what is worth doing with the rest of it.
+        int urges = s.optInt("urgesToday", 0);
+        if (urges > 0) lines.add(urges + (urges == 1 ? " urge" : " urges") + " ridden out today");
+        int streak = s.optInt("zoneStreak", 0);
+        if (streak >= 2) lines.add(streak + " red zones held in a row");
+        JSONObject practice = s.optJSONObject("practice");
+        if (practice != null && !practice.optString("text", "").isEmpty()) {
+            lines.add("Today's " + practice.optString("name", "practice").toLowerCase() + ": " + practice.optString("text"));
+        }
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < lines.size(); i++) {
             if (i > 0) out.append('\n');
@@ -207,6 +239,88 @@ public class MomentumShade extends BroadcastReceiver {
         return out.toString();
     }
 
+    // ---- A red zone that has just ended ----
+
+    private static Set<String> answeredHere(Context context) {
+        return new HashSet<>(context.getSharedPreferences(OWN, Context.MODE_PRIVATE).getStringSet("held", new HashSet<>()));
+    }
+
+    /**
+     * The red zone, as "zone@date", whose end is recent and has no answer: for the two hours after it ends, "I held it" takes the place of the
+     * Urge button, because the hard part is over and the question is how it went. Null when there is none.
+     */
+    static String heldKey(Context context, JSONObject s, long now) {
+        JSONArray ends = s.optJSONArray("zoneEnds");
+        if (ends == null) return null;
+        Set<String> answered = context == null ? new HashSet<String>() : answeredHere(context);
+        String best = null;
+        long bestEnd = 0;
+        for (int i = 0; i < ends.length(); i++) {
+            JSONObject e = ends.optJSONObject(i);
+            if (e == null) continue;
+            String key = e.optString("key", "");
+            long endAt = e.optLong("endAt", 0L);
+            if (key.isEmpty() || endAt <= 0 || endAt > now || now - endAt > HELD_WINDOW_MS || answered.contains(key)) continue;
+            if (endAt >= bestEnd) { best = key; bestEnd = endAt; }
+        }
+        return best;
+    }
+
+    /** Adds one row to a list the web app collects the next time it opens. */
+    private static void appendPending(Context context, String key, JSONObject row) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        try {
+            JSONArray all = new JSONArray(prefs.getString(key, "[]"));
+            all.put(row);
+            JSONArray kept = new JSONArray();
+            for (int i = Math.max(0, all.length() - MAX_PENDING); i < all.length(); i++) kept.put(all.get(i));
+            prefs.edit().putString(key, kept.toString()).commit();
+        } catch (Exception ignored) { }
+    }
+
+    static JSONArray pendingList(Context context, String key) {
+        try {
+            return new JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, "[]"));
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    /** "I held it": kept for the app to record, and the button goes away at once rather than when the app next opens. */
+    static void handleHeld(Context context, Intent intent) {
+        String taskId = intent.getStringExtra("taskId");
+        String zone = intent.getStringExtra("zone");
+        if (taskId != null && !taskId.isEmpty() && zone != null && zone.contains("@")) {
+            try {
+                appendPending(context, PENDING_HOLD_KEY, new JSONObject().put("taskId", taskId).put("zone", zone).put("at", System.currentTimeMillis()));
+            } catch (Exception ignored) { }
+            SharedPreferences own = context.getSharedPreferences(OWN, Context.MODE_PRIVATE);
+            Set<String> held = answeredHere(context);
+            if (held.size() > 60) held.clear();
+            held.add(zone);
+            own.edit().putStringSet("held", held).commit();
+        }
+        refresh(context);
+    }
+
+    /**
+     * A line typed into the notification, kept with the habit it was for. Redrawing the notification is what ends the reply box's spinner,
+     * so it happens whether or not anything was written.
+     */
+    static void handleNote(Context context, Intent intent) {
+        Bundle results = RemoteInput.getResultsFromIntent(intent);
+        CharSequence typed = results == null ? null : results.getCharSequence(NOTE_KEY);
+        String taskId = intent.getStringExtra("taskId");
+        String text = typed == null ? "" : typed.toString().trim();
+        if (text.length() > MAX_NOTE) text = text.substring(0, MAX_NOTE);
+        if (taskId != null && !taskId.isEmpty() && !text.isEmpty()) {
+            try {
+                appendPending(context, PENDING_NOTE_KEY, new JSONObject().put("taskId", taskId).put("text", text).put("at", System.currentTimeMillis()));
+            } catch (Exception ignored) { }
+        }
+        refresh(context);
+    }
+
     // ---- The notification ----
 
     private static PendingIntent action(Context context, String host, String id, int requestCode) {
@@ -218,6 +332,25 @@ public class MomentumShade extends BroadcastReceiver {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         return PendingIntent.getActivity(context, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static PendingIntent heldIntent(Context context, String id, String zone) {
+        Intent held = new Intent(context, MomentumShade.class).setAction(ACTION_HELD)
+                .setData(new Uri.Builder().scheme(SCHEME).authority("held").appendPath(id).appendPath(zone).build())
+                .putExtra("taskId", id).putExtra("zone", zone);
+        return PendingIntent.getBroadcast(context, 203, held, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static NotificationCompat.Action noteAction(Context context, String id) {
+        RemoteInput input = new RemoteInput.Builder(NOTE_KEY).setLabel(context.getString(R.string.shade_note_label)).build();
+        Intent note = new Intent(context, MomentumShade.class).setAction(ACTION_NOTE)
+                .setData(new Uri.Builder().scheme(SCHEME).authority("note").appendPath(id).build())
+                .putExtra("taskId", id);
+        // A reply box fills the intent in as it sends, which only a mutable PendingIntent can be.
+        int mutable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
+        PendingIntent pi = PendingIntent.getBroadcast(context, 204, note, PendingIntent.FLAG_UPDATE_CURRENT | mutable);
+        return new NotificationCompat.Action.Builder(0, context.getString(R.string.shade_action_note), pi)
+                .addRemoteInput(input).setAllowGeneratedReplies(false).build();
     }
 
     static android.app.Notification build(Context context, JSONObject s, long now) {
@@ -250,8 +383,13 @@ public class MomentumShade extends BroadcastReceiver {
             b.setShowWhen(true).setWhen(last).setUsesChronometer(true);
         }
 
-        b.addAction(0, context.getString(R.string.shade_action_urge), action(context, MomentumWidget.URGE_HOST, id, 200));
+        // The buttons follow the hour. Mostly: ride out an urge, or say you slipped. Just after a red zone ends, the question is how it went, so
+        // "I held it" takes the place of the first. And a line can always be typed, for what was going on.
+        String held = heldKey(context, s, now);
+        if (held != null) b.addAction(0, context.getString(R.string.shade_action_held), heldIntent(context, id, held));
+        else b.addAction(0, context.getString(R.string.shade_action_urge), action(context, MomentumWidget.URGE_HOST, id, 200));
         b.addAction(0, context.getString(R.string.shade_action_slipped), action(context, SLIP_HOST, id, 201));
+        b.addAction(noteAction(context, id));
 
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (launch != null) {
@@ -291,6 +429,17 @@ public class MomentumShade extends BroadcastReceiver {
         long next = now + TICK_MS;
         long last = lastSlip(s);
         if (last > 0 && now >= last && now - last < HOUR) next = Math.min(next, last + HOUR + 1000);
+        // Wake when a red zone ends, so "I held it" appears when it should, and again when the question stops being worth asking.
+        JSONArray ends = s.optJSONArray("zoneEnds");
+        if (ends != null) {
+            for (int i = 0; i < ends.length(); i++) {
+                JSONObject e = ends.optJSONObject(i);
+                if (e == null) continue;
+                long endAt = e.optLong("endAt", 0L);
+                if (endAt + 1000 > now) next = Math.min(next, endAt + 1000);
+                else if (endAt + HELD_WINDOW_MS + 1000 > now) next = Math.min(next, endAt + HELD_WINDOW_MS + 1000);
+            }
+        }
         return next;
     }
 

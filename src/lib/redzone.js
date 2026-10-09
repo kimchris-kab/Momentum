@@ -342,6 +342,19 @@ export function holdResult(state, taskId, zone) {
 
 // ---- The widget and the shade ----
 
+/**
+ * When this habit's red zones end, for the notification in the shade to ask "did you hold?" at the right moment without the app being
+ * open: every occurrence that ended in the last two hours or ends in the next day and a half and has no answer yet, as the same
+ * "zone@date" key the app files an answer under.
+ */
+export function shadeZoneEnds(state, task, now = Date.now()) {
+  if (task.redZoneNudges === false) return [];
+  return occurrences(task, now - 3 * 3600000, now + 36 * 3600000)
+    .filter((o) => o.end > now - 2 * 3600000 && outcomeOf(state, task, o) === "open")
+    .map((o) => ({ key: `${o.zoneId}@${o.date}`, endAt: o.end }))
+    .sort((a, b) => a.endAt - b.endAt);
+}
+
 /** A habit's zones for the Android side to count down to: days as 0 = Sunday, times as minutes into the day. */
 export const widgetZones = (task) =>
   zonesOf(task).map((z) => ({

@@ -101,6 +101,23 @@ export const takePendingUrge = () => takeKey(PENDING_URGE_KEY);
 /** The same for an I-slipped tapped on the shade counter: the habit whose slip form should open. */
 export const takePendingLapse = () => takeKey(PENDING_LAPSE_KEY);
 
+/** What the shade notification left while the app was closed: red zones held, and notes typed into it. Each read once, then cleared. */
+async function takeList(key) {
+  const p = prefs();
+  if (!p?.get) return [];
+  try {
+    const { value } = await p.get({ key });
+    if (!value) return [];
+    await p.remove({ key });
+    const rows = JSON.parse(value);
+    return Array.isArray(rows) ? rows : [];
+  } catch { return []; }
+}
+export const takePendingHolds = async () => (await takeList("momentum:pendingHold"))
+  .filter((r) => r && typeof r.taskId === "string" && typeof r.zone === "string" && r.zone.includes("@"));
+export const takePendingNotes = async () => (await takeList("momentum:pendingNote"))
+  .filter((r) => r && typeof r.taskId === "string" && typeof r.text === "string" && r.text.trim());
+
 /**
  * Writes the snapshot and asks the widget to redraw. A no-op on the web, where there is no
  * home screen to draw on — so callers don't need to know which platform they're on.

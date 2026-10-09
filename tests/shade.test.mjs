@@ -1,5 +1,5 @@
 import { suite } from "./harness.mjs";
-import { SHADE_MODES, bestPastRunMs, pinnedHabit, setShadePin, shadeHabit, shadeSettings, shadeSnapshot } from "../src/lib/shade.js";
+import { PENDING_HOLD_KEY, PENDING_NOTE_KEY, SHADE_MODES, bestPastRunMs, pinnedHabit, setShadePin, shadeHabit, shadeSettings, shadeSnapshot } from "../src/lib/shade.js";
 import { newTask, weeklyRule } from "../src/lib/tasks.js";
 import { startedAt } from "../src/lib/urges.js";
 
@@ -102,4 +102,38 @@ t.group("the snapshot");
   const long = shadeSnapshot(st({ tasks: [quit("a", { shadePin: 1, text: "x".repeat(60) })] }), NOW);
   t.ok("a long name is cut so the notification stays one line", long.name.length === 40 && long.name.endsWith("…"));
   t.ok("never slipped is recorded as never slipped", shadeSnapshot(st({ tasks: [quit("a", { shadePin: 1 })] }), NOW).everSlipped === false);
+}
+
+t.group("what else the notification can say");
+{
+  const today = "2026-10-06";
+  const pinned = quit("a", { shadePin: 1, text: "Doomscrolling" });
+  const rode = (n) => Array.from({ length: n }, (_, i) => ({ id: `u${i}`, taskId: "a", kind: "urge", outcome: "rode-out", at: NOW - i * 1000, date: today }));
+  const base = st({ tasks: [pinned], urgeLog: [lapse("a", 4), ...rode(2), { id: "x", taskId: "a", kind: "urge", outcome: "gave-in", at: NOW - 5000, date: today }, { id: "y", taskId: "a", kind: "urge", outcome: "rode-out", at: NOW - DAY, date: "2026-10-05" }] });
+  t.eq("urges ridden out today, and only today's, and only the ones ridden out", shadeSnapshot(base, NOW).urgesToday, 2);
+  t.eq("none is zero", shadeSnapshot(st({ tasks: [pinned] }), NOW).urgesToday, 0);
+  t.eq("zones ending soon default to none", shadeSnapshot(base, NOW).zoneEnds, []);
+  t.eq("and no streak", shadeSnapshot(base, NOW).zoneStreak, 0);
+  t.eq("and no practice", shadeSnapshot(base, NOW).practice, null);
+  const full = shadeSnapshot(base, NOW, { zoneEnds: [{ key: "z1@2026-10-06", endAt: NOW + 3600000 }], zoneStreak: 4, practice: { name: "Patience", text: "Take one slow breath." } });
+  t.eq("what the app works out is passed along", [full.zoneEnds.length, full.zoneStreak, full.practice.name], [1, 4, "Patience"]);
+  t.eq("the pending lists have the strings the Java writes", [PENDING_HOLD_KEY, PENDING_NOTE_KEY], ["momentum:pendingHold", "momentum:pendingNote"]);
+}
+
+t.group("zones ending, for 'I held it'");
+{
+  const { newZone, shadeZoneEnds } = await import("../src/lib/redzone.js");
+  const zone = newZone({ id: "z1", days: EVERY_DAY, from: "22:00", to: "00:00" });
+  const habit = quit("a", { shadePin: 1, redZones: [zone] });
+  const at = (iso) => new Date(iso).getTime();
+  const state = (log = []) => ({ tasks: [habit], urgeLog: [], zoneLog: log, settings: {} });
+  const ends = shadeZoneEnds(state(), habit, at("2026-10-06T23:00:00"));
+  t.eq("the zone that is running now ends at midnight", ends[0], { key: "z1@2026-10-06", endAt: at("2026-10-07T00:00:00") });
+  t.ok("and the next one ends a day later", ends.some((e) => e.key === "z1@2026-10-07"));
+  t.eq("a zone that ended an hour ago is still there to be answered", shadeZoneEnds(state(), habit, at("2026-10-07T01:00:00"))[0].key, "z1@2026-10-06");
+  t.ok("not once it is three hours old", !shadeZoneEnds(state(), habit, at("2026-10-07T03:30:00")).some((e) => e.key === "z1@2026-10-06"));
+  const held = [{ id: "zh:a:z1:2026-10-06", taskId: "a", zoneId: "z1", date: "2026-10-06", kind: "held", at: 1 }];
+  t.ok("once held, it is not offered again", !shadeZoneEnds(state(held), habit, at("2026-10-07T01:00:00")).some((e) => e.key === "z1@2026-10-06"));
+  t.eq("a habit that has switched its zone notifications off sends none", shadeZoneEnds(state(), { ...habit, redZoneNudges: false }, at("2026-10-06T23:00:00")), []);
+  t.eq("a habit with no zones sends none", shadeZoneEnds(state(), quit("b"), at("2026-10-06T23:00:00")), []);
 }

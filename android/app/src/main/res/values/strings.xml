@@ -17,6 +17,9 @@
     <string name="shade_channel_description">A quiet, always-there counter for the habit you most want to break</string>
     <string name="shade_action_urge">Urge</string>
     <string name="shade_action_slipped">I slipped</string>
+    <string name="shade_action_held">I held it</string>
+    <string name="shade_action_note">Note</string>
+    <string name="shade_note_label">What\'s going on?</string>
     <string name="shade_private_title">Counter</string>
     <string name="shade_fresh_start">Fresh start</string>
     <string name="pep_channel_name">Notes to yourself</string>

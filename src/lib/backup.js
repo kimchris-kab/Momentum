@@ -55,6 +55,7 @@ export function summarise(data) {
     ["Temper log entries", count(data.temperLog)],
     ["Letters to yourself", count(data.letters)],
     ["Evening examens", count(data.examenLog)],
+    ["Notes from the notification", count(data.quickNotes)],
   ];
   return rows.filter(([, n]) => n > 0);
 }
