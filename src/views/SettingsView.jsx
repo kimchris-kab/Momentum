@@ -781,8 +781,12 @@ function CaptureSettings({ settings, onSetSetting }) {
               <Switch on={cfg.read} label="Read payment messages" onClick={() => set({ read: !cfg.read })} />
             </Row>
           </div>
-          {cfg.read && (
-            <>
+          {cfg.read && status && status.canRead === false && (
+            <p style={{ borderTop: `1px solid ${C.border}`, color: C.faint, fontSize: 11.5, lineHeight: 1.6, margin: 0, padding: "11px 0 2px" }}>
+              This copy of the app was built without reading texts and notifications, because Google Play Protect won't install apps from a file that can. Typing a payment, and the quick-spend notification, work as normal.
+            </p>
+          )}
+          {cfg.read && status?.canRead !== false && (
               <div style={{ borderTop: `1px solid ${C.border}`, padding: "11px 0" }}>
                 <p style={{ color: C.text, fontSize: 13.5, margin: "0 0 8px" }}>Allow it to see them</p>
                 <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.55, margin: "0 0 9px" }}>

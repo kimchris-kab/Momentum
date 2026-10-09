@@ -2,7 +2,9 @@ package com.momentum.app;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.provider.Settings;
 
 import androidx.core.app.NotificationManagerCompat;
@@ -34,9 +36,30 @@ public class MomentumMoneyPlugin extends Plugin {
         call.resolve();
     }
 
+    /**
+     * Does this install include the parts that read texts and notifications at all? A "lite" build leaves them out of its manifest, because
+     * Google Play Protect refuses to install a sideloaded app that asks for them.
+     */
+    private boolean canRead() {
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            PackageInfo info = pm.getPackageInfo(getContext().getPackageName(), PackageManager.GET_PERMISSIONS);
+            boolean sms = false;
+            if (info.requestedPermissions != null) {
+                for (String p : info.requestedPermissions) if (Manifest.permission.RECEIVE_SMS.equals(p)) sms = true;
+            }
+            Intent probe = new Intent("android.service.notification.NotificationListenerService").setPackage(getContext().getPackageName());
+            java.util.List<ResolveInfo> services = pm.queryIntentServices(probe, 0);
+            return sms && !services.isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private JSObject statusObject() {
         JSObject o = new JSObject();
         o.put("sms", ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED);
+        o.put("canRead", canRead());
         o.put("listener", NotificationManagerCompat.getEnabledListenerPackages(getContext()).contains(getContext().getPackageName()));
         return o;
     }
@@ -48,6 +71,10 @@ public class MomentumMoneyPlugin extends Plugin {
 
     @PluginMethod
     public void requestSms(PluginCall call) {
+        if (!canRead()) {
+            call.resolve(statusObject());
+            return;
+        }
         if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
             call.resolve(statusObject());
             return;

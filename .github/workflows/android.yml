@@ -115,7 +115,32 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: momentum-debug-apk
-          path: momentum-*-debug.apk
+          path: momentum-[0-9a-f]*-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # The "lite" APK: the same app, signed with the same key, without the two things Google Play Protect refuses to
+      # install from a file: permission to receive texts, and a notification listener. It updates, and is updated by,
+      # the full one. The manifest is edited in place and put back afterwards.
+      - name: Build the lite APK (no text or notification reading)
+        run: |
+          python3 .github/scripts/make-lite-manifest.py android/app/src/main/AndroidManifest.xml
+          cd android && ./gradlew assembleDebug --stacktrace --no-daemon
+          cd .. && git checkout -- android/app/src/main/AndroidManifest.xml
+          cp android/app/build/outputs/apk/debug/app-debug.apk "momentum-lite-${GITHUB_SHA::7}-debug.apk"
+
+      - name: Check the lite APK really asks for neither
+        run: |
+          out="$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump permissions momentum-lite-*-debug.apk)"
+          echo "$out"
+          if echo "$out" | grep -q "RECEIVE_SMS"; then echo "lite APK still asks to receive texts"; exit 1; fi
+          if "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree --file AndroidManifest.xml momentum-lite-*-debug.apk | grep -q "NotificationListenerService"; then echo "lite APK still has the listener"; exit 1; fi
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs momentum-lite-*-debug.apk | grep -E "certificate SHA-256 digest"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: momentum-lite-apk
+          path: momentum-lite-*-debug.apk
           if-no-files-found: error
           retention-days: 30
 
