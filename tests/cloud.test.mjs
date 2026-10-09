@@ -134,6 +134,10 @@ t.group("when to push");
   t.eq("no row at all", remoteFacts(null), { exists: false, weight: null, stamp: null });
   t.eq("a row of unknown size is known to exist, at least",
     remoteFacts({ updated_at: "x" }), { exists: true, weight: null, stamp: "x" });
+  // The row couldn't be looked up (a bad connection looks like "no backup"): an empty device must still save nothing.
+  const blind = pushDecision({ state: emptyState(), remote: remoteFacts(null), now });
+  t.eq("an empty device never pushes on its own, even when it can't see the backup", [blind.push, blind.reason], [false, "nothing-to-save"]);
+  t.ok("...unless it is told to", pushDecision({ state: emptyState(), remote: remoteFacts(null), now, force: true }).push);
   const unknownSize = pushDecision({ state: emptyState(), remote: remoteFacts({ updated_at: "x" }), now });
   t.eq("an empty device still refuses to overwrite a backup of unknown size",
     unknownSize.reason, "empty-local");

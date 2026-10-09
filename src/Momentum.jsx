@@ -206,6 +206,7 @@ export default function Momentum() {
     readConfig(import.meta.env || {}, readLocal(CONFIG_KEY)));
   const [cloudSession, setCloudSession] = useState(() => readLocal(SESSION_KEY));
   const [cloudMeta, setCloudMeta] = useState(null);
+  const [cloudError, setCloudError] = useState(null);
   // "Not now" on the backup card holds it back for two weeks, then it asks once more.
   const [backupNudgeOff, setBackupNudgeOff] = useState(() => Date.now() - (Number(readLocal(NUDGE_KEY)) || 0) < NUDGE_QUIET_MS);
   const dismissBackupNudge = () => { writeLocal(NUDGE_KEY, Date.now()); setBackupNudgeOff(true); };
@@ -284,8 +285,9 @@ export default function Momentum() {
         // Ask the row when it was last written before deciding anything. Without this the
         // check is against whatever this device happened to see at sign-in, which is exactly
         // the stale answer that lets two phones overwrite each other.
-        const head = await headBackup(cloudConfig, live).catch(() => cloudMeta);
-        if (head) setCloudMeta(head);
+        // If the row can't be read, stop: guessing "there is no backup" is how a fresh phone's emptiness replaces a real one.
+        const head = await headBackup(cloudConfig, live);
+        setCloudMeta(head);
         const decision = pushDecision({ state, lastPush, remote: remoteFacts(head) });
 
         // The other device has written since this one last looked. Take their copy, fold it
@@ -304,9 +306,10 @@ export default function Momentum() {
             if (decision.reason === "empty-local") show("Welcome back — your backup is restored.");
           }
           setLastPush({ fingerprint: null, at: null, remoteStamp: head?.updated_at || null });
+          setCloudError(null);
           return;
         }
-        if (!decision.push) return;
+        if (!decision.push) { setCloudError(null); return; }
 
         const row = await pushBackup(cloudConfig, live, {
           payload: backupBody(state),
@@ -315,10 +318,13 @@ export default function Momentum() {
           items: weigh(state),
         });
         setCloudMeta(row);
+        setCloudError(null);
         setLastPush({
           fingerprint: decision.fingerprint, at: Date.now(), remoteStamp: row?.updated_at || null,
         });
       } catch (e) {
+        // Not an interruption, but not a secret either: Settings says what went wrong and when.
+        if (e?.kind !== "offline") setCloudError({ message: e?.message || String(e), at: Date.now() });
         // A failed backup is not worth interrupting anyone over — the data is still here,
         // and Settings shows the real state of things.
         if (e?.kind === "auth") {
@@ -1160,7 +1166,8 @@ export default function Momentum() {
                 onAnswerVirtue={answerVirtue} onOpenCharacter={() => openCharacter("virtue")} onOpenTemper={() => openCharacter("temper")}
                 onOpenLetter={(id) => openCharacter("letters", id)} onOpenExamen={() => openCharacter("examen")} onOpenWeek={() => openCharacter("week")}
                 onDismissCharacterTeaser={() => patch({ settings: { ...state.settings, virtueTeaserDismissed: true } })}
-                backupNudge={isConfigured(cloudConfig) && !cloudSession?.user?.id && !backupNudgeOff && weigh(state) > 0}
+                backupNudge={isConfigured(cloudConfig) && !cloudSession?.user?.id && !backupNudgeOff}
+                backupRestore={weigh(state) === 0}
                 onOpenBackup={() => setView("settings")}
                 onDismissBackupNudge={dismissBackupNudge}
                 onDismissExperimentTeaser={() => patch({ settings: { ...state.settings, experimentsTeaserDismissed: true } })}
@@ -1304,6 +1311,7 @@ export default function Momentum() {
                   config: cloudConfig,
                   session: cloudSession,
                   meta: cloudMeta,
+                  error: cloudError,
                   lastPush,
                   onSaveConfig: (next) => {
                     writeLocal(CONFIG_KEY, next.url ? next : null);

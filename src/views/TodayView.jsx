@@ -57,7 +57,7 @@ export default function TodayView({
   comebacks = [], onAckComebacks, startSmall, woopNeeded = [], onStartWoop,
   onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
   onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser, onAddPepNote, onHoldZone,
-  backupNudge, onOpenBackup, onDismissBackupNudge,
+  backupNudge, backupRestore, onOpenBackup, onDismissBackupNudge,
   onLogSpend, onAnswerVirtue, onOpenCharacter, onOpenTemper, onOpenLetter, onOpenExamen, onOpenWeek, onDismissCharacterTeaser,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
@@ -220,12 +220,16 @@ export default function TodayView({
 
       {backupNudge && onOpenBackup && (
         <Card style={{ borderColor: alpha(C.gold, 0.3) }}>
-          <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>Keep a copy off this phone</p>
+          <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>
+            {backupRestore ? "New phone? Get your data back" : "Keep a copy off this phone"}
+          </p>
           <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "5px 0 0" }}>
-            Sign in once and everything backs up by itself. A lost or new phone then gets it all back.
+            {backupRestore
+              ? "Sign in with the account you backed up with and everything comes back by itself."
+              : "Sign in once and everything backs up by itself. A lost or new phone then gets it all back."}
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
-            <button onClick={onOpenBackup} style={{ ...styles.cta, height: 40, flex: 1, fontSize: 13 }}>Turn it on</button>
+            <button onClick={onOpenBackup} style={{ ...styles.cta, height: 40, flex: 1, fontSize: 13 }}>{backupRestore ? "Sign in" : "Turn it on"}</button>
             <button onClick={onDismissBackupNudge} style={{ ...styles.linkBtn, color: C.faint, width: 80 }}>Not now</button>
           </div>
         </Card>

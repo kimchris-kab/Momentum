@@ -16,7 +16,7 @@ import { SectionLabel } from "./ui.jsx";
 
 // The one place a person can see whether their data exists anywhere but this phone.
 export default function CloudBackup({
-  state, config, session, meta, onSaveConfig, onSession, onMeta, onPushed, onRestore, lastPush,
+  state, config, session, meta, error: lastError, onSaveConfig, onSession, onMeta, onPushed, onRestore, lastPush,
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -96,6 +96,20 @@ export default function CloudBackup({
     const decision = pushDecision({ state, lastPush, remote: remoteFacts(head), force });
     if (!decision.push && decision.needsConfirmation) {
       setConfirmShrink({ local: decision.local, remote: decision.remote });
+      return;
+    }
+    // An empty phone has nothing to back up, and a backup is waiting: bring it down, never the other way round.
+    if (decision.reason === "empty-local") {
+      const pulled = await pullBackup(config, live);
+      const theirs = pulled?.data ? stateFromCloud(unwrap(pulled.data)) : null;
+      if (!theirs) throw new Error("There's a backup in this account but it couldn't be read. Nothing has been changed.");
+      onRestore(mergeStates(state, theirs));
+      onPushed?.({ fingerprint: null, at: null, remoteStamp: head?.updated_at || null });
+      setNotice("Welcome back — your backup is restored.");
+      return;
+    }
+    if (decision.reason === "nothing-to-save") {
+      setNotice(head ? "There's nothing on this phone to back up yet. The backup in your account is untouched." : "Nothing on this phone to back up yet.");
       return;
     }
     // Someone else has written since this device last looked. Backing up now would put a
@@ -257,8 +271,14 @@ export default function CloudBackup({
                 <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.5, margin: "4px 0 0" }}>
                   {session.user.email}
                   {meta?.device ? ` · last from ${meta.device}` : ""}
+                  {typeof meta?.item_count === "number" ? ` · ${meta.item_count} item${meta.item_count === 1 ? "" : "s"} saved` : ""}
                   {unsaved ? " · changes not backed up yet" : ""}
                 </p>
+                {lastError?.message && (
+                  <p role="alert" style={{ color: C.red, fontSize: 11.5, lineHeight: 1.5, margin: "6px 0 0" }}>
+                    The last automatic backup failed: {lastError.message}
+                  </p>
+                )}
               </div>
             </div>
 

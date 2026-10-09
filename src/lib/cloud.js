@@ -106,6 +106,11 @@ export function pushDecision({
     // everything. Restoring is what's wanted here, and it's the opposite direction.
     return { push: false, reason: "empty-local", needsConfirmation: false, fingerprint: print };
   }
+  // Nothing here is worth saving, and a backup of nothing is only ever a way to lose something: whether the row exists is
+  // not known for sure (a failed lookup looks the same as "no row"), so an empty device saves nothing on its own.
+  if (local === 0 && !force) {
+    return { push: false, reason: "nothing-to-save", needsConfirmation: false, fingerprint: print };
+  }
   // The other device has written since this one last saw the row. Pushing now would put a
   // copy that never contained their work on top of it, and the shrink guard only catches
   // that when the two differ by a quarter — which two active devices rarely do. Merge first,
