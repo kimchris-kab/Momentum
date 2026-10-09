@@ -1188,6 +1188,7 @@ export default function Momentum() {
                 onSetSetting={(k, v) => patch({ settings: { ...state.settings, [k]: v } })}
                 onUpdateTask={updateTask}
                 onRestore={restoreState}
+                onOpenCharacter={openCharacter}
                 cloud={{
                   config: cloudConfig,
                   session: cloudSession,

@@ -17,8 +17,8 @@ export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, o
   if (!cfg.on) return null;
 
   if (!active) {
-    // Not on a first day: Today already has plenty to say to someone who has only just arrived.
-    if (state.settings?.virtueTeaserDismissed || Object.keys(state.dayLog || {}).length < 3) return null;
+    // Not before there is anything on Today at all: someone who has only just arrived has plenty to read already.
+    if (state.settings?.virtueTeaserDismissed || (!(state.tasks || []).length && !Object.keys(state.dayLog || {}).length)) return null;
     return (
       <div style={{ ...styles.card, borderColor: alpha(TONE, 0.3) }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

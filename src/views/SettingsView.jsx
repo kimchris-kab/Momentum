@@ -94,7 +94,7 @@ const TimeInput = ({ value, onChange, label }) => (
 );
 
 export default function SettingsView({
-  state, onBack, onSetSetting, onUpdateTask, onRestore, cloud,
+  state, onBack, onSetSetting, onUpdateTask, onRestore, cloud, onOpenCharacter,
 }) {
   const { tasks, settings, srbai = [] } = state;
   const notify = useMemo(() => notifySettings(settings), [settings]);
@@ -504,6 +504,16 @@ export default function SettingsView({
         </Row>
         {virtue.on && (
           <>
+            {onOpenCharacter && (
+              <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px 0 4px" }}>
+                <button onClick={() => onOpenCharacter("virtue")} style={{ ...styles.cta, height: 44, fontSize: 13.5 }}>
+                  Open Character
+                </button>
+                <button onClick={() => onOpenCharacter("temper")} style={{ ...styles.linkBtn, margin: "10px auto 0", color: C.faint }}>
+                  Go to the temper log
+                </button>
+              </div>
+            )}
             <div style={{ borderTop: `1px solid ${C.border}` }}>
               <Row label="Notifications"
                 desc="The day's practice in the morning, and in the evening a question you can answer from the notification itself.">
