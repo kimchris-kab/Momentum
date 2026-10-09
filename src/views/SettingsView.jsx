@@ -790,6 +790,11 @@ function CaptureSettings({ settings, onSetSetting }) {
                   {!status?.sms && <button onClick={async () => { await plugin()?.requestSms?.(); refresh(); }} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5, flex: 1 }}>Allow texts</button>}
                   {!status?.listener && <button onClick={() => plugin()?.openAccess?.()} style={{ ...styles.ghostCta, height: 38, fontSize: 12.5, flex: 1 }}>Allow app notifications</button>}
                 </div>
+                {(!status?.sms || !status?.listener) && (
+                  <p style={{ color: C.faint, fontSize: 11.5, lineHeight: 1.55, margin: "9px 0 0" }}>
+                    Greyed out, or nothing happens? Android blocks these for apps installed from a file. Open Android Settings, then Apps, then Momentum, tap the three dots at the top right, choose “Allow restricted settings”, and try again.
+                  </p>
+                )}
               </div>
               <div style={{ borderTop: `1px solid ${C.border}` }}>
                 <Row label="Save payments" desc="Asking first is safest: nothing is recorded until you tap.">
