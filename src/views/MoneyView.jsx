@@ -39,7 +39,7 @@ const blankRule = () => ({
 
 export default function MoneyView({
   state, onPatch, onAddStrategy, onUpdateStrategy, onRemoveStrategy,
-  onSaveTx, onDeleteTx, onSaveRule, onDeleteRule, onSaveNetWorth, onLogSpend, jumpTo = null,
+  onSaveTx, onDeleteTx, onSaveRule, onDeleteRule, onSaveNetWorth, onLogSpend, jumpTo = null, draft = null, onDraftUsed,
 }) {
   const {
     strategies, moneyPrinciples, moneyIdeas, netWorth, netWorthLog, transactions, recurring,
@@ -55,7 +55,8 @@ export default function MoneyView({
   const [searching, setSearching] = useState(!!jumpTo?.query);
   const [filterType, setFilterType] = useState("all");
   const [filterBucket, setFilterBucket] = useState("all");
-  const [editing, setEditing] = useState(null);
+  // Opened from a payment notification's Change button: the editor starts on that payment, nothing saved yet.
+  const [editing, setEditing] = useState(() => (draft ? { ...blankTx(), ...draft } : null));
   const [editingRule, setEditingRule] = useState(null);
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
@@ -662,8 +663,8 @@ export default function MoneyView({
       <TxSheet
         open={!!editing} tx={editing} mode="tx" transactions={transactions}
         onChange={setEditing}
-        onClose={() => setEditing(null)}
-        onSave={() => { onSaveTx(editing); setEditing(null); }}
+        onClose={() => { setEditing(null); onDraftUsed?.(); }}
+        onSave={() => { onSaveTx(editing); setEditing(null); onDraftUsed?.(); }}
         onDelete={editing?.id ? () => { onDeleteTx(editing.id); setEditing(null); } : null}
       />
       <BudgetSheet

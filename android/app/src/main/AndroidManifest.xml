@@ -67,6 +67,39 @@
             </intent-filter>
         </receiver>
 
+        <!-- Logging money without the app: the box you type a payment into, its Save and Undo buttons, and coming back after a
+             restart. Reached by PendingIntents the system holds, never by another app, so not exported. -->
+        <receiver
+            android:name=".MomentumMoney"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Texts from banks and mobile-money services. The system sends SMS_RECEIVED, so this has to be exported; the permission on it is what
+             stops any other app pretending to be the system and handing it a made-up payment. -->
+        <receiver
+            android:name=".MoneySmsReceiver"
+            android:permission="android.permission.BROADCAST_SMS"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Payments announced by another app's notification. Bound by the system once the person grants notification access. -->
+        <service
+            android:name=".MoneyListenerService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -88,4 +121,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- The breathing pacer's vibration. A normal permission: granted on install, no prompt. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Reading payment texts from the senders the person lists. Asked for only when they turn reading on, and it is a runtime permission:
+         nothing is read until they say yes. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 </manifest>

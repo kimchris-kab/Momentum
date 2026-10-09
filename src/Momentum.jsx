@@ -24,7 +24,7 @@ import { postDueRecurring } from "./lib/money.js";
 import { MAX_FOCUS, overdueTasks } from "./lib/planning.js";
 import { lapsesOn, limitOf, newLapse, newUrge, syncSlip, withCalmNote } from "./lib/urges.js";
 import { notificationPermission, requestNotificationPermission, scheduleNudges } from "./lib/notify.js";
-import { applyPending, publishCapture, recordFromTyped, takePending, describeMoney } from "./lib/capture.js";
+import { applyPending, publishCapture, recordFromTyped, takeDraft, takePending, describeMoney, draftForEditor } from "./lib/capture.js";
 import { AmbientOrbs, SparkleField, Toast, useToast, useToday } from "./components/ui.jsx";
 import { bury, mergeStates, unbury } from "./lib/merge.js";
 import { setFollowed, stopExperiment } from "./lib/experimentPlan.js";
@@ -187,6 +187,8 @@ export default function Momentum() {
   // Set when Money is opened from a search result, so the ledger lands on the entry rather
   // than on this month's summary with the search forgotten.
   const [moneyJump, setMoneyJump] = useState(null);
+  // A payment the phone offered, opened to adjust (its notification's Change button).
+  const [moneyDraft, setMoneyDraft] = useState(null);
 
   const { toast, show, dismiss, act } = useToast();
   // What the callbacks that must stay put need to know about the tasks, without being rebuilt each time they change.
@@ -988,6 +990,8 @@ export default function Momentum() {
       // The shade counter's I-slipped button opens the slip form for that habit, nothing logged yet.
       const lapse = await takePendingLapse();
       if (lapse) setUrging({ id: lapse, mode: "lapse" });
+      const draft = await takeDraft();
+      if (draft) { setMoneyDraft(draftForEditor(draft)); setView("money"); }
       // Notes typed into a notification's reply box while the app was closed.
       // Only those for a habit that is still here, so the count in the message is the count saved.
       const known = new Set(tasksRef.current.map((t) => t.id));
@@ -1215,8 +1219,8 @@ export default function Momentum() {
             )}
             {view === "money" && (
               <MoneyView
-                key={moneyJump ? `jump-${moneyJump.query}-${moneyJump.mKey}` : "money"}
-                jumpTo={moneyJump}
+                key={moneyDraft ? `draft-${moneyDraft.amount}-${moneyDraft.payee}` : moneyJump ? `jump-${moneyJump.query}-${moneyJump.mKey}` : "money"}
+                jumpTo={moneyJump} draft={moneyDraft} onDraftUsed={() => setMoneyDraft(null)}
                 state={state} onPatch={patch}
                 onAddStrategy={(s) => patch({ strategies: [...state.strategies, s] })}
                 onUpdateStrategy={(id, p) => patch({

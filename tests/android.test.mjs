@@ -6,6 +6,8 @@ import { PENDING_LAPSE_KEY, PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from 
 import { SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
 import { PATTERNS, hapticCycle } from "../src/lib/pacer.js";
 import { PENDING_PEP_KEY, PEP_KEY } from "../src/lib/pep.js";
+import { CAPTURE_KEY, PENDING_DRAFT_KEY, PENDING_TX_KEY, UNDO_TX_KEY } from "../src/lib/capture.js";
+import P from "../src/lib/txpatterns.json" with { type: "json" };
 import { pepPlan } from "../src/lib/pepPlan.js";
 import { widgetZones, zoneFromPreset } from "../src/lib/redzone.js";
 import { REQUIRES_NATIVE_API } from "../src/lib/nativeApi.js";
@@ -572,4 +574,49 @@ t.group("no service worker inside the Android app");
   t.ok("the app registers (or removes) it itself, at start", /setupServiceWorker\(\)/.test(main));
   t.ok("an old worker's files are cleared once, before the web view exists", /clearServiceWorkerOnce/.test(ota) && activity.indexOf("clearServiceWorkerOnce") > 0 && activity.indexOf("clearServiceWorkerOnce") < activity.indexOf("super.onCreate"));
   t.ok("it deletes the worker's folder inside the web view's data", /app_webview\/Default\/Service Worker/.test(ota));
+}
+
+t.group("money capture");
+{
+  const money = read("java/com/momentum/app/MomentumMoney.java");
+  const parse = read("java/com/momentum/app/MoneyParse.java");
+  const sms = read("java/com/momentum/app/MoneySmsReceiver.java");
+  const listener = read("java/com/momentum/app/MoneyListenerService.java");
+  const plugin = read("java/com/momentum/app/MomentumMoneyPlugin.java");
+  const activity = read("java/com/momentum/app/MainActivity.java");
+  const gradle = readFileSync(join(ROOT, "android", "app", "build.gradle"), "utf8");
+  t.ok("the Java reads the settings and payees where the app writes them", money.includes(`"${CAPTURE_KEY}"`), CAPTURE_KEY);
+  t.ok("leaves payments where the app collects them", money.includes(`"${PENDING_TX_KEY}"`) && money.includes(`"${UNDO_TX_KEY}"`));
+  t.ok("and the payment to adjust where the app looks for it", money.includes(`"${PENDING_DRAFT_KEY}"`));
+  t.ok("the plugin the app calls is registered", /name\s*=\s*"MomentumMoney"/.test(plugin) && activity.includes("registerPlugin(MomentumMoneyPlugin.class)"));
+  const calls = ["refresh", "status", "requestSms", "openAccess", "candidates"];
+  t.eq("every call the web app makes exists", calls.filter((c) => !new RegExp(`public void ${c}\\(PluginCall`).test(plugin)), []);
+  t.ok("the settings screen only uses calls the plugin has", ["status", "candidates", "requestSms", "openAccess", "refresh"].every((c) => calls.includes(c)));
+  t.ok("the Change button's link is handled when the app is opened from it", /DRAFT_HOST/.test(activity) && /stashDraft/.test(activity));
+  t.ok("the box takes a reply, which needs a mutable PendingIntent on Android 12 and up", /FLAG_MUTABLE/.test(money) && /addRemoteInput/.test(money));
+  t.ok("and answers it, or the box spins", /handleReply/.test(money) && /money_logged_title/.test(money));
+  t.ok("the Save button keeps the payment and says so", /handleSave/.test(money) && /money_saved_title/.test(money));
+  t.ok("Undo works whether or not the app has collected the payment", /UNDO_KEY/.test(money) && /found/.test(money));
+  const used = [...[money, sms, listener, plugin].flatMap((src) => [...src.matchAll(/R\.string\.(\w+)/g)].map((m) => m[1]))];
+  t.eq("every string it uses is defined", [...new Set(used)].filter((n) => !strings.includes(`name="${n}"`)), []);
+  t.ok("the receiver for the box is not exported, and comes back after a restart",
+    /<receiver\s+android:name="\.MomentumMoney"\s+android:exported="false">[\s\S]*?BOOT_COMPLETED[\s\S]*?MY_PACKAGE_REPLACED/.test(manifest));
+  t.ok("the text receiver is exported only because the system sends to it, and requires the system's own permission",
+    /<receiver\s+android:name="\.MoneySmsReceiver"\s+android:permission="android\.permission\.BROADCAST_SMS"\s+android:exported="true">[\s\S]*?SMS_RECEIVED/.test(manifest));
+  t.ok("the listener can only be bound by the system", /<service\s+android:name="\.MoneyListenerService"[\s\S]*?android:permission="android\.permission\.BIND_NOTIFICATION_LISTENER_SERVICE"/.test(manifest));
+  t.ok("receiving texts is declared, and is the only text permission asked for", /RECEIVE_SMS/.test(manifest) && !/READ_SMS|SEND_SMS|READ_CONTACTS|ACCESS_FINE_LOCATION/.test(manifest));
+  t.ok("and asked for at runtime, by the plugin", /alias\s*=\s*"sms"/.test(plugin) && /requestPermissionForAlias/.test(plugin));
+  t.ok("our own notifications are never read back as payments", /getPackageName\(\)\.equals\(sbn\.getPackageName\(\)\)/.test(listener));
+  t.ok("only the senders the person listed are read", /senderAllowed/.test(sms));
+  t.ok("nothing is read unless reading has been switched on", /if \(!c\.read\)/.test(sms) && /if \(!c\.read\)/.test(listener) && /if \(!c\.read\) return "off"/.test(money));
+  t.ok("the message text is never written down", !/putString\([^)]*text/i.test(money + sms + listener));
+  t.ok("the shared patterns are packaged into the app, and the tests' cases into the tests",
+    /copyTxPatterns/.test(gradle) && /txpatterns\.json/.test(gradle) && /tests\/fixtures/.test(gradle));
+  t.ok("the Java reads the one asset the build copies", parse.includes('"txpatterns.json"'));
+  // The parts of the shared data the Java reads by name must exist in it.
+  const names = [...parse.matchAll(/(?:typed|msg)\("(\w+)"\)/g)].map((m) => m[1]);
+  t.eq("every pattern the Java asks for exists", [...new Set(names)].filter((n) => !(n in P.typed) && !(n in P.message)), []);
+  t.ok("so does every group of data", ["currency", "currencyCodes", "filler", "acronyms", "keywords", "incomeKeywords", "clean"].every((k) => k in P));
+  const cleanNames = [...parse.matchAll(/data\.clean\.optString\("(\w+)"\)/g)].map((m) => m[1]);
+  t.eq("and every cleaning pattern", [...new Set(cleanNames)].filter((n) => !(n in P.clean)), []);
 }

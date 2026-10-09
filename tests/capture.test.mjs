@@ -59,6 +59,10 @@ t.eq("an undone payment is removed", applyPending(added, { undo: [added[0].id] }
 t.eq("an undone one that never arrived is not added", applyPending([], { add: [{ ...naivas, id: "cap-x" }], undo: ["cap-x"] }).length, 0);
 t.eq("existing entries are kept", applyPending([{ id: 5, type: "expense", amount: 1, date: "2026-01-01" }], { add: [naivas] }).length, 2);
 t.eq("a typed-in-notification entry keeps the id the phone gave it", applyPending([], { add: [{ ...naivas, ref: null, key: "k", id: "q-123", via: "typed", payee: "Lunch" }] })[0].id, "q-123");
+const lunch = { id: "q-a", via: "typed", type: "expense", amount: 12, catId: "dining", date: "2026-10-12", payee: "Lunch", key: "typed:q-a", at: 1 };
+t.eq("two lunches at the same price are two lunches", applyPending([], { add: [lunch, { ...lunch, id: "q-b", key: "typed:q-b" }] }).length, 2);
+t.eq("but the same entry twice is one", applyPending([], { add: [lunch, { ...lunch }] }).length, 1);
+t.eq("the key the phone gave is kept", applyPending([], { add: [lunch] })[0].key, "typed:q-a");
 t.eq("an old payment is not added twice by different ids", applyPending(added, { add: [{ ...naivas, id: "different" }] }).length, 1);
 t.eq("a record reads back as words", describeMoney(recordFromPayment(naivas)), "1,200 · Groceries");
 t.eq("two devices' captured payments merge by id", mergeStates({ ...emptyState(), transactions: added }, { ...emptyState(), transactions: applyPending([], { add: [pay("Purchase of USD 12.50 at STARBUCKS on card ending 1234.")] }) }).transactions.length, 2);

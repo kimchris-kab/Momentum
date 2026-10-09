@@ -19,12 +19,28 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    sourceSets {
+        // The words a payment message is read with are shared with the web app, which keeps the one copy (src/lib/txpatterns.json);
+        // it is copied here at build time rather than checked in twice. The instrumentation tests read the same cases the web
+        // app's tests do.
+        main { assets.srcDirs += ["$buildDir/generated/txassets"] }
+        androidTest { assets.srcDirs += ["../../tests/fixtures"] }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+tasks.register("copyTxPatterns", Copy) {
+    from("../../src/lib/txpatterns.json")
+    into("$buildDir/generated/txassets")
+}
+tasks.configureEach { t ->
+    // Anything that gathers or checks assets has to wait for the copy.
+    if (t.name != "copyTxPatterns" && (t.name.contains("Assets") || t.name.startsWith("lint"))) t.dependsOn("copyTxPatterns")
 }
 
 repositories {

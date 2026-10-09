@@ -25,4 +25,21 @@
     <string name="pep_reply_label">One thing you did well today</string>
     <string name="pep_saved_title">Saved</string>
     <string name="pep_saved_text">That one is yours to read later.</string>
+    <string name="money_quick_channel">Quick spend</string>
+    <string name="money_quick_channel_description">A quiet box you can type a payment into, from anywhere</string>
+    <string name="money_payment_channel">Payments</string>
+    <string name="money_payment_channel_description">A payment your bank or mobile-money service told you about, ready to save</string>
+    <string name="money_quick_title">Spent something?</string>
+    <string name="money_quick_text">Type it here: lunch 12</string>
+    <string name="money_quick_public">Quick spend</string>
+    <string name="money_quick_label">lunch 12</string>
+    <string name="money_quick_action">Log it</string>
+    <string name="money_quick_unread_title">Couldn\'t read that</string>
+    <string name="money_quick_unread_text">Try an amount and a few words, like: lunch 12</string>
+    <string name="money_logged_title">Logged %1$s</string>
+    <string name="money_saved_title">Saved %1$s</string>
+    <string name="money_offer_text">%1$s? Tap Save to log it.</string>
+    <string name="money_save">Save</string>
+    <string name="money_change">Change</string>
+    <string name="money_undo">Undo</string>
 </resources>

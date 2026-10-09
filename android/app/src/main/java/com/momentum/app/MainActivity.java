@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MomentumHapticsPlugin.class);
         registerPlugin(MomentumPepPlugin.class);
         registerPlugin(MomentumOtaPlugin.class);
+        registerPlugin(MomentumMoneyPlugin.class);
         // Before the web view exists: which build of the web app to start with. See MomentumOta.
         MomentumOta.clearServiceWorkerOnce(this);
         MomentumOta.resolveAtStartup(this, MomentumOta.bundledBuild(this));
@@ -71,6 +72,13 @@ public class MainActivity extends BridgeActivity {
         if (intent == null) return false;
         Uri data = intent.getData();
         if (data == null || !MomentumWidget.URGE_SCHEME.equals(data.getScheme())) return false;
+        // The Change button on a payment notification: the payment it was about is moved to where the web app looks for it.
+        if (MomentumMoney.DRAFT_HOST.equals(data.getHost())) {
+            String nid = data.getLastPathSegment();
+            boolean moved = nid != null && MomentumMoney.stashDraft(context, nid);
+            intent.setData(null);
+            return moved;
+        }
         String key;
         if (MomentumWidget.URGE_HOST.equals(data.getHost())) key = PENDING_URGE_KEY;
         else if (MomentumShade.SLIP_HOST.equals(data.getHost())) key = PENDING_LAPSE_KEY;

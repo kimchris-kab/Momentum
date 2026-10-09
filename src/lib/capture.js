@@ -10,6 +10,8 @@ import { todayStr } from "./date.js";
 export const CAPTURE_KEY = "momentum:capture";
 /** Payments the phone logged while the app was closed, waiting here to be added. */
 export const PENDING_TX_KEY = "momentum:pendingTx";
+/** A payment the person chose to adjust from its notification (the Change button): the app opens on it, ready to edit. */
+export const PENDING_DRAFT_KEY = "momentum:pendingDraft";
 /** Ids of payments the person undid from the notification before the app collected them. */
 export const UNDO_TX_KEY = "momentum:undoTx";
 
@@ -118,6 +120,27 @@ export async function takePending() {
   return { add, undo };
 }
 
+/** The payment waiting to be adjusted, once, or null. */
+export async function takeDraft() {
+  const p = prefs();
+  if (!p?.get) return null;
+  try {
+    const { value } = await p.get({ key: PENDING_DRAFT_KEY });
+    if (!value) return null;
+    await p.remove({ key: PENDING_DRAFT_KEY });
+    const r = JSON.parse(value);
+    return r && r.amount > 0 ? r : null;
+  } catch { return null; }
+}
+
+/** The fields the ledger's editor starts from for a payment that has not been saved. */
+export function draftForEditor(r) {
+  return {
+    type: r.type === "income" ? "income" : "expense", catId: r.catId, category: TX_CAT_BY_ID[r.catId]?.bucket ?? null,
+    amount: r.amount, note: "", payee: r.payee || "", date: r.date || todayStr(),
+  };
+}
+
 /**
  * The ledger after applying what the phone collected: new payments added unless they are already there, and anything undone
  * removed. Returns the same ledger when nothing changed, so the caller can skip a save.
@@ -129,9 +152,13 @@ export function applyPending(transactions, { add = [], undo = [] }) {
   const fresh = [];
   add.forEach((p) => {
     if (undone.has(String(p.id))) return;
-    if (alreadyLogged([...out, ...fresh], p) || [...out, ...fresh].some((t) => String(t.id) === String(p.id))) return;
+    const all = [...out, ...fresh];
+    const sameId = p.id && all.some((t) => String(t.id) === String(p.id));
+    // A payment read from a message is a repeat if the same one is already there; a line someone typed is only a repeat if it is the
+    // very same entry, because two lunches at one price on one day are two lunches.
+    if (sameId || (p.via !== "typed" && alreadyLogged(all, p))) return;
     const r = p.id ? { ...recordFromPayment(p), id: p.id } : recordFromPayment(p);
-    fresh.push({ ...r, createdAt: p.at || r.createdAt });
+    fresh.push({ ...r, key: p.key || r.key, createdAt: p.at || r.createdAt });
   });
   return fresh.length || undone.size ? [...out, ...fresh] : transactions;
 }
