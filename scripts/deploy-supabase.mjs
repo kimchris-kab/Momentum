@@ -81,7 +81,14 @@ export const OTA_KEEP = 3;
  * never points at a build whose files haven't all arrived, then the folders of builds more than OTA_KEEP back are removed.
  * `fetcher` is injectable so the order and the requests can be checked without a project.
  */
-export async function publishOta({ base, key, bucket = "app", dir = "dist", notes = "", privateKeyPem = "", dry = false, fetcher = fetch, log = () => {} }) {
+// A storage hiccup (a 5xx from the edge, a rate limit, a dropped connection) is not a reason to abandon a publish half-way: the files are
+// uploaded one by one and the manifest last, so retrying one file is always safe.
+const TRANSIENT = (status) => status === 408 || status === 429 || status >= 500;
+
+export async function publishOta({
+  base, key, bucket = "app", dir = "dist", notes = "", privateKeyPem = "", dry = false, fetcher = fetch, log = () => {},
+  tries = 5, sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+}) {
   const info = JSON.parse(readFileSync(join(dir, "build.json"), "utf8"));
   const manifest = buildManifest({ dir, info, notes, privateKeyPem });
   const prefix = `ota/${manifest.id}`;
@@ -92,10 +99,22 @@ export async function publishOta({ base, key, bucket = "app", dir = "dist", note
   }
   const auth = { Authorization: `Bearer ${key}` };
   const put = async (path, body, type) => {
-    const res = await fetcher(`${base}/storage/v1/object/${bucket}/${path}`, {
-      method: "POST", headers: { ...auth, "Content-Type": type, "Cache-Control": "no-cache", "x-upsert": "true" }, body,
-    });
-    if (!res.ok) throw new Error(`${path}: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
+    let last = "";
+    for (let attempt = 1; attempt <= tries; attempt++) {
+      let res = null;
+      try {
+        res = await fetcher(`${base}/storage/v1/object/${bucket}/${path}`, {
+          method: "POST", headers: { ...auth, "Content-Type": type, "Cache-Control": "no-cache", "x-upsert": "true" }, body,
+        });
+      } catch (e) { last = `${path}: ${e?.message || e}`; }
+      if (res?.ok) return;
+      if (res) {
+        last = `${path}: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`;
+        if (!TRANSIENT(res.status)) throw new Error(last);
+      }
+      if (attempt < tries) { log(`  ${path}: try ${attempt} failed, trying again`); await sleep(1000 * 2 ** (attempt - 1)); }
+    }
+    throw new Error(`${last} (gave up after ${tries} tries)`);
   };
   for (const f of manifest.files) await put(`${prefix}/${f.path}`, readFileSync(join(dir, f.path)), contentType(f.path));
   await put("ota/latest.json", JSON.stringify(manifest), "application/json");

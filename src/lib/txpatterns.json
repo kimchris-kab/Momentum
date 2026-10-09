@@ -614,7 +614,7 @@
   "withdraw": "\\bwithdraw(?:n)?\\b",
   "forAccount": "for account\\s+([A-Za-z0-9-]+)",
   "out": [
-   "\\b(?:paid|sent|transferred|payment of)\\s+(?:(?:{CUR})\\s?[\\d,]+(?:\\.\\d+)?\\s+)?to\\s+(.+?){STOP}",
+   "\\b(?:paid|sent|transferred|payment of)\\s+(?:(?:{CUR})\\s?[\\d,]+(?:\\.\\d+)?\\s+|[\\d,]+(?:\\.\\d+)?\\s?(?:{CUR})\\s+)?to\\s+(.+?){STOP}",
    "\\b(?:merchant|info|desc|details?)[:\\s]+([A-Za-z0-9 &'./-]+?)(?=\\s+(?:avail|bal|on|ref)\\b|\\.\\s|\\.$|$)",
    "\\b(?:purchase(?: of)?|spent|transacted)\\b.*?\\bat\\s+(.+?)(?=\\s+on\\b|\\s+using\\b|\\s+via\\b|\\s+card\\b|\\.\\s|\\.$|$)",
    "\\bat\\s+([A-Z][A-Za-z0-9 &'./-]+?)(?=\\s+on\\b|\\s+using\\b|\\s+card\\b|\\.\\s|\\.$|$)"
@@ -626,7 +626,8 @@
    ""
   ],
   "in": [
-   "\\bfrom\\s+(.+?)(?=\\s+\\d{9,}|\\s+on\\b|\\s+at\\b|\\.\\s|\\.$|$)"
+   "\\bfrom\\s+(.+?)(?=\\s+\\d{9,}|\\s+on\\b|\\s+at\\b|\\.\\s|\\.$|$)",
+   "\\b(?:narration|description|desc|info|details?)[:\\s]+([A-Za-z0-9 &'./-]+?)(?=\\s+(?:avail|bal|on|ref)\\b|\\.\\s|\\.$|$)"
   ],
   "stop": "(?=\\s+(?:on|at|for account|ref|via|using|successful|was|has|new|transaction|balance|avail|bal)\\b|\\s+\\(|\\s+\\d{9,}|\\.\\s|\\.$|,|$)"
  },

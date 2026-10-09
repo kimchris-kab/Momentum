@@ -243,6 +243,28 @@
     }
   },
   {
+    "name": "MTN MoMo: the currency after the amount",
+    "text": "You have sent 12000 UGX to PETER OKELLO (0772123456). Transaction ID 99812346. Fee 250. New balance 45,000.",
+    "expect": {
+      "amount": 12000,
+      "cur": "UGX",
+      "type": "expense",
+      "payee": "Peter Okello",
+      "ref": "99812346"
+    }
+  },
+  {
+    "name": "Bank: a credit whose narration says who",
+    "text": "Credit Alert: Your account was credited with KSh 1,200.50 on 25-AUG-23. Narration: KENYA POWER REFUND. Avail Bal KSh 9,000.00",
+    "expect": {
+      "amount": 1200.5,
+      "type": "income",
+      "payee": "Kenya Power Refund",
+      "date": "2023-08-25",
+      "catId": "refund"
+    }
+  },
+  {
     "name": "A one-time code is not a payment",
     "text": "Your OTP is 482913. Do not share it. Transaction of KES 500.00 requires verification.",
     "expect": null

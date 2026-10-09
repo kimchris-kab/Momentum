@@ -140,7 +140,28 @@ t.group("publishing");
   try { await publishOta({ base: "https://p.supabase.co", key: "K", dir, fetcher: async () => ({ ok: false, status: 403, text: async () => "denied" }) }); } catch (e) { msg = e.message; }
   t.ok("a refused upload stops everything and says which file", /403 denied/.test(msg) && /ota\//.test(msg), msg);
   const order = [];
-  try { await publishOta({ base: "https://p.supabase.co", key: "K", dir, fetcher: async (u, i) => { order.push(u); return /sw\.js$/.test(u) ? { ok: false, status: 500, text: async () => "" } : { ok: true, text: async () => "", json: async () => [] }; } }); } catch { /* expected */ }
+  const noWait = async () => {};
+  try { await publishOta({ base: "https://p.supabase.co", key: "K", dir, sleep: noWait, fetcher: async (u, i) => { order.push(u); return /sw\.js$/.test(u) ? { ok: false, status: 500, text: async () => "" } : { ok: true, text: async () => "", json: async () => [] }; } }); } catch { /* expected */ }
   t.ok("so a failure part way never reaches the manifest", !order.some((u) => u.endsWith("latest.json")), order);
+
+  // A hiccup at the storage edge (a 520 from the CDN, a rate limit, a dropped connection) is retried; a refusal is not.
+  const attempts = {};
+  const waits = [];
+  const flaky = async (u) => {
+    attempts[u] = (attempts[u] || 0) + 1;
+    if (/index\.html$/.test(u) && attempts[u] === 1) return { ok: false, status: 520, text: async () => "<!DOCTYPE html>" };
+    if (/index\.html$/.test(u) && attempts[u] === 2) throw new Error("socket hang up");
+    if (/build\.json$/.test(u) && attempts[u] === 1) return { ok: false, status: 429, text: async () => "slow down" };
+    return { ok: true, text: async () => "", json: async () => [] };
+  };
+  const rr = await publishOta({ base: "https://p.supabase.co", key: "K", dir, fetcher: flaky, sleep: async (ms) => { waits.push(ms); } });
+  t.ok("a 520 and a dropped connection on one file, and a rate limit on another, are retried until they go through", rr.uploaded > 0 && Object.entries(attempts).filter(([u]) => /index\.html$/.test(u))[0][1] === 3);
+  t.eq("waiting longer each time it fails again on the same file", waits, [1000, 1000, 2000]);
+  const forbidden = {};
+  try { await publishOta({ base: "https://p.supabase.co", key: "K", dir, sleep: noWait, fetcher: async (u) => { forbidden[u] = (forbidden[u] || 0) + 1; return { ok: false, status: 403, text: async () => "denied" }; } }); } catch { /* expected */ }
+  t.ok("a refusal is not retried", Object.values(forbidden).every((n) => n === 1), forbidden);
+  let gaveUp = "";
+  try { await publishOta({ base: "https://p.supabase.co", key: "K", dir, tries: 3, sleep: noWait, fetcher: async () => ({ ok: false, status: 503, text: async () => "unavailable" }) }); } catch (e) { gaveUp = e.message; }
+  t.ok("persistent failure gives up, and says how often it tried", /503 unavailable/.test(gaveUp) && /gave up after 3 tries/.test(gaveUp), gaveUp);
   rmSync(dir, { recursive: true, force: true });
 }
