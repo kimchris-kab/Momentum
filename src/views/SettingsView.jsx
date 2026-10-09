@@ -761,7 +761,9 @@ function CaptureSettings({ settings, onSetSetting }) {
 
       {!native && (
         <p style={{ borderTop: `1px solid ${C.border}`, color: C.faint, fontSize: 11.5, lineHeight: 1.6, margin: 0, padding: "11px 0 2px" }}>
-          The notification you can type into, and reading your bank and mobile-money messages, work in the Android app.
+          {window.Capacitor?.isNativePlatform?.()
+            ? "The app installed on this phone is an older one and doesn't have this part. Download the newest APK from the build page, install it over this one (your data stays), then come back here."
+            : "The notification you can type into, and reading your bank and mobile-money messages, work in the Android app."}
         </p>
       )}
 
