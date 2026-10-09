@@ -1,0 +1,640 @@
+{
+ "_about": "One source for what both the app (JavaScript) and the phone (Java) use to read payments. Patterns use only syntax both regex engines share. {CUR} is replaced by the currency alternatives and {STOP} by message.stop.",
+ "currency": "ksh|kshs|kes|ugx|tzs|ghs|usd|eur|gbp|zar|ngn|rwf|etb|us\\$|\\$|£|€",
+ "currencyCodes": {
+  "ksh": "KES",
+  "kshs": "KES",
+  "kes": "KES",
+  "ugx": "UGX",
+  "tzs": "TZS",
+  "ghs": "GHS",
+  "usd": "USD",
+  "us$": "USD",
+  "$": "USD",
+  "eur": "EUR",
+  "€": "EUR",
+  "gbp": "GBP",
+  "£": "GBP",
+  "zar": "ZAR",
+  "ngn": "NGN",
+  "rwf": "RWF",
+  "etb": "ETB"
+ },
+ "filler": [
+  "for",
+  "on",
+  "at",
+  "to",
+  "from",
+  "the",
+  "a",
+  "an",
+  "of",
+  "spent",
+  "paid",
+  "pay",
+  "bought",
+  "buy",
+  "got",
+  "my",
+  "some",
+  "was",
+  "i",
+  "in",
+  "with",
+  "and"
+ ],
+ "acronyms": [
+  "Kplc",
+  "Kfc",
+  "Nhif",
+  "Shif",
+  "Mpesa",
+  "Dstv",
+  "Gotv",
+  "Atm",
+  "Kcb"
+ ],
+ "keywords": [
+  [
+   "naivas",
+   "groceries"
+  ],
+  [
+   "quickmart",
+   "groceries"
+  ],
+  [
+   "carrefour",
+   "groceries"
+  ],
+  [
+   "chandarana",
+   "groceries"
+  ],
+  [
+   "tuskys",
+   "groceries"
+  ],
+  [
+   "supermarket",
+   "groceries"
+  ],
+  [
+   "grocer",
+   "groceries"
+  ],
+  [
+   "mart",
+   "groceries"
+  ],
+  [
+   "market",
+   "groceries"
+  ],
+  [
+   "butchery",
+   "groceries"
+  ],
+  [
+   "vegetable",
+   "groceries"
+  ],
+  [
+   "milk",
+   "groceries"
+  ],
+  [
+   "bread",
+   "groceries"
+  ],
+  [
+   "eggs",
+   "groceries"
+  ],
+  [
+   "groceries",
+   "groceries"
+  ],
+  [
+   "kenya power",
+   "utilities"
+  ],
+  [
+   "kplc",
+   "utilities"
+  ],
+  [
+   "token",
+   "utilities"
+  ],
+  [
+   "electric",
+   "utilities"
+  ],
+  [
+   "water",
+   "utilities"
+  ],
+  [
+   "airtime",
+   "utilities"
+  ],
+  [
+   "data bundle",
+   "utilities"
+  ],
+  [
+   "bundle",
+   "utilities"
+  ],
+  [
+   "wifi",
+   "utilities"
+  ],
+  [
+   "internet",
+   "utilities"
+  ],
+  [
+   "zuku",
+   "utilities"
+  ],
+  [
+   "faiba",
+   "utilities"
+  ],
+  [
+   "safaricom",
+   "utilities"
+  ],
+  [
+   "airtel",
+   "utilities"
+  ],
+  [
+   "dstv",
+   "subscriptions"
+  ],
+  [
+   "gotv",
+   "subscriptions"
+  ],
+  [
+   "rent",
+   "rent"
+  ],
+  [
+   "rental",
+   "rent"
+  ],
+  [
+   "landlord",
+   "rent"
+  ],
+  [
+   "housing",
+   "rent"
+  ],
+  [
+   "uber",
+   "transport"
+  ],
+  [
+   "bolt",
+   "transport"
+  ],
+  [
+   "little cab",
+   "transport"
+  ],
+  [
+   "taxi",
+   "transport"
+  ],
+  [
+   "matatu",
+   "transport"
+  ],
+  [
+   "fare",
+   "transport"
+  ],
+  [
+   "bus",
+   "transport"
+  ],
+  [
+   "fuel",
+   "transport"
+  ],
+  [
+   "petrol",
+   "transport"
+  ],
+  [
+   "diesel",
+   "transport"
+  ],
+  [
+   "shell",
+   "transport"
+  ],
+  [
+   "rubis",
+   "transport"
+  ],
+  [
+   "totalenergies",
+   "transport"
+  ],
+  [
+   "parking",
+   "transport"
+  ],
+  [
+   "boda",
+   "transport"
+  ],
+  [
+   "hospital",
+   "health"
+  ],
+  [
+   "pharmacy",
+   "health"
+  ],
+  [
+   "chemist",
+   "health"
+  ],
+  [
+   "clinic",
+   "health"
+  ],
+  [
+   "doctor",
+   "health"
+  ],
+  [
+   "dental",
+   "health"
+  ],
+  [
+   "medic",
+   "health"
+  ],
+  [
+   "shif",
+   "insurance"
+  ],
+  [
+   "nhif",
+   "insurance"
+  ],
+  [
+   "insurance",
+   "insurance"
+  ],
+  [
+   "jubilee",
+   "insurance"
+  ],
+  [
+   "kfc",
+   "dining"
+  ],
+  [
+   "java",
+   "dining"
+  ],
+  [
+   "artcaffe",
+   "dining"
+  ],
+  [
+   "cafe",
+   "dining"
+  ],
+  [
+   "coffee",
+   "dining"
+  ],
+  [
+   "restaurant",
+   "dining"
+  ],
+  [
+   "pizza",
+   "dining"
+  ],
+  [
+   "burger",
+   "dining"
+  ],
+  [
+   "chicken",
+   "dining"
+  ],
+  [
+   "lunch",
+   "dining"
+  ],
+  [
+   "dinner",
+   "dining"
+  ],
+  [
+   "breakfast",
+   "dining"
+  ],
+  [
+   "snack",
+   "dining"
+  ],
+  [
+   "eatery",
+   "dining"
+  ],
+  [
+   "hotel",
+   "dining"
+  ],
+  [
+   "bar",
+   "dining"
+  ],
+  [
+   "pub",
+   "dining"
+  ],
+  [
+   "drinks",
+   "dining"
+  ],
+  [
+   "food",
+   "dining"
+  ],
+  [
+   "starbucks",
+   "dining"
+  ],
+  [
+   "mcdonald",
+   "dining"
+  ],
+  [
+   "glovo",
+   "dining"
+  ],
+  [
+   "jumia food",
+   "dining"
+  ],
+  [
+   "jumia",
+   "shopping"
+  ],
+  [
+   "kilimall",
+   "shopping"
+  ],
+  [
+   "amazon",
+   "shopping"
+  ],
+  [
+   "aliexpress",
+   "shopping"
+  ],
+  [
+   "shopping",
+   "shopping"
+  ],
+  [
+   "clothes",
+   "shopping"
+  ],
+  [
+   "shoes",
+   "shopping"
+  ],
+  [
+   "boutique",
+   "shopping"
+  ],
+  [
+   "netflix",
+   "subscriptions"
+  ],
+  [
+   "spotify",
+   "subscriptions"
+  ],
+  [
+   "showmax",
+   "subscriptions"
+  ],
+  [
+   "youtube",
+   "subscriptions"
+  ],
+  [
+   "subscription",
+   "subscriptions"
+  ],
+  [
+   "icloud",
+   "subscriptions"
+  ],
+  [
+   "google one",
+   "subscriptions"
+  ],
+  [
+   "cinema",
+   "entertainment"
+  ],
+  [
+   "movie",
+   "entertainment"
+  ],
+  [
+   "concert",
+   "entertainment"
+  ],
+  [
+   "game",
+   "entertainment"
+  ],
+  [
+   "betting",
+   "entertainment"
+  ],
+  [
+   "flight",
+   "travel"
+  ],
+  [
+   "airline",
+   "travel"
+  ],
+  [
+   "kenya airways",
+   "travel"
+  ],
+  [
+   "booking.com",
+   "travel"
+  ],
+  [
+   "airbnb",
+   "travel"
+  ],
+  [
+   "savings",
+   "saving"
+  ],
+  [
+   "sacco",
+   "saving"
+  ],
+  [
+   "mshwari",
+   "saving"
+  ],
+  [
+   "m-shwari",
+   "saving"
+  ],
+  [
+   "kcb mpesa",
+   "saving"
+  ],
+  [
+   "invest",
+   "investing"
+  ],
+  [
+   "stock",
+   "investing"
+  ],
+  [
+   "unit trust",
+   "investing"
+  ],
+  [
+   "mmf",
+   "investing"
+  ],
+  [
+   "loan",
+   "debt"
+  ],
+  [
+   "fuliza",
+   "debt"
+  ],
+  [
+   "repay",
+   "debt"
+  ]
+ ],
+ "incomeKeywords": [
+  [
+   "salary",
+   "salary"
+  ],
+  [
+   "payroll",
+   "salary"
+  ],
+  [
+   "wages",
+   "salary"
+  ],
+  [
+   "freelance",
+   "freelance"
+  ],
+  [
+   "invoice",
+   "freelance"
+  ],
+  [
+   "client",
+   "freelance"
+  ],
+  [
+   "bonus",
+   "bonus"
+  ],
+  [
+   "refund",
+   "refund"
+  ],
+  [
+   "reversal",
+   "refund"
+  ],
+  [
+   "gift",
+   "gift"
+  ]
+ ],
+ "typed": {
+  "yesterday": "\\byesterday\\b|\\blast night\\b",
+  "daysAgo": "\\b(\\d{1,2}) days? ago\\b",
+  "today": "\\btoday\\b|\\btonight\\b|\\bthis morning\\b",
+  "weekday": "\\b(?:on |last )?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\\b",
+  "plus": "^\\s*\\+",
+  "incomeWords": "\\b(salary|got paid|received|income|refund|bonus|gift|paid me|earned|payroll)\\b",
+  "amount": "(?:^|[^\\w.])(?:(?:{CUR})\\s?)?(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)\\s?(k\\b)?(?![\\w])",
+  "currencyWord": "\\b({CUR})\\b",
+  "notWord": "[^\\p{L}\\p{N}\\s'&.-]"
+ },
+ "message": {
+  "ignore": "\\b(otp|one[- ]time|verification code|passcode|your pin|reversal of|fuliza m-?pesa amount|loan limit|you have been awarded|congratulations)\\b",
+  "income": "\\b(you have received|you've received|has been credited|was credited|credited with|credit alert|received from|deposited|deposit of|salary|credited)\\b",
+  "expense": "\\b(sent to|paid to|you have sent|you've sent|you sent|payment of|payment to|purchase of|purchase at|transacted|you bought|you have bought|spent|debited|debit alert|withdrawn|withdraw|transferred to|you have paid|you paid|charged)\\b",
+  "sentOrPaidTo": "\\b(sent to|paid to)\\b",
+  "notThePayment": "(balance|bal\\b|cost|fee|charge|limit|can transact|available|avail)\\W*(is|of|:)?\\W*$",
+  "amountA": "\\b({CUR})\\s?(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)",
+  "amountB": "(?<![\\w])({CUR})\\s?(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)",
+  "amountC": "(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)\\s?({CUR})\\b",
+  "dateSlash": "\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{2}|\\d{4})\\b",
+  "dateMonth": "\\b(\\d{1,2})[ -]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[ ,-]*(\\d{2}|\\d{4})\\b",
+  "time": "\\b(\\d{1,2}):(\\d{2})\\s?(am|pm)?\\b",
+  "refLead": "^\\s*([A-Z0-9]{8,12})\\b\\s*(?:confirmed|Confirmed)",
+  "refTag": "\\b(?:TID|Txn ID|Transaction ID|Trans ID|Ref(?:erence)?(?: No)?)[:.\\s]+([A-Z0-9][A-Z0-9._-]{5,30})",
+  "airtime": "\\bairtime\\b",
+  "bought": "\\bbought\\b",
+  "withdrawFrom": "\\bwithdraw(?:n)?\\b.*?\\bfrom\\s+\\d+\\s*[-–]\\s*([A-Za-z0-9 &'.]+?)(?=\\s+(?:new|on|at)\\b|\\.\\s|\\.$|$)",
+  "withdraw": "\\bwithdraw(?:n)?\\b",
+  "forAccount": "for account\\s+([A-Za-z0-9-]+)",
+  "out": [
+   "\\b(?:paid|sent|transferred|payment of)\\s+(?:(?:{CUR})\\s?[\\d,]+(?:\\.\\d+)?\\s+)?to\\s+(.+?){STOP}",
+   "\\b(?:merchant|info|desc|details?)[:\\s]+([A-Za-z0-9 &'./-]+?)(?=\\s+(?:avail|bal|on|ref)\\b|\\.\\s|\\.$|$)",
+   "\\b(?:purchase(?: of)?|spent|transacted)\\b.*?\\bat\\s+(.+?)(?=\\s+on\\b|\\s+using\\b|\\s+via\\b|\\s+card\\b|\\.\\s|\\.$|$)",
+   "\\bat\\s+([A-Z][A-Za-z0-9 &'./-]+?)(?=\\s+on\\b|\\s+using\\b|\\s+card\\b|\\.\\s|\\.$|$)"
+  ],
+  "outFlags": [
+   "i",
+   "i",
+   "i",
+   ""
+  ],
+  "in": [
+   "\\bfrom\\s+(.+?)(?=\\s+\\d{9,}|\\s+on\\b|\\s+at\\b|\\.\\s|\\.$|$)"
+  ],
+  "stop": "(?=\\s+(?:on|at|for account|ref|via|using|successful|was|has|new|transaction|balance|avail|bal)\\b|\\s+\\(|\\s+\\d{9,}|\\.\\s|\\.$|,|$)"
+ },
+ "clean": {
+  "channel": "^\\s*(pos|atm|ecom|pos purchase|mpesa|m-pesa)[/\\s-]+",
+  "phone10": "\\b0\\d{9}\\b",
+  "phoneIntl": "\\b\\+?254\\d{9}\\b",
+  "longDigits": "\\b\\d{6,}\\b",
+  "tail": "[.,;:\\-–]+\\s*$"
+ }
+}
