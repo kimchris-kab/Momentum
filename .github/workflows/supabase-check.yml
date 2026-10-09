@@ -1,0 +1,27 @@
+# A read-only look at the Supabase project behind the app's cloud backup: is the table there, is there an account, has any
+# phone ever written a backup. Runs when this file or its script changes, or by hand from the Actions tab. Prints no
+# emails, ids, keys or backup contents, because the logs of a public repository are public.
+name: Check Supabase backup
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - ".github/workflows/supabase-check.yml"
+      - "scripts/check-supabase-backup.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-supabase-backup.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
