@@ -360,7 +360,18 @@ export default function Momentum() {
   }, []);
   const addTemper = useCallback((entry) => {
     setState((s) => ({ ...s, temperLog: [...(s.temperLog || []), entry] }));
-    show(entry.reaction === "held" || entry.reaction === "paused" ? "Logged. That's the one to repeat." : "Logged. Noticing it is the work.");
+    if (entry.reaction === "held" || entry.reaction === "paused") show("Logged. That's the one to repeat.");
+    // A bad moment is followed by the question that matters, offered once and easy to leave.
+    else show("Logged. Noticing it is the work.", "Make it right", () => openCharacter("temper", entry.id));
+  }, [show]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setRepair = useCallback((id, status, opts = {}) => {
+    import("./lib/temper.js").then((m) => setState((s) => ({ ...s, temperLog: m.withRepair(s.temperLog, id, status, opts) }))).catch(() => {});
+    if (status === "done") show("Good. That was the hard part.");
+    else if (status === "open") show("I'll remind you tomorrow morning.");
+  }, [show]);
+  const setWeekFocus = useCallback((weekStart, text) => {
+    setState((s) => ({ ...s, weekFocus: { ...(s.weekFocus || {}), [weekStart]: String(text || "").trim().slice(0, 140) } }));
+    show("Set. That's next week's one thing.");
   }, [show]);
   const removeTemper = useCallback((id) => setState((s) => {
     const victim = (s.temperLog || []).find((e) => e.id === id);
@@ -413,6 +424,13 @@ export default function Momentum() {
     if (payload?.kind === "virtue") { openCharacter("virtue"); return; }
     if (payload?.kind === "letter") { openCharacter("letters", payload.ref); return; }
     if (payload?.kind === "examen") { openCharacter("examen"); return; }
+    if (payload?.kind === "week") { openCharacter("week"); return; }
+    if (payload?.kind === "repair") {
+      if (payload.action === "repaired") setRepair(payload.ref, "done");
+      else if (payload.action === "repairskip") setRepair(payload.ref, "skipped");
+      else openCharacter("temper", payload.ref);
+      return;
+    }
     if (payload?.kind === "virtue-check") {
       const score = { lived: 2, partly: 1, missed: 0 }[payload.action];
       if (score === undefined) openCharacter("virtue");
@@ -420,7 +438,7 @@ export default function Momentum() {
       return;
     }
     setState(tickFromNotification(payload));
-  }, [holdZone, answerVirtue, openCharacter]);
+  }, [holdZone, answerVirtue, openCharacter, setRepair]);
 
   useEffect(() => {
     if (!loaded) return undefined;
@@ -1074,7 +1092,7 @@ export default function Momentum() {
                 onAddPepNote={(n) => { addPepNote(n); show("Saved. That one is yours to read later."); }}
                 onHoldZone={holdZone}
                 onAnswerVirtue={answerVirtue} onOpenCharacter={() => openCharacter("virtue")} onOpenTemper={() => openCharacter("temper")}
-                onOpenLetter={(id) => openCharacter("letters", id)} onOpenExamen={() => openCharacter("examen")}
+                onOpenLetter={(id) => openCharacter("letters", id)} onOpenExamen={() => openCharacter("examen")} onOpenWeek={() => openCharacter("week")}
                 onDismissCharacterTeaser={() => patch({ settings: { ...state.settings, virtueTeaserDismissed: true } })}
                 backupNudge={isConfigured(cloudConfig) && !cloudSession?.user?.id && !backupNudgeOff && weigh(state) > 0}
                 onOpenBackup={() => setView("settings")}
@@ -1242,6 +1260,7 @@ export default function Momentum() {
                 onChoose={chooseVirtue} onKeep={keepVirtue} onClear={() => patch({ virtue: null })}
                 onAnswer={answerVirtue} onAddTemper={addTemper} onRemoveTemper={removeTemper}
                 onSaveExamen={saveExamen} onAddLetter={addLetter} onOpenLetter={openLetter} onRemoveLetter={removeLetter}
+                onSetRepair={setRepair} onSetFocus={setWeekFocus}
                 surf={surfSettings(state.settings)}
                 onSurf={(v) => patch({ settings: { ...state.settings, surf: v } })}
               />

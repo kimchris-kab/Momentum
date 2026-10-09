@@ -21,6 +21,7 @@ import { SHADE_MODES, pinnedHabit, shadeSettings } from "../lib/shade.js";
 import { DEFAULT_PEP, PEP_MIN_DAYS, pepSettings } from "../lib/pep.js";
 import { DEFAULT_VIRTUE, virtueSettings } from "../lib/virtue.js";
 import { DEFAULT_EXAMEN, examenSettings } from "../lib/examen.js";
+import { DEFAULT_WEEK, WEEK_DAYS, weekSettings } from "../lib/weekly.js";
 import { INTENSITIES, redZoneSettings } from "../lib/redzone.js";
 import { Card, Pill, SectionLabel } from "../components/ui.jsx";
 
@@ -127,6 +128,8 @@ export default function SettingsView({
   const setVirtue = (patch) => onSetSetting("virtue", { ...virtue, ...patch });
   const examen = useMemo(() => examenSettings(settings), [settings]);
   const setExamen = (patch) => onSetSetting("examen", { ...examen, ...patch });
+  const week = useMemo(() => weekSettings(settings), [settings]);
+  const setWeek = (patch) => onSetSetting("week", { ...week, ...patch });
 
   const enable = async () => {
     const result = await requestNotificationPermission();
@@ -541,6 +544,23 @@ export default function SettingsView({
               <div style={{ borderTop: `1px solid ${C.border}` }}>
                 <Row label="Examen at" desc="Late enough that the day is done.">
                   <TimeInput value={examen.time} label="Examen at" onChange={(v) => setExamen({ time: v || DEFAULT_EXAMEN.time })} />
+                </Row>
+              </div>
+            )}
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <Row label="Week in review"
+                desc="One notification a week: what went well, where you slipped, and the one thing to carry into the next.">
+                <Switch on={week.on} label="Week in review" onClick={() => setWeek({ on: !week.on })} />
+              </Row>
+            </div>
+            {week.on && (
+              <div style={{ borderTop: `1px solid ${C.border}` }}>
+                <Row label="Review on">
+                  <select value={week.day} onChange={(e) => setWeek({ day: Number(e.target.value) })} aria-label="Review day"
+                    style={{ ...styles.input, width: "auto", padding: "8px 10px", fontSize: 13 }}>
+                    {WEEK_DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                  </select>
+                  <TimeInput value={week.time} label="Review at" onChange={(v) => setWeek({ time: v || DEFAULT_WEEK.time })} />
                 </Row>
               </div>
             )}

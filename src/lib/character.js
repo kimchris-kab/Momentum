@@ -1,6 +1,8 @@
 import { examenNudges } from "./examen.js";
 import { letterNudges } from "./letters.js";
+import { repairNudges } from "./temper.js";
 import { virtueNudges } from "./virtue.js";
+import { weekNudges } from "./weekly.js";
 
 // What Character sends, as one list. The pieces each plan their own; this joins them and decides whether Character
 // has been taken up at all, because nothing here should start notifying someone who has never opened it.
@@ -20,6 +22,8 @@ export function characterNudges(state, { days = 7, now = Date.now() } = {}) {
     virtueNudges(state, { days, now }),
     examenNudges(state, { days, now }),
     letterNudges(state, { days, now }),
+    repairNudges(state, { days, now }),
+    weekNudges(state, { days, now }),
   ];
   return parts.flat();
 }

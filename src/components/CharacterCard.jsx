@@ -1,11 +1,12 @@
 import React, { useMemo } from "react";
-import { Check, Compass, Flame, Mail, Moon } from "lucide-react";
+import { CalendarCheck, Check, Compass, Flame, Mail, Moon, Target } from "lucide-react";
 import { C, F, R, alpha, styles } from "../theme.js";
 import { todayStr } from "../lib/date.js";
 import { SCORE_WORDS, activeVirtue, dayNumber, entryFor, practiceFor, stats, virtueSettings } from "../lib/virtue.js";
 import { dueLetters } from "../lib/letters.js";
 import { examenFor, examenSettings } from "../lib/examen.js";
 import { engaged } from "../lib/character.js";
+import { focusFor, reviewReady } from "../lib/weekly.js";
 
 const TONE = C.orange;
 
@@ -13,7 +14,7 @@ const TONE = C.orange;
  * Today's one practice for the virtue being worked on, and the day's one question. Answering is a tap,
  * from here or from the evening notification; the screen behind it has the rest. Quiet when it's switched off.
  */
-export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, onOpenLetter, onOpenExamen, onDismissTeaser }) {
+export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, onOpenLetter, onOpenExamen, onOpenWeek, onDismissTeaser }) {
   const cfg = virtueSettings(state.settings);
   const today = todayStr();
   const active = useMemo(() => activeVirtue(state), [state.virtue]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -22,6 +23,8 @@ export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, o
   const ex = examenSettings(state.settings);
   const now = new Date();
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const weekReady = engaged(state) && reviewReady(state, now);
+  const focus = focusFor(state, today);
   const askExamen = ex.on && engaged(state) && hhmm >= ex.time && !examenFor(state, today);
 
   return (
@@ -35,6 +38,20 @@ export default function CharacterCard({ state, onAnswer, onOpen, onOpenTemper, o
             {due.length === 1 ? "You wrote it for today." : `${due.length} letters you wrote for today.`} Open it when you have a quiet minute.
           </p>
           <button onClick={() => onOpenLetter(due[0].id)} style={{ ...styles.cta, height: 40, fontSize: 13 }}>Open it</button>
+        </div>
+      )}
+      {focus && (
+        <p style={{ display: "flex", alignItems: "center", gap: 7, color: C.muted, fontSize: 12.5, margin: "0 2px 10px" }}>
+          <Target size={13} color={C.teal} /> This week: <span style={{ color: C.text }}>{focus}</span>
+        </p>
+      )}
+      {weekReady && (
+        <div style={{ ...styles.card, borderColor: alpha(C.teal, 0.35) }}>
+          <p style={{ display: "flex", alignItems: "center", gap: 7, color: C.teal, fontSize: 11, fontWeight: 650, letterSpacing: 0.5, textTransform: "uppercase", margin: 0 }}>
+            <CalendarCheck size={13} /> Your week in review
+          </p>
+          <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "6px 0 10px" }}>What went well, where you slipped, and the one thing to carry into next week.</p>
+          <button onClick={onOpenWeek} style={{ ...styles.ghostCta, height: 40, fontSize: 13 }}>Read it</button>
         </div>
       )}
       {virtueCard()}

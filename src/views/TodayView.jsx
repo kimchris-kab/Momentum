@@ -57,7 +57,7 @@ export default function TodayView({
   onboarding, onStartOnboarding, onDismissOnboarding, onUrge, onSlip,
   onOpenExperiments, onFollowExperiment, onDismissExperimentTeaser, onAddPepNote, onHoldZone,
   backupNudge, onOpenBackup, onDismissBackupNudge,
-  onAnswerVirtue, onOpenCharacter, onOpenTemper, onOpenLetter, onOpenExamen, onDismissCharacterTeaser,
+  onAnswerVirtue, onOpenCharacter, onOpenTemper, onOpenLetter, onOpenExamen, onOpenWeek, onDismissCharacterTeaser,
 }) {
   const { tasks, dayLog, checkins, lists, freezes, reviews, dayFocus, weekPlans } = state;
   const today = todayStr();
@@ -246,7 +246,7 @@ export default function TodayView({
       {onOpenCharacter && state.settings?.virtue?.on !== false && (
         <Suspense fallback={null}>
           <CharacterCard state={state} onAnswer={onAnswerVirtue} onOpen={onOpenCharacter} onOpenTemper={onOpenTemper}
-            onOpenLetter={onOpenLetter} onOpenExamen={onOpenExamen}
+            onOpenLetter={onOpenLetter} onOpenExamen={onOpenExamen} onOpenWeek={onOpenWeek}
             onDismissTeaser={onDismissCharacterTeaser} />
         </Suspense>
       )}

@@ -3,8 +3,9 @@ import { Check, Compass, Flame, Heart, Pause, Plus, Trash2 } from "lucide-react"
 import { C, F, R, alpha, styles } from "../theme.js";
 import { addDays, parseD, todayStr } from "../lib/date.js";
 import {
-  SCORE_WORDS, VIRTUES, activeVirtue, dayNumber, entryFor, practiceFor, stats, suggestMove,
+  SCORE_WORDS, VIRTUES, activeVirtue, dayNumber, entryFor, practiceFor, stats, suggestMove, suggestNext, wheel,
 } from "../lib/virtue.js";
+import Wheel from "../components/character/Wheel.jsx";
 import {
   REACTIONS, TRIGGERS, daysSinceLastReaction, insights, isCalm, newestFirst, newTemperEntry, patterns, reactionLabel,
   triggerLabel,
@@ -14,6 +15,8 @@ import { whenLetters } from "../lib/letters.js";
 import LetterReader from "../components/character/LetterReader.jsx";
 import ExamenTab from "../components/character/ExamenTab.jsx";
 import LettersTab from "../components/character/LettersTab.jsx";
+import WeekTab from "../components/character/WeekTab.jsx";
+import RepairSheet from "../components/character/RepairSheet.jsx";
 
 const BreathPacer = lazy(() => import("../components/BreathPacer.jsx"));
 const TONE = C.orange;
@@ -22,17 +25,18 @@ const LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function CharacterView({
   state, onBack, initialTab = "virtue", initialLetter = null, onChoose, onClear, onKeep, onAnswer, onAddTemper, onRemoveTemper,
-  surf, onSurf, onSaveExamen, onAddLetter, onOpenLetter, onRemoveLetter,
+  surf, onSurf, onSaveExamen, onAddLetter, onOpenLetter, onRemoveLetter, onSetRepair, onSetFocus,
 }) {
   const [tab, setTab] = useState(initialTab);
   return (
     <div style={styles.page}>
       <PageHeader eyebrow="Character" title="Who you're becoming" onBack={onBack} />
       <SegmentedControl value={tab} onChange={setTab} style={{ marginBottom: 16 }}
-        options={[{ id: "virtue", label: "Virtue" }, { id: "temper", label: "Temper" }, { id: "examen", label: "Examen" }, { id: "letters", label: "Letters" }]} />
+        options={[{ id: "virtue", label: "Virtue" }, { id: "temper", label: "Temper" }, { id: "examen", label: "Examen" }, { id: "letters", label: "Letters" }, { id: "week", label: "Week" }]} />
       {tab === "virtue" && <VirtueTab state={state} onChoose={onChoose} onClear={onClear} onKeep={onKeep} onAnswer={onAnswer} />}
-      {tab === "temper" && <TemperTab state={state} onAdd={onAddTemper} onRemove={onRemoveTemper} surf={surf} onSurf={onSurf} onReadLetter={onOpenLetter} />}
+      {tab === "temper" && <TemperTab state={state} onAdd={onAddTemper} onRemove={onRemoveTemper} surf={surf} onSurf={onSurf} onReadLetter={onOpenLetter} onSetRepair={onSetRepair} initialRepair={initialLetter} />}
       {tab === "examen" && <ExamenTab state={state} onSave={onSaveExamen} />}
+      {tab === "week" && <WeekTab state={state} onFocus={onSetFocus} onSwitchVirtue={onChoose} />}
       {tab === "letters" && <LettersTab state={state} initialOpen={initialLetter} onAdd={onAddLetter} onOpen={onOpenLetter} onRemove={onRemoveLetter} />}
     </div>
   );
@@ -45,6 +49,7 @@ function VirtueTab({ state, onChoose, onClear, onKeep, onAnswer }) {
   const active = useMemo(() => activeVirtue(state), [state.virtue]); // eslint-disable-line react-hooks/exhaustive-deps
   const [picking, setPicking] = useState(!active);
   const [open, setOpen] = useState(null);
+  const suggested = suggestNext(state, today);
 
   if (!active || picking) {
     const chosen = VIRTUES.find((v) => v.id === open);
@@ -61,7 +66,9 @@ function VirtueTab({ state, onChoose, onClear, onKeep, onAnswer }) {
               border: `1px solid ${open === v.id ? alpha(TONE, 0.5) : C.border}`, color: C.text,
             }}>
               <span style={{ fontSize: 20 }}>{v.emoji}</span>
-              <p style={{ margin: "6px 0 2px", fontWeight: 650, fontSize: 14 }}>{v.name}</p>
+              <p style={{ margin: "6px 0 2px", fontWeight: 650, fontSize: 14 }}>
+                {v.name}{v.id === suggested.id && state.virtueLog?.length ? <span style={{ color: TONE, fontSize: 10.5, fontWeight: 600, marginLeft: 6 }}>suggested</span> : null}
+              </p>
               <p style={{ margin: 0, color: C.muted, fontSize: 11.5, lineHeight: 1.45 }}>{v.line}</p>
             </button>
           ))}
@@ -86,6 +93,8 @@ function VirtueTab({ state, onChoose, onClear, onKeep, onAnswer }) {
   const entry = entryFor(state, active.id, today);
   const st = stats(state, active.id, today);
   const move = suggestMove(state, today);
+  const spokes = wheel(state, today);
+  const next = suggestNext(state, today);
   return (
     <>
       <Card style={{ borderColor: alpha(TONE, 0.32) }}>
@@ -137,6 +146,14 @@ function VirtueTab({ state, onChoose, onClear, onKeep, onAnswer }) {
         </p>
       </Card>
 
+      <SectionLabel>Your wheel</SectionLabel>
+      <Card>
+        <Wheel spokes={spokes} current={active.id} />
+        <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "10px 0 0", textAlign: "center" }}>
+          How fully each trait was lived over three months. Next to try: <b style={{ color: C.text }}>{next.name}</b>. {next.reason}
+        </p>
+      </Card>
+
       {move && (
         <Card style={{ borderColor: alpha(C.gold, 0.35) }}>
           <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>A week in</p>
@@ -166,11 +183,13 @@ const when = (e) => {
   return `${day}, ${new Date(e.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
 };
 
-function TemperTab({ state, onAdd, onRemove, surf, onSurf, onReadLetter }) {
+function TemperTab({ state, onAdd, onRemove, surf, onSurf, onReadLetter, onSetRepair, initialRepair }) {
   const log = state.temperLog || [];
   const [logging, setLogging] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [repairing, setRepairing] = useState(initialRepair || null);
+  const repairEntry = repairing ? log.find((e) => e.id === repairing) : null;
   const clear = daysSinceLastReaction(log);
   const p = useMemo(() => patterns(log), [log]);
   const lines = useMemo(() => insights(log), [log]);
@@ -234,10 +253,15 @@ function TemperTab({ state, onAdd, onRemove, surf, onSurf, onReadLetter }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ color: C.text, fontSize: 13.5, fontWeight: 600, margin: 0 }}>{reactionLabel(e.reaction)}</p>
               <p style={{ color: C.muted, fontSize: 11.5, margin: "2px 0 0" }}>
-                {when(e)} · {triggerLabel(e.trigger)}{e.who ? ` · ${e.who}` : ""}{e.paused ? " · paused first" : ""}
+                {when(e)} · {triggerLabel(e.trigger)}{e.who ? ` · ${e.who}` : ""}{e.paused ? " · paused first" : ""}{e.repair?.status === "done" ? " · made it right" : ""}
               </p>
               {e.note && <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.5, margin: "6px 0 0", fontStyle: "italic" }}>Next time: {e.note}</p>}
             </div>
+            {!isCalm(e) && (!e.repair || e.repair.status === "open") && (
+              <button onClick={() => setRepairing(e.id)} style={{ ...styles.linkBtn, color: C.green, fontSize: 12, flexShrink: 0 }}>
+                {e.repair?.status === "open" ? "Still to do" : "Make it right"}
+              </button>
+            )}
             <button onClick={() => onRemove(e.id)} aria-label="Delete this entry" title="Delete" style={{ background: "none", border: "none", color: C.faint, cursor: "pointer", padding: 4 }}>
               <Trash2 size={14} />
             </button>
@@ -245,6 +269,10 @@ function TemperTab({ state, onAdd, onRemove, surf, onSurf, onReadLetter }) {
         </Card>
       ))}
 
+      {repairEntry && (
+        <RepairSheet entry={repairEntry} onClose={() => setRepairing(null)}
+          onSet={(status, opts) => { onSetRepair(repairEntry.id, status, opts); setRepairing(null); }} />
+      )}
       <LogSheet open={logging} paused={paused} onClose={() => setLogging(false)}
         onSave={(entry) => { onAdd(entry); setLogging(false); setPaused(false); }} />
     </>

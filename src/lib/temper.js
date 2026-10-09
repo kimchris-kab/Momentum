@@ -48,6 +48,65 @@ export function newTemperEntry({ trigger, reaction, who = "", note = "", paused 
 
 export const newestFirst = (log) => [...(log || [])].sort((a, b) => b.at - a.at);
 
+// ---- Making it right ----
+// After a bad moment the question that matters is not "why" but "what now". A repair is a small note on the entry itself:
+//   open — meant to do it, reminded tomorrow;  done — done;  skipped — nothing needed.
+
+const FEELING = {
+  tired: "tired", hungry: "hungry", rushed: "rushed", criticised: "feeling criticised", dismissed: "feeling ignored",
+  disrespect: "feeling disrespected", screen: "worn down by my phone", stress: "stressed", other: "not at my best",
+};
+
+const SORRY = {
+  raised: "I'm sorry I raised my voice earlier. That wasn't fair to you, and I'm working on it.",
+  harsh: "I'm sorry for what I said earlier. It was harsh, and it isn't what I meant.",
+  cold: "I'm sorry I went quiet and cold earlier. I was upset, but you didn't deserve the silence.",
+  sulked: "I'm sorry for how I acted earlier. I was in a mood and I took it out on you.",
+};
+
+export const REPAIR_STYLES = [
+  { id: "sorry", label: "Apologise" },
+  { id: "explain", label: "Explain" },
+];
+
+/** A message to start from, in plain words. It is only a draft: the person is meant to change it. */
+export function repairDraft(entry, style = "sorry") {
+  const hi = entry.who ? `Hi ${entry.who}. ` : "";
+  if (style === "explain") {
+    return `${hi}About earlier: I was ${FEELING[entry.trigger] || FEELING.other}, and I reacted badly. It wasn't about you. Can we start again?`;
+  }
+  return `${hi}${SORRY[entry.reaction] || "I'm sorry about earlier. I didn't handle it well."}`;
+}
+
+/** Bad moments nobody has dealt with yet: no repair started, or one still open. Newest first. */
+export const owed = (log) => newestFirst(log).filter((e) => !isCalm(e) && (!e.repair || e.repair.status === "open"));
+
+/** The log with an entry's repair set. A state of "open" may carry the time to be reminded. */
+export function withRepair(log, id, status, { remindAt = null, at = Date.now() } = {}) {
+  return (log || []).map((e) => (e.id === id ? { ...e, repair: { status, remindAt, at }, updatedAt: at } : e));
+}
+
+/** The next morning at ten: soon enough to matter, late enough not to be the first thing seen. */
+export function tomorrowMorning(now = Date.now()) {
+  const d = new Date(now);
+  d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Reminders for repairs left open, at the time chosen. */
+export function repairNudges(state, { days = 7, now = Date.now() } = {}) {
+  const horizon = now + days * DAY;
+  return (state.temperLog || [])
+    .filter((e) => e.repair?.status === "open" && e.repair.remindAt && e.repair.remindAt > now && e.repair.remindAt <= horizon)
+    .map((e) => ({
+      id: `repair:${e.id}`, kind: "repair", date: dstr(new Date(e.repair.remindAt)), at: new Date(e.repair.remindAt), ref: e.id,
+      title: e.who ? `Did you make it right with ${e.who}?` : "Did you make it right?",
+      body: `${reactionLabel(e.reaction)}, ${new Date(e.at).toLocaleDateString(undefined, { weekday: "long" })}. A short message now is easier than a long one later.`,
+      actions: [{ id: "repaired", title: "I did" }, { id: "repairskip", title: "Skip it" }],
+    }));
+}
+
 /** Whole days since the last time it got the better of you, or null if it never has in the log. */
 export function daysSinceLastReaction(log, now = Date.now()) {
   const last = newestFirst(log).find((e) => !isCalm(e));
@@ -103,6 +162,7 @@ export function patterns(log, now = Date.now()) {
     weekday: enough ? top(tally(bad, (e) => e.weekday), (d) => WEEKDAYS[d]) : null,
     who: enough ? top(tally(bad, (e) => e.who.toLowerCase()), (w) => w) : null,
     pauseEffect, thisWeek, lastWeek, trend,
+    repaired: bad.filter((e) => e.repair?.status === "done").length,
     daysClear: daysSinceLastReaction(all, now),
   };
 }
@@ -124,6 +184,7 @@ export function insights(log, now = Date.now()) {
       ? `When you pause first, you stay calm ${w}% of the time, against ${wo}% when you don't.`
       : `Pausing first hasn't made a difference yet (${w}% against ${wo}%). Keep logging.`);
   }
+  if (p.repaired > 0) out.push(`You made it right after ${p.repaired} of ${p.bad} bad moments.`);
   if (p.trend === "better") out.push(`Better than last week: ${p.thisWeek} against ${p.lastWeek}.`);
   if (p.trend === "worse") out.push(`A rougher week than last: ${p.thisWeek} against ${p.lastWeek}.`);
   return out;

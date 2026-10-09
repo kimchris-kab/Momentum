@@ -249,6 +249,40 @@ export function suggestMove(state, today) {
 /** "Keep going with this one": the same virtue, asked about again in a week rather than now. */
 export const keepVirtue = (state, today) => (state.virtue ? { ...state, virtue: { ...state.virtue, kept: today } } : state);
 
+// ---- The wheel ----
+
+/** How far back the wheel looks. Character moves slowly; a month would be dominated by one good or bad stretch. */
+export const WHEEL_DAYS = 90;
+
+/** Every virtue's answered days and how fully it was lived (0..1, or null if never answered), over the last WHEEL_DAYS. */
+export function wheel(state, today, days = WHEEL_DAYS) {
+  const from = addDays(today, -days + 1);
+  return VIRTUES.map((v) => {
+    const rows = (state.virtueLog || []).filter((e) => e.virtue === v.id && e.date >= from && e.date <= today);
+    const value = rows.length ? rows.reduce((a, e) => a + e.score, 0) / rows.length / 2 : null;
+    return { id: v.id, name: v.name, emoji: v.emoji, days: rows.length, value };
+  });
+}
+
+/** Enough answers before a virtue's average is treated as a verdict rather than a start. */
+export const MIN_DAYS_FOR_VERDICT = 3;
+
+/**
+ * What to work on next, and why in one sentence: a virtue never practised first (in the order they're listed), then the
+ * one lived least. The one being worked on now is not suggested unless it is the only choice.
+ */
+export function suggestNext(state, today) {
+  const w = wheel(state, today);
+  const current = state.virtue?.id;
+  const others = w.filter((x) => x.id !== current);
+  const pool = others.length ? others : w;
+  const fresh = pool.find((x) => x.days === 0);
+  if (fresh) return { id: fresh.id, name: fresh.name, reason: `You haven't practised ${fresh.name.toLowerCase()} yet.` };
+  const judged = pool.filter((x) => x.days >= MIN_DAYS_FOR_VERDICT);
+  const low = (judged.length ? judged : pool).reduce((a, x) => ((x.value ?? 1) < (a.value ?? 1) ? x : a));
+  return { id: low.id, name: low.name, reason: `${low.name} is your lowest: ${Math.round((low.value ?? 0) * 100)}% over ${low.days} day${low.days === 1 ? "" : "s"}.` };
+}
+
 // ---- Notifications ----
 
 const at = (date, hhmm) => new Date(`${date}T${hhmm}:00`);
