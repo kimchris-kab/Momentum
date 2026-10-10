@@ -64,7 +64,12 @@ export default function TodayView({
   const today = todayStr();
   // Worked out from the state each time it changes: the card appears when a run reaches three days.
   const writeAsk = useMemo(() => writeCandidate(state), [state.tasks, state.urgeLog, state.dayLog, state.pepNotes]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [showCompleted, setShowCompleted] = useState(false);
+  // "Show completed tasks" in Settings keeps ticked items where they were, ticked. Without it they tuck into a group below, which
+  // is easy to mistake for the tick not having registered, so the group's own toggle is only for that case.
+  const keepDone = !!state.settings?.showCompleted;
+  const [peekCompleted, setPeekCompleted] = useState(false);
+  const showCompleted = keepDone || peekCompleted;
+  const setShowCompleted = setPeekCompleted;
 
 
   const hour = new Date().getHours();
@@ -452,10 +457,12 @@ export default function TodayView({
             </div>
             {agendaDone.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <button onClick={() => setShowCompleted((s) => !s)} style={styles.linkBtn}>
-                  {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                  Completed ({agendaDone.length})
-                </button>
+                {!keepDone && (
+                  <button onClick={() => setShowCompleted((x) => !x)} style={styles.linkBtn}>
+                    {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    Completed ({agendaDone.length})
+                  </button>
+                )}
                 {showCompleted && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
                     {agendaDone.map(row)}

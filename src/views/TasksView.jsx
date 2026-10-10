@@ -49,7 +49,10 @@ export default function TasksView({
   const [searching, setSearching] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [showCompleted, setShowCompleted] = useState(false);
+  const keepDone = !!settings.showCompleted;
+  const [peekCompleted, setPeekCompleted] = useState(false);
+  const showCompleted = keepDone || peekCompleted;
+  const setShowCompleted = setPeekCompleted;
   const [sortOpen, setSortOpen] = useState(false);
   const [listsOpen, setListsOpen] = useState(false);
   const [newListName, setNewListName] = useState("");
@@ -215,10 +218,13 @@ export default function TasksView({
 
       {groups.completed.length > 0 && (
         <div style={{ marginTop: 18 }}>
-          <button onClick={() => setShowCompleted((s) => !s)} style={styles.linkBtn}>
-            {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            Completed ({groups.completed.length})
-          </button>
+          {!keepDone && (
+            <button onClick={() => setShowCompleted((x) => !x)} style={styles.linkBtn}>
+              {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              Completed ({groups.completed.length})
+            </button>
+          )}
+          {keepDone && <SectionLabel>Completed · {groups.completed.length}</SectionLabel>}
           {showCompleted && (
             <Card style={{ padding: "8px 14px", marginTop: 10 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>

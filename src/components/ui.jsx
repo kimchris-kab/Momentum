@@ -96,7 +96,7 @@ export function Checkbox({ checked, onClick, color = C.gold, danger, size = 22, 
       display: "flex", alignItems: "center", justifyContent: "center",
       transition: "background .16s ease, border-color .16s ease", ...style,
     }}>
-      {checked && <Check size={size * 0.58} color="#14131f" strokeWidth={3} className="mtm-pop" />}
+      {checked && <Check size={Math.max(11, Math.round(size * 0.68))} color="#14131f" strokeWidth={3.4} className="mtm-pop" />}
     </button>
   );
 }
