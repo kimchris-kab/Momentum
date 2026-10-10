@@ -118,7 +118,9 @@ export const isSlipped = (task, dateStr, dayLog) => !!dayLog?.[dateStr]?.[task.i
 export function dayState(task, dateStr, dayLog) {
   const entry = dayLog?.[dateStr]?.[task.id];
   if (entry?.slipped) return "slipped";
-  if (entry?.done) return "clean";
+  // A quit habit with no repeat keeps its tick on the task itself, the way isDone reads it: counting that as done while drawing
+  // the row as untouched is how Today showed "1/1" over an empty box.
+  if (entry?.done || (!task.recurrence && task.done)) return "clean";
   return "open";
 }
 

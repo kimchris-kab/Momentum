@@ -26,6 +26,11 @@ t.group("three states, not two");
 
   const slipped = slip({}, "q1", TODAY, 500);
   t.eq("a slipped day is slipped", dayState(task, TODAY, slipped), "slipped");
+  // A quit habit with no repeat is ticked on the task itself; its row must agree with the count that includes it.
+  const oneOff = { ...task, recurrence: null, done: true };
+  t.eq("a one-off quit habit that is ticked reads as clean", dayState(oneOff, TODAY, {}), "clean");
+  t.eq("...unless it slipped", dayState(oneOff, TODAY, slipped), "slipped");
+  t.eq("...and an unticked one is open", dayState({ ...oneOff, done: false }, TODAY, {}), "open");
   t.ok("...which the rest of the app reads as not clean, without learning anything new",
     !isDone(task, TODAY, slipped));
   t.ok("...and can ask about directly", isSlipped(task, TODAY, slipped));
