@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two cells by one: the clean-time counter on its own. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:resizeMode="horizontal"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/momentum_clean_widget"
+    android:previewLayout="@layout/momentum_clean_widget"
+    android:description="@string/widget_clean_description"
+    android:updatePeriodMillis="1800000" />

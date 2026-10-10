@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One cell: an Urge button and the clean time. Fixed in size, there is nothing in it to resize. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="40dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
+    android:resizeMode="none"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/momentum_urge_widget"
+    android:previewLayout="@layout/momentum_urge_widget"
+    android:description="@string/widget_urge_description"
+    android:updatePeriodMillis="1800000" />

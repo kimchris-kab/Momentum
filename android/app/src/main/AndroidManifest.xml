@@ -38,6 +38,37 @@
                 android:resource="@xml/momentum_widget_info" />
         </receiver>
 
+        <!-- The two small widgets: a one-cell Urge button, and the clean-time counter on its own. Exported for the same reason as the big one. -->
+        <receiver
+            android:name=".MomentumUrgeWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/momentum_urge_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".MomentumCleanWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/momentum_clean_widget_info" />
+        </receiver>
+
+        <!-- What a tap on a widget task row lands on: records a tick, or opens the app, and is gone before it shows anything. Reached only by
+             the PendingIntent the widget holds, so not exported. -->
+        <activity
+            android:name=".WidgetActionActivity"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:exported="false" />
+
         <!-- Feeds the widget's task list. The system binds to it, not another app, so it isn't
              exported; the permission is what stops anything else asking it for the list. -->
         <service

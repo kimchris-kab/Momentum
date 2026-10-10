@@ -88,4 +88,64 @@
         <item name="android:textStyle">bold</item>
         <item name="android:text">@string/widget_urge</item>
     </style>
+
+    <!-- One day of the week strip. -->
+    <style name="MomentumWidgetDot">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">5dp</item>
+        <item name="android:textColor">#3A3650</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:text">●</item>
+    </style>
+
+    <!-- "I held it": gold, because it is the answer to a question and not the panic button beside it. -->
+    <style name="MomentumWidgetHeld">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">9dp</item>
+        <item name="android:paddingBottom">9dp</item>
+        <item name="android:background">@drawable/widget_chip</item>
+        <item name="android:textColor">#E8B75D</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:text">@string/shade_action_held</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <!-- A usual payment: tap to log it again. -->
+    <style name="MomentumWidgetChip">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:background">@drawable/widget_chip</item>
+        <item name="android:textColor">#E8B75D</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <!-- The evening question's answers. -->
+    <style name="MomentumWidgetSmallButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">6dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:background">@drawable/widget_urge</item>
+        <item name="android:textColor">#5FC7C0</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>

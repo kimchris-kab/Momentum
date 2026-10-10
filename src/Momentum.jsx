@@ -13,7 +13,7 @@ import { emptyState, loadState, serializeState } from "./lib/migrate.js";
 import { newSession } from "./lib/focus.js";
 import { dueForSrbai, graduationStatus, newSrbaiEntry } from "./lib/automaticity.js";
 import { drainActions } from "./lib/actionQueue.js";
-import { publishWidget, takePendingHolds, takePendingLapse, takePendingNotes, takePendingUrge } from "./lib/widget.js";
+import { applyWidgetTicks, publishWidget, takePendingHolds, takePendingLapse, takePendingNotes, takePendingTicks, takePendingUrge, takePendingVirtue } from "./lib/widget.js";
 import { pinnedHabit, publishShade, setShadePin } from "./lib/shade.js";
 import { surfSettings } from "./lib/pacer.js";
 import { cleanDays, newPepNote, publishPep, takePendingPepNotes } from "./lib/pep.js";
@@ -1008,6 +1008,17 @@ export default function Momentum() {
       if (lapse) setUrging({ id: lapse, mode: "lapse" });
       // What the habit notification took while the app was closed: red zones held, and lines typed into it.
       (await takePendingHolds()).forEach((h) => holdZone(h.taskId, h.zone));
+      // Ticks and the evening virtue answer tapped on the home-screen widget.
+      const ticks = await takePendingTicks();
+      if (ticks.length) {
+        setState((s) => applyWidgetTicks(s, ticks));
+        show(ticks.length === 1 ? "Ticked from the widget" : `Ticked ${ticks.length} from the widget`);
+      }
+      const answers = await takePendingVirtue();
+      if (answers.length) {
+        import("./lib/virtue.js").then((m) => setState((s) => answers.reduce((acc, a) => m.answered(acc, { date: a.date, score: a.score, at: a.at }), s))).catch(() => {});
+        show("Kept your answer from the widget");
+      }
       const known0 = new Set(tasksRef.current.map((t) => t.id));
       const jotted = (await takePendingNotes()).filter((n) => known0.has(n.taskId));
       if (jotted.length) {

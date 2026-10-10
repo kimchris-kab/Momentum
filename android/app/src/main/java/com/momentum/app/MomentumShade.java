@@ -267,7 +267,7 @@ public class MomentumShade extends BroadcastReceiver {
     }
 
     /** Adds one row to a list the web app collects the next time it opens. */
-    private static void appendPending(Context context, String key, JSONObject row) {
+    static void appendPending(Context context, String key, JSONObject row) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         try {
             JSONArray all = new JSONArray(prefs.getString(key, "[]"));

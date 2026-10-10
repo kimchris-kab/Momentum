@@ -13,6 +13,14 @@
     <string name="widget_since_slipped_today">since you slipped today</string>
     <string name="widget_no_urges">no urges logged yet</string>
     <string name="widget_urge">Urge</string>
+    <string name="widget_virtue_lived">Lived it</string>
+    <string name="widget_virtue_partly">Partly</string>
+    <string name="widget_virtue_missed">Missed it</string>
+    <string name="widget_spent_today">Spent %1$s</string>
+    <string name="widget_urge_description">One tap for an urge: the habit you are quitting and how long it has been</string>
+    <string name="widget_urge_none">Open</string>
+    <string name="widget_clean_description">How long since the last slip, at a glance</string>
+    <string name="widget_clean_none">No habit being quit yet</string>
     <string name="shade_channel_name">Habit counter</string>
     <string name="shade_channel_description">A quiet, always-there counter for the habit you most want to break</string>
     <string name="shade_action_urge">Urge</string>

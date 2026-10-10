@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two cells by one: the time since the last slip, large, and what it is the time since. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/clean_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:background="@drawable/widget_background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="true">
+        <TextView
+            android:id="@+id/clean_widget_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#5FC7C0"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:maxLines="1" />
+        <TextView
+            android:id="@+id/clean_widget_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="9dp"
+            android:textColor="#F2EFFA"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/clean_widget_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#A29DB8"
+        android:textSize="11sp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+</LinearLayout>

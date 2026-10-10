@@ -2,7 +2,9 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { suite } from "./harness.mjs";
-import { PENDING_LAPSE_KEY, PENDING_URGE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
+import { PENDING_LAPSE_KEY, PENDING_TICK_KEY, PENDING_URGE_KEY, PENDING_VIRTUE_KEY, WIDGET_KEY, widgetSnapshot } from "../src/lib/widget.js";
+import { widgetExtras } from "../src/lib/widgetExtras.js";
+import { chooseVirtue } from "../src/lib/virtue.js";
 import { PENDING_HOLD_KEY, PENDING_NOTE_KEY, SHADE_KEY, shadeSnapshot } from "../src/lib/shade.js";
 import { PATTERNS, hapticCycle } from "../src/lib/pacer.js";
 import { PENDING_PEP_KEY, PEP_KEY } from "../src/lib/pep.js";
@@ -264,8 +266,8 @@ t.group("keeping the counter moving");
 {
   // Android won't update a widget more than every half hour by itself, so a counter reading
   // "3h 20m" would sit there stale. The widget schedules its own, gentler tick.
-  t.ok("it handles its own tick", /TICK_ACTION\.equals\(intent\.getAction\(\)\)/.test(widgetJava));
-  t.ok("...redrawing and scheduling the next", /refresh\(context\);\s*scheduleTick\(context\)/.test(widgetJava));
+  t.ok("it handles its own tick", /TICK_ACTION\.equals\(action\)/.test(widgetJava));
+  t.ok("...redrawing and scheduling the next", /refresh\(context\);\s*if \(anyWidgets\(context\)\) scheduleTick\(context\)/.test(widgetJava));
   t.ok("it starts when the first widget is added", /onEnabled\(Context context\)\s*\{\s*scheduleTick/.test(widgetJava));
   t.ok("...and stops when the last is removed, rather than ticking for nothing", /onDisabled[\s\S]*alarms\.cancel\(tickIntent/.test(widgetJava));
   t.ok("the tick isn't a waking alarm", /AlarmManager\.RTC,/.test(widgetJava) && !/RTC_WAKEUP/.test(widgetJava));
@@ -298,8 +300,14 @@ t.group("the keys the Java reads are the keys the app writes");
     ],
     dayLog: {},
     urgeLog: [newLapse({ taskId: "q1", at }), newUrge({ taskId: "q1", at })],
-  }, "2026-09-28");
+  }, "2026-09-28", { extras: widgetExtras({
+    tasks: [], dayLog: {}, virtue: chooseVirtue("patience", "2026-09-20"),
+    transactions: [{ id: 1, type: "expense", amount: 3, catId: "dining", payee: "Coffee", date: "2026-09-28" }, { id: 2, type: "expense", amount: 3, catId: "dining", payee: "Coffee", date: "2026-09-27" }],
+  }, "2026-09-28") });
   const top = new Set(Object.keys(snap));
+  const virtueKeys = new Set(Object.keys(snap.virtue || {}));
+  const chipKeys = new Set(Object.keys(snap.spend?.chips?.[0] || {}));
+  const spendKeys = new Set(Object.keys(snap.spend || {}));
   const item = new Set(Object.keys(snap.items[0] || {}));
   const quit = new Set(Object.keys(snap.quitting[0] || {}));
   const risk = new Set(Object.keys(widgetSnapshot({
@@ -317,6 +325,12 @@ t.group("the keys the Java reads are the keys the app writes");
   const riskReads = reads.filter((r) => r.on === "r").map((r) => r.key);
   t.eq("top-level keys all exist", topReads.filter((k) => !top.has(k)), []);
   t.eq("task keys all exist", itemReads.filter((k) => !item.has(k)), []);
+  const virtueReads = reads.filter((r) => r.on === "v").map((r) => r.key);
+  const chipReads = reads.filter((r) => r.on === "c").map((r) => r.key);
+  t.eq("virtue keys all exist", virtueReads.filter((k) => !virtueKeys.has(k)), []);
+  t.eq("spending-chip keys all exist", chipReads.filter((k) => !chipKeys.has(k)), []);
+  t.ok("...and both were actually read", virtueReads.includes("line") && virtueReads.includes("ask") && chipReads.includes("label"), { virtueReads, chipReads });
+  t.ok("the spend and week keys the widget asks for are sent", /spend\.optDouble\("today"/.test(widgetJava) && spendKeys.has("today") && top.has("week"));
   t.eq("habit-being-broken keys all exist", quitReads.filter((k) => !quit.has(k)), []);
   t.eq("risk-window keys all exist", riskReads.filter((k) => !risk.has(k)), []);
   t.ok("...and both were actually read", riskReads.includes("startMin") && riskReads.includes("endMin"), riskReads);
@@ -636,4 +650,66 @@ t.group("the habit notification's extras");
   const strings2 = readFileSync(join(ROOT, "android", "app", "src", "main", "res", "values", "strings.xml"), "utf8");
   const used2 = [...shade.matchAll(/R\.string\.(\w+)/g)].map((m) => m[1]);
   t.eq("every string it uses is defined", [...new Set(used2)].filter((n) => !strings2.includes(`name="${n}"`)), []);
+}
+
+
+t.group("the widget's own buttons");
+{
+  const activityJava = read("java/com/momentum/app/WidgetActionActivity.java");
+  const urgeJava = read("java/com/momentum/app/MomentumUrgeWidget.java");
+  const cleanJava = read("java/com/momentum/app/MomentumCleanWidget.java");
+  const shadeJava = read("java/com/momentum/app/MomentumShade.java");
+
+  // What the widget leaves for the app to collect must be read from the key the app looks under.
+  const javaKey = (name) => widgetJava.match(new RegExp(`${name}\\s*=\\s*"([^"]+)"`))?.[1];
+  t.eq("a tick is left under the key the app reads", javaKey("PENDING_TICK_KEY"), PENDING_TICK_KEY);
+  t.eq("a virtue answer is left under the key the app reads", javaKey("PENDING_VIRTUE_KEY"), PENDING_VIRTUE_KEY);
+  t.ok("the tick and the answer carry what the app reads back",
+    /put\("taskId", taskId\)\.put\("date"[^;]*put\("done", nowDone\)/.test(widgetJava) && /put\("date"[^;]*put\("score", score\)/.test(widgetJava));
+  t.ok("a recorded 'I held it' goes through the one the notification uses", /MomentumShade\.handleHeld\(context, intent\)/.test(widgetJava)
+    && /static void handleHeld\(Context context, Intent intent\)/.test(shadeJava));
+  t.ok("...and is offered for the same two hours", /MomentumShade\.heldKey\(context, q, now\)/.test(widgetJava));
+
+  // Tapping a task row.
+  t.ok("the rows' template is the small activity", /new Intent\(context, WidgetActionActivity\.class\)/.test(widgetJava));
+  t.ok("a row has a tick of its own and words of its own", /@\+id\/task_tick/.test(rowLayout) && /@\+id\/task_text/.test(rowLayout)
+    && /setOnClickFillInIntent\(R\.id\.task_tick[\s\S]*"tick"/.test(serviceJava) && /setOnClickFillInIntent\(R\.id\.task_text[\s\S]*"open"/.test(serviceJava));
+  const act = manifest.match(/<activity\s+android:name="\.WidgetActionActivity"[\s\S]*?\/>/)?.[0] || "";
+  t.ok("the activity is declared, shows no window, and is not open to other apps",
+    /Theme\.NoDisplay/.test(act) && /android:exported="false"/.test(act) && /excludeFromRecents="true"/.test(act), act);
+  t.ok("...and finishes before it is ever shown", /onCreate[\s\S]*finish\(\);/.test(activityJava) && /class WidgetActionActivity extends Activity/.test(activityJava));
+  t.ok("a tick that can't be taken opens the app instead", /if \(!handled\)[\s\S]*getLaunchIntentForPackage/.test(activityJava));
+  t.ok("a snapshot from yesterday is not ticked as if it were today's", /static boolean isFresh/.test(widgetJava) && /if \(!isFresh\(s, now\)\) return false/.test(widgetJava));
+
+  // Its buttons that don't open the app.
+  t.ok("a usual payment is logged the way a typed one is", /p\.via = "typed"/.test(widgetJava) && /MomentumMoney\.savePending\(context, rec\)/.test(widgetJava)
+    && /MomentumMoney\.savedNotification\(/.test(widgetJava));
+  t.ok("an Undo redraws the widget so the total is right again", /handleUndo[\s\S]*?MomentumWidget\.refresh\(context\)/.test(read("java/com/momentum/app/MomentumMoney.java")));
+  t.ok("each button has its own PendingIntent (a data URI, not just extras)", /ACTION_SCHEME/.test(widgetJava) && /\.setData\(new Uri\.Builder\(\)\.scheme\(ACTION_SCHEME\)/.test(widgetJava));
+  t.ok("the buttons' requests don't collide with each other or with the Urge buttons", (() => {
+    // 100 + i is the Urge buttons'. The others each leave room for up to three buttons.
+    const codes = [...widgetJava.matchAll(/\b(\d{3}) \+ i\b/g)].map((m) => Number(m[1])).filter((c) => c !== 100).sort((a, b) => a - b);
+    return codes.length >= 3 && codes.every((c, i) => i === 0 || c - codes[i - 1] >= 3) && codes.every((c) => c >= 300);
+  })());
+
+  // The two small widgets.
+  for (const [name, info, layoutName, javaSrc] of [["MomentumUrgeWidget", "momentum_urge_widget_info", "momentum_urge_widget", urgeJava], ["MomentumCleanWidget", "momentum_clean_widget_info", "momentum_clean_widget", cleanJava]]) {
+    const rx = manifest.match(new RegExp(`<receiver\\s+android:name="\\.${name}"[\\s\\S]*?</receiver>`))?.[0] || "";
+    t.ok(`${name} is declared, exported, and listens for updates`, /android:exported="true"/.test(rx) && rx.includes("APPWIDGET_UPDATE") && rx.includes(`@xml/${info}`), rx);
+    const xml = read(`res/xml/${info}.xml`);
+    t.ok(`...with a provider that points at its layout and an update period Android honours`,
+      xml.includes(`@layout/${layoutName}`) && Number(xml.match(/updatePeriodMillis="(\d+)"/)?.[1]) >= 1800000);
+    t.ok(`...and a description`, /android:description="@string\/\w+"/.test(xml));
+    t.ok(`${name} is redrawn by the big widget's refresh, and keeps the shared tick going`,
+      new RegExp(`${name}\\.refresh\\(context\\)`).test(widgetJava) && /scheduleTick\(context\)/.test(javaSrc) && /cancelTickIfNone/.test(javaSrc));
+  }
+  t.ok("the small Urge widget opens the same urge screen the big one does", /MomentumWidget\.urgeIntent\(/.test(urgeJava)
+    && /scheme\(URGE_SCHEME\)\.authority\(URGE_HOST\)/.test(widgetJava));
+  t.ok("the refresh alarm is only cancelled when no widget of any size is left", /static void cancelTickIfNone[\s\S]*?if \(anyWidgets\(context\)\) return/.test(widgetJava)
+    && /MomentumUrgeWidget\.class/.test(widgetJava) && /MomentumCleanWidget\.class/.test(widgetJava));
+
+  // Every id the Java binds is in a layout.
+  const ids = [...widgetJava.matchAll(/R\.id\.(\w+)/g)].map((m) => m[1]);
+  const allLayouts = ["momentum_widget", "widget_task_row", "widget_pep_line", "momentum_urge_widget", "momentum_clean_widget"].map((n) => read(`res/layout/${n}.xml`)).join("\n");
+  t.eq("every view the widget draws into exists", [...new Set(ids)].filter((id) => !new RegExp(`@\\+id/${id}\\b`).test(allLayouts)), []);
 }

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One cell. The whole widget is the Urge button; the time above it is the number worth protecting. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/urge_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="6dp"
+    android:background="@drawable/widget_background">
+
+    <TextView
+        android:id="@+id/urge_widget_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#5FC7C0"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:maxLines="1" />
+
+    <TextView
+        android:id="@+id/urge_widget_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="5dp"
+        android:paddingBottom="5dp"
+        android:background="@drawable/widget_urge"
+        android:textColor="#5FC7C0"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:text="@string/widget_urge" />
+</LinearLayout>

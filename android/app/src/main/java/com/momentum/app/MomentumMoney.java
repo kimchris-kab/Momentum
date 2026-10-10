@@ -392,6 +392,7 @@ public class MomentumMoney extends BroadcastReceiver {
 
     static void handleUndo(Context context, Intent intent) {
         undo(context, intent.getStringExtra(EXTRA_ID));
+        MomentumWidget.refresh(context);
         NotificationManager nm = manager(context);
         if (nm == null) return;
         int nid = intent.getIntExtra(EXTRA_NOTIFICATION, 0);

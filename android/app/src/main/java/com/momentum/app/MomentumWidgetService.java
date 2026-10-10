@@ -29,6 +29,7 @@ public class MomentumWidgetService extends RemoteViewsService {
     static final class Factory implements RemoteViewsFactory {
         private static final int COLOR_TEXT = 0xFFF2EFFA;
         private static final int COLOR_DONE = 0xFF6B6683;
+        private static final int COLOR_TICKED = 0xFF5FC7C0;
 
         private final Context context;
         private List<MomentumWidget.Item> items = new ArrayList<>();
@@ -63,10 +64,13 @@ public class MomentumWidgetService extends RemoteViewsService {
             RemoteViews row = new RemoteViews(context.getPackageName(), R.layout.widget_task_row);
             if (position < 0 || position >= items.size()) return row;
             MomentumWidget.Item item = items.get(position);
-            row.setTextViewText(R.id.task_text, (item.done ? "✓  " : "○  ") + item.text);
+            row.setTextViewText(R.id.task_tick, item.done ? "✓" : "○");
+            row.setTextColor(R.id.task_tick, item.done ? COLOR_TICKED : COLOR_TEXT);
+            row.setTextViewText(R.id.task_text, item.text);
             row.setTextColor(R.id.task_text, item.done ? COLOR_DONE : COLOR_TEXT);
-            // Fills in the template the widget set: a tap on any row opens the app.
-            row.setOnClickFillInIntent(R.id.task_text, new Intent());
+            // Both fill in the template the widget set. The tick records itself and closes at once; the words open the app.
+            row.setOnClickFillInIntent(R.id.task_tick, new Intent().putExtra("op", "tick").putExtra("taskId", item.id));
+            row.setOnClickFillInIntent(R.id.task_text, new Intent().putExtra("op", "open"));
             return row;
         }
 

@@ -1,6 +1,7 @@
 package com.momentum.app;
 
 import android.app.AlarmManager;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
@@ -20,6 +21,7 @@ import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Home-screen widget: today's progress, the habits being broken with a big clean-time counter
@@ -57,6 +59,17 @@ public class MomentumWidget extends AppWidgetProvider {
     static final String TICK_ACTION = "com.momentum.app.WIDGET_TICK";
     static final long TICK_MS = 15 * 60_000L;
 
+    /** Where the widget leaves what was tapped on it for the app to collect. Must match PENDING_TICK_KEY and PENDING_VIRTUE_KEY in src/lib/widget.js. */
+    static final String PENDING_TICK_KEY = "momentum:pendingTick";
+    static final String PENDING_VIRTUE_KEY = "momentum:pendingVirtue";
+    /** Taps on the widget that do not open the app: a usual payment, a virtue answer, "I held it". */
+    static final String ACTION_CHIP = "com.momentum.app.WIDGET_CHIP";
+    static final String ACTION_VIRTUE = "com.momentum.app.WIDGET_VIRTUE";
+    static final String ACTION_HELD = "com.momentum.app.WIDGET_HELD";
+    /** Gives each button its own PendingIntent: extras don't make two of them different, a data URI does. */
+    static final String ACTION_SCHEME = "momentum-widget";
+    static final int MAX_CHIPS = 3;
+
     private static final int COLOR_CLEAN = 0xFF5FC7C0;
     private static final int COLOR_SLIPPED = 0xFFE5736B;
     private static final int COLOR_WARN = 0xFFE8B75D;
@@ -67,10 +80,12 @@ public class MomentumWidget extends AppWidgetProvider {
 
     /** One task in the list. */
     static final class Item {
+        final String id;
         final String text;
         final boolean done;
 
-        Item(String text, boolean done) {
+        Item(String id, String text, boolean done) {
+            this.id = id;
             this.text = text;
             this.done = done;
         }
@@ -89,17 +104,37 @@ public class MomentumWidget extends AppWidgetProvider {
 
     @Override
     public void onDisabled(Context context) {
-        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarms != null) alarms.cancel(tickIntent(context));
+        cancelTickIfNone(context);
     }
 
     @Override
     public void onReceive(Context context, Intent intent) {
         super.onReceive(context, intent);
-        if (intent != null && TICK_ACTION.equals(intent.getAction())) {
+        String action = intent == null ? null : intent.getAction();
+        if (TICK_ACTION.equals(action)) {
             refresh(context);
-            scheduleTick(context);
+            if (anyWidgets(context)) scheduleTick(context);
+        } else if (ACTION_CHIP.equals(action)) {
+            handleChip(context, intent);
+        } else if (ACTION_VIRTUE.equals(action)) {
+            handleVirtue(context, intent);
+        } else if (ACTION_HELD.equals(action)) {
+            handleHeld(context, intent);
         }
+    }
+
+    /** Whether any of the three widgets is on a home screen: the refresh alarm only runs while one is. */
+    static boolean anyWidgets(Context context) {
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        return manager.getAppWidgetIds(new ComponentName(context, MomentumWidget.class)).length > 0
+                || manager.getAppWidgetIds(new ComponentName(context, MomentumUrgeWidget.class)).length > 0
+                || manager.getAppWidgetIds(new ComponentName(context, MomentumCleanWidget.class)).length > 0;
+    }
+
+    static void cancelTickIfNone(Context context) {
+        if (anyWidgets(context)) return;
+        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarms != null) alarms.cancel(tickIntent(context));
     }
 
     private static PendingIntent tickIntent(Context context) {
@@ -109,7 +144,7 @@ public class MomentumWidget extends AppWidgetProvider {
     }
 
     /** RTC rather than a waking alarm: it only matters while the screen could be looking at it. */
-    private static void scheduleTick(Context context) {
+    static void scheduleTick(Context context) {
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarms == null) return;
         alarms.set(AlarmManager.RTC, System.currentTimeMillis() + TICK_MS, tickIntent(context));
@@ -121,6 +156,8 @@ public class MomentumWidget extends AppWidgetProvider {
         ComponentName component = new ComponentName(context, MomentumWidget.class);
         int[] ids = manager.getAppWidgetIds(component);
         for (int id : ids) render(context, manager, id);
+        MomentumUrgeWidget.refresh(context);
+        MomentumCleanWidget.refresh(context);
     }
 
     static String since(long ms) {
@@ -146,6 +183,149 @@ public class MomentumWidget extends AppWidgetProvider {
         }
     }
 
+    private static boolean writeSnapshot(Context context, JSONObject s) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, s.toString()).commit();
+    }
+
+    /** The date as the app writes it, in the phone's own time. */
+    static String dateOf(long now) {
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(now);
+        return String.format(Locale.US, "%04d-%02d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
+    }
+
+    static int minuteOfDay(long now) {
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(now);
+        return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
+    }
+
+    /** Whether the snapshot is for today: after midnight, until the app writes again, it is yesterday's, and shouldn't be tapped as if it were today's. */
+    static boolean isFresh(JSONObject snapshot, long now) {
+        return snapshot != null && dateOf(now).equals(snapshot.optString("date", ""));
+    }
+
+    /**
+     * A tick tapped on a row: the row flips at once, and the tick is kept for the app to record. False when the snapshot is not today's
+     * or the task is not in it, in which case the caller opens the app instead.
+     */
+    static boolean applyTick(Context context, String taskId, long now) {
+        if (taskId == null || taskId.isEmpty()) return false;
+        JSONObject s = snapshot(context);
+        if (!isFresh(s, now)) return false;
+        JSONArray items = s.optJSONArray("items");
+        if (items == null) return false;
+        try {
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject it = items.optJSONObject(i);
+                if (it == null || !taskId.equals(it.optString("id", ""))) continue;
+                boolean nowDone = !it.optBoolean("done", false);
+                it.put("done", nowDone);
+                s.put("done", Math.max(0, s.optInt("done", 0) + (nowDone ? 1 : -1)));
+                MomentumShade.appendPending(context, PENDING_TICK_KEY,
+                        new JSONObject().put("taskId", taskId).put("date", s.optString("date")).put("done", nowDone).put("at", now));
+                writeSnapshot(context, s);
+                refresh(context);
+                return true;
+            }
+        } catch (Exception ignored) { }
+        return false;
+    }
+
+    /** One of the evening question's three answers, tapped on the widget. */
+    static void handleVirtue(Context context, Intent intent) {
+        int score = intent.getIntExtra("score", -1);
+        long now = System.currentTimeMillis();
+        JSONObject s = snapshot(context);
+        if (score < 0 || score > 2 || !isFresh(s, now)) { refresh(context); return; }
+        JSONObject v = s.optJSONObject("virtue");
+        if (v == null || !v.optBoolean("ask", false)) { refresh(context); return; }
+        try {
+            MomentumShade.appendPending(context, PENDING_VIRTUE_KEY,
+                    new JSONObject().put("date", s.optString("date")).put("score", score).put("at", now));
+            v.put("ask", false);
+            v.put("line", v.optString("name", "") + " \u00B7 " + context.getString(virtueWord(score)) + " today");
+            writeSnapshot(context, s);
+        } catch (Exception ignored) { }
+        refresh(context);
+    }
+
+    private static int virtueWord(int score) {
+        return score == 2 ? R.string.widget_virtue_lived : score == 1 ? R.string.widget_virtue_partly : R.string.widget_virtue_missed;
+    }
+
+    /** A usual payment tapped on the widget: logged as if it had been typed, with the same Undo the notification offers. */
+    static void handleChip(Context context, Intent intent) {
+        double amount = intent.getDoubleExtra("amount", 0);
+        String catId = intent.getStringExtra("catId");
+        String payee = intent.getStringExtra("payee");
+        if (!(amount > 0) || catId == null || catId.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        MoneyParse.Payment p = new MoneyParse.Payment();
+        p.amount = amount;
+        p.catId = catId;
+        p.payee = payee == null ? "" : payee;
+        p.type = "expense";
+        p.via = "typed";
+        p.date = MoneyParse.today(now);
+        JSONObject rec = MomentumMoney.record(p, now);
+        if (rec == null || !MomentumMoney.savePending(context, rec)) return;
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null && nm.areNotificationsEnabled()) {
+            MomentumMoney.ensureChannels(nm, context);
+            int nid = MomentumMoney.notificationId(rec.optString("key", rec.optString("id")));
+            nm.notify(nid, MomentumMoney.savedNotification(context, MomentumMoney.config(context), p, rec, nid));
+        }
+        refresh(context);
+    }
+
+    /** "I held it" on the widget: recorded the way the notification records it, and gone from both. */
+    static void handleHeld(Context context, Intent intent) {
+        MomentumShade.handleHeld(context, intent);
+        refresh(context);
+    }
+
+    /** What has been logged from here or the notification that the app has not collected yet, so the total is right straight away and after an Undo. */
+    static double pendingSpendToday(Context context, long now) {
+        double sum = 0;
+        String today = dateOf(now);
+        JSONArray all = MomentumMoney.pending(context);
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject o = all.optJSONObject(i);
+            if (o != null && "expense".equals(o.optString("type", "")) && today.equals(o.optString("date", ""))) sum += o.optDouble("amount", 0);
+        }
+        return sum;
+    }
+
+    /** The first habit being quit in the snapshot, which the small widgets are about; null if none. */
+    static JSONObject firstQuit(Context context) {
+        JSONObject s = snapshot(context);
+        JSONArray q = s == null ? null : s.optJSONArray("quitting");
+        if (q == null) return null;
+        for (int i = 0; i < q.length(); i++) {
+            JSONObject o = q.optJSONObject(i);
+            if (o != null && !o.optString("id", "").isEmpty()) return o;
+        }
+        return null;
+    }
+
+    /** The Urge deep link for a habit: the same one the big widget's button opens. */
+    static PendingIntent urgeIntent(Context context, String id, int requestCode) {
+        Intent urge = new Intent(context, MainActivity.class)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(new Uri.Builder().scheme(URGE_SCHEME).authority(URGE_HOST).appendPath(id).build())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return PendingIntent.getActivity(context, requestCode, urge, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** A button on the widget that tells this class something without opening the app. */
+    private static PendingIntent tap(Context context, String action, String host, String path, int requestCode, Intent extras) {
+        Intent i = new Intent(context, MomentumWidget.class).setAction(action)
+                .setData(new Uri.Builder().scheme(ACTION_SCHEME).authority(host).appendPath(path).build());
+        if (extras != null && extras.getExtras() != null) i.putExtras(extras.getExtras());
+        return PendingIntent.getBroadcast(context, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
     /** Every task in the snapshot, in the order the app wrote them. */
     static List<Item> readItems(Context context) {
         List<Item> out = new ArrayList<>();
@@ -156,7 +336,7 @@ public class MomentumWidget extends AppWidgetProvider {
         for (int i = 0; i < items.length(); i++) {
             JSONObject item = items.optJSONObject(i);
             if (item == null) continue;
-            out.add(new Item(item.optString("text", ""), item.optBoolean("done", false)));
+            out.add(new Item(item.optString("id", ""), item.optString("text", ""), item.optBoolean("done", false)));
         }
         return out;
     }
@@ -323,6 +503,7 @@ public class MomentumWidget extends AppWidgetProvider {
         int[] quitDetails = { R.id.quit_0_detail, R.id.quit_1_detail };
         int[] quitRisks = { R.id.quit_0_risk, R.id.quit_1_risk };
         int[] quitButtons = { R.id.quit_0_urge, R.id.quit_1_urge };
+        int[] quitHeld = { R.id.quit_0_held, R.id.quit_1_held };
         for (int rowId : quitRows) views.setViewVisibility(rowId, View.GONE);
         views.setViewVisibility(R.id.quit_divider, View.GONE);
 
@@ -367,6 +548,14 @@ public class MomentumWidget extends AppWidgetProvider {
                             context, 100 + i, urge,
                             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                     views.setOnClickPendingIntent(quitButtons[i], pending);
+
+                    // For two hours after a red zone ends the question is how it went: "I held it" appears beside Urge.
+                    String zone = MomentumShade.heldKey(context, q, now);
+                    views.setViewVisibility(quitHeld[i], zone == null ? View.GONE : View.VISIBLE);
+                    if (zone != null) {
+                        Intent held = new Intent().putExtra("taskId", id).putExtra("zone", zone);
+                        views.setOnClickPendingIntent(quitHeld[i], tap(context, ACTION_HELD, "held", id + "/" + zone, 300 + i, held));
+                    }
                 }
                 if (quitCount > 0) views.setViewVisibility(R.id.quit_divider, View.VISIBLE);
             } catch (Exception e) {
@@ -388,6 +577,11 @@ public class MomentumWidget extends AppWidgetProvider {
         }
         views.setViewVisibility(R.id.pep_flipper, pepShown > 0 ? View.VISIBLE : View.GONE);
 
+        bindWeek(views, snapshot);
+        boolean fresh = isFresh(snapshot, now);
+        bindVirtue(context, views, snapshot, now, fresh);
+        bindSpend(context, views, snapshot, now, fresh);
+
         views.setTextViewText(R.id.widget_progress,
                 total > 0 ? done + " / " + total : context.getString(R.string.widget_placeholder));
         views.setTextViewText(R.id.widget_subtitle, streakText);
@@ -402,10 +596,10 @@ public class MomentumWidget extends AppWidgetProvider {
 
         // Tapping a task opens the app. List rows can't take a plain click handler; they take a
         // template that each row fills in. The template must be mutable for that on Android 12+.
-        Intent open = new Intent(context, MainActivity.class)
-                .setAction(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LAUNCHER)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // The template goes to a small invisible activity, and each row says what it wants through the extras it fills in: its tick
+        // records the tick and closes again at once, and anywhere else on the row opens the app.
+        Intent open = new Intent(context, WidgetActionActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
         int mutable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
         views.setPendingIntentTemplate(R.id.widget_list, PendingIntent.getActivity(
                 context, 2, open, PendingIntent.FLAG_UPDATE_CURRENT | mutable));
@@ -419,6 +613,66 @@ public class MomentumWidget extends AppWidgetProvider {
             views.setOnClickPendingIntent(R.id.widget_root, pending);
         }
         return views;
+    }
+
+    private static final int[] WEEK_DOTS = { R.id.week_0, R.id.week_1, R.id.week_2, R.id.week_3, R.id.week_4, R.id.week_5, R.id.week_6 };
+    /** None planned, none done, under half, over half, all. */
+    private static final int[] WEEK_COLORS = { 0xFF3A3650, 0xFF8C7442, 0xFFC9A053, 0xFFE8B75D };
+    private static final int WEEK_NONE = 0xFF24212F;
+
+    /** Seven dots for the week ending today. Hidden until the app has sent them. */
+    private static void bindWeek(RemoteViews views, JSONObject snapshot) {
+        JSONArray week = snapshot == null ? null : snapshot.optJSONArray("week");
+        boolean show = week != null && week.length() == WEEK_DOTS.length;
+        views.setViewVisibility(R.id.week_strip, show ? View.VISIBLE : View.GONE);
+        if (!show) return;
+        for (int i = 0; i < WEEK_DOTS.length; i++) {
+            int level = week.optInt(i, -1);
+            views.setTextColor(WEEK_DOTS[i], level < 0 ? WEEK_NONE : WEEK_COLORS[Math.min(level, WEEK_COLORS.length - 1)]);
+            // Today, the last of them, is the one still being filled in, so it is the larger.
+            views.setTextViewTextSize(WEEK_DOTS[i], android.util.TypedValue.COMPLEX_UNIT_SP, i == WEEK_DOTS.length - 1 ? 15 : 11);
+        }
+    }
+
+    /** The virtue of the day on one line, with the evening question's three answers once it is time to ask. */
+    private static void bindVirtue(Context context, RemoteViews views, JSONObject snapshot, long now, boolean fresh) {
+        JSONObject v = snapshot == null ? null : snapshot.optJSONObject("virtue");
+        String line = v == null ? "" : v.optString("line", "");
+        views.setViewVisibility(R.id.virtue_row, line.isEmpty() ? View.GONE : View.VISIBLE);
+        if (line.isEmpty()) return;
+        views.setTextViewText(R.id.virtue_line, line);
+        boolean ask = fresh && v.optBoolean("ask", false) && minuteOfDay(now) >= v.optInt("askFromMin", 18 * 60 + 30);
+        views.setViewVisibility(R.id.virtue_buttons, ask ? View.VISIBLE : View.GONE);
+        if (!ask) return;
+        int[] buttons = { R.id.virtue_lived, R.id.virtue_partly, R.id.virtue_missed };
+        int[] scores = { 2, 1, 0 };
+        for (int i = 0; i < buttons.length; i++) {
+            Intent extras = new Intent().putExtra("score", scores[i]);
+            views.setOnClickPendingIntent(buttons[i], tap(context, ACTION_VIRTUE, "virtue", String.valueOf(scores[i]), 320 + i, extras));
+        }
+    }
+
+    /** What has been spent today and the payments made again and again, one tap each. */
+    private static void bindSpend(Context context, RemoteViews views, JSONObject snapshot, long now, boolean fresh) {
+        JSONObject spend = snapshot == null ? null : snapshot.optJSONObject("spend");
+        JSONArray chips = spend == null ? null : spend.optJSONArray("chips");
+        int[] ids = { R.id.spend_chip_0, R.id.spend_chip_1, R.id.spend_chip_2 };
+        double total = (fresh && spend != null ? spend.optDouble("today", 0) : 0) + pendingSpendToday(context, now);
+        int shown = chips == null ? 0 : Math.min(chips.length(), Math.min(ids.length, MAX_CHIPS));
+        boolean any = shown > 0 || total > 0;
+        views.setViewVisibility(R.id.spend_row, any ? View.VISIBLE : View.GONE);
+        if (!any) return;
+        views.setTextViewText(R.id.spend_total, total > 0 ? context.getString(R.string.widget_spent_today, MomentumMoney.amountText(total)) : "");
+        for (int i = 0; i < ids.length; i++) {
+            JSONObject c = i < shown ? chips.optJSONObject(i) : null;
+            boolean usable = c != null && c.optDouble("amount", 0) > 0 && !c.optString("catId", "").isEmpty();
+            views.setViewVisibility(ids[i], usable ? View.VISIBLE : View.GONE);
+            if (!usable) continue;
+            views.setTextViewText(ids[i], c.optString("label", ""));
+            Intent extras = new Intent().putExtra("amount", c.optDouble("amount", 0))
+                    .putExtra("catId", c.optString("catId", "")).putExtra("payee", c.optString("payee", ""));
+            views.setOnClickPendingIntent(ids[i], tap(context, ACTION_CHIP, "chip", String.valueOf(i), 340 + i, extras));
+        }
     }
 
     private static void render(Context context, AppWidgetManager manager, int widgetId) {

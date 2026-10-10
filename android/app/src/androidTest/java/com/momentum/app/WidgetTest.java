@@ -3,6 +3,7 @@ package com.momentum.app;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -23,6 +24,7 @@ import android.widget.TextView;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
@@ -75,7 +77,10 @@ public class WidgetTest {
             if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) host.deleteAppWidgetId(widgetId);
             try { host.stopListening(); } catch (Exception ignored) { }
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY).commit();
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY)
+                .remove(MomentumWidget.PENDING_TICK_KEY).remove(MomentumWidget.PENDING_VIRTUE_KEY)
+                .remove(MomentumMoney.PENDING_KEY).remove(MomentumShade.PENDING_HOLD_KEY).commit();
+        context.getSharedPreferences("momentum_shade_answers", Context.MODE_PRIVATE).edit().clear().commit();
     }
 
     // ---- helpers -------------------------------------------------------------------------
@@ -296,11 +301,11 @@ public class WidgetTest {
         inst.runOnMainSync(() -> {
             View a = factory.getViewAt(0).apply(context, new android.widget.FrameLayout(context));
             View z = factory.getViewAt(8).apply(context, new android.widget.FrameLayout(context));
-            first.set(((TextView) a.findViewById(R.id.task_text)).getText().toString());
-            last.set(((TextView) z.findViewById(R.id.task_text)).getText().toString());
+            first.set(((TextView) a.findViewById(R.id.task_tick)).getText() + " " + ((TextView) a.findViewById(R.id.task_text)).getText());
+            last.set(((TextView) z.findViewById(R.id.task_tick)).getText() + " " + ((TextView) z.findViewById(R.id.task_text)).getText());
         });
-        assertEquals("what's still to do comes first", "○  Read", first.get());
-        assertEquals("what's finished goes last, ticked", "✓  Stretch", last.get());
+        assertEquals("what's still to do comes first, with an empty tick", "○ Read", first.get());
+        assertEquals("what's finished goes last, ticked", "✓ Stretch", last.get());
     }
 
     @Test
@@ -559,5 +564,195 @@ public class WidgetTest {
         snapshot("{this is not json");
         placeWidget();
         waitFor("the placeholder", () -> "—".equals(text(R.id.widget_progress)));
+    }
+
+    // ---- the widget's own buttons ---------------------------------------------------------
+
+    private JSONArray pending(String key) throws Exception {
+        return new JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, "[]"));
+    }
+
+    private JSONObject savedSnapshot() throws Exception {
+        return new JSONObject(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "{}"));
+    }
+
+    /** A snapshot for today, so the buttons take it as current: three tasks, one done. */
+    private String todaysSnapshot(long now, String extra) {
+        return "{\"date\":\"" + MomentumWidget.dateOf(now) + "\",\"done\":1,\"total\":3,\"streak\":2,"
+                + "\"items\":[" + task("Read", false) + "," + task("Water", false) + "," + task("Walk", true) + "],\"quitting\":[]"
+                + (extra.isEmpty() ? "" : "," + extra) + ",\"updatedAt\":" + now + "}";
+    }
+
+    @Test
+    public void aTickOnTheWidgetFlipsTheRowAndLeavesItForTheApp() throws Exception {
+        long now = System.currentTimeMillis();
+        snapshot(todaysSnapshot(now, ""));
+        assertTrue("the tick was taken", MomentumWidget.applyTick(context, "Read", now));
+        JSONObject s = savedSnapshot();
+        assertEquals("the day's count went up", 2, s.getInt("done"));
+        assertTrue("the row is ticked", s.getJSONArray("items").getJSONObject(0).getBoolean("done"));
+        JSONArray left = pending(MomentumWidget.PENDING_TICK_KEY);
+        assertEquals(1, left.length());
+        assertEquals("Read", left.getJSONObject(0).getString("taskId"));
+        assertTrue("it says what it wanted the task to be", left.getJSONObject(0).getBoolean("done"));
+        assertEquals("and for which day", MomentumWidget.dateOf(now), left.getJSONObject(0).getString("date"));
+
+        assertTrue("tapping again takes it back", MomentumWidget.applyTick(context, "Read", now));
+        assertEquals(1, savedSnapshot().getInt("done"));
+        JSONArray both = pending(MomentumWidget.PENDING_TICK_KEY);
+        assertEquals("both taps are kept, in order", 2, both.length());
+        assertFalse(both.getJSONObject(1).getBoolean("done"));
+
+        assertFalse("a task that is not there is not ticked", MomentumWidget.applyTick(context, "Nothing", now));
+        assertFalse("nor is an empty id", MomentumWidget.applyTick(context, "", now));
+    }
+
+    @Test
+    public void aSnapshotFromYesterdayIsNotTickedAsIfItWereToday() throws Exception {
+        long now = System.currentTimeMillis();
+        snapshot(busyDay(now)); // dated 2026-09-28
+        assertFalse("the activity opens the app instead, which brings it up to date", MomentumWidget.applyTick(context, "Read", now));
+        assertEquals("nothing was recorded", 0, pending(MomentumWidget.PENDING_TICK_KEY).length());
+    }
+
+    @Test
+    public void aUsualPaymentTappedOnTheWidgetIsLoggedAndCounted() throws Exception {
+        long now = System.currentTimeMillis();
+        snapshot(todaysSnapshot(now, "\"spend\":{\"today\":10,\"chips\":[{\"label\":\"Coffee 3\",\"amount\":3,\"catId\":\"dining\",\"payee\":\"Coffee\"}]}"));
+        android.content.Intent tap = new android.content.Intent().putExtra("amount", 3.0).putExtra("catId", "dining").putExtra("payee", "Coffee");
+        MomentumWidget.handleChip(context, tap);
+        JSONArray rows = pending(MomentumMoney.PENDING_KEY);
+        assertEquals("one payment waits for the app", 1, rows.length());
+        JSONObject p = rows.getJSONObject(0);
+        assertEquals(3.0, p.getDouble("amount"), 0.001);
+        assertEquals("dining", p.getString("catId"));
+        assertEquals("Coffee", p.getString("payee"));
+        assertEquals("expense", p.getString("type"));
+        assertEquals("typed", p.getString("via"));
+        assertEquals("dated today", MoneyParse.today(now), p.getString("date"));
+        assertEquals("what has not been collected yet is in the day's total", 3.0, MomentumWidget.pendingSpendToday(context, now), 0.001);
+
+        MomentumMoney.undo(context, p.getString("id"));
+        assertEquals("an undone payment leaves the total", 0.0, MomentumWidget.pendingSpendToday(context, now), 0.001);
+
+        MomentumWidget.handleChip(context, new android.content.Intent().putExtra("amount", 0.0).putExtra("catId", "dining"));
+        MomentumWidget.handleChip(context, new android.content.Intent().putExtra("amount", 5.0));
+        assertEquals("a button with nothing to log logs nothing", 0, pending(MomentumMoney.PENDING_KEY).length());
+    }
+
+    @Test
+    public void theEveningAnswerIsKeptAndTheQuestionCloses() throws Exception {
+        long now = System.currentTimeMillis();
+        snapshot(todaysSnapshot(now, "\"virtue\":{\"name\":\"Patience\",\"line\":\"Patience \u00B7 Breathe first\",\"ask\":true,\"askFromMin\":0}"));
+        MomentumWidget.handleVirtue(context, new android.content.Intent().putExtra("score", 2));
+        JSONArray rows = pending(MomentumWidget.PENDING_VIRTUE_KEY);
+        assertEquals(1, rows.length());
+        assertEquals(2, rows.getJSONObject(0).getInt("score"));
+        assertEquals(MomentumWidget.dateOf(now), rows.getJSONObject(0).getString("date"));
+        JSONObject v = savedSnapshot().getJSONObject("virtue");
+        assertFalse("answered, so no more question", v.getBoolean("ask"));
+        assertEquals("Patience \u00B7 Lived it today", v.getString("line"));
+        MomentumWidget.handleVirtue(context, new android.content.Intent().putExtra("score", 0));
+        assertEquals("a second tap on a closed question is ignored", 1, pending(MomentumWidget.PENDING_VIRTUE_KEY).length());
+        MomentumWidget.handleVirtue(context, new android.content.Intent().putExtra("score", 7));
+        assertEquals("a score that is not one of the three is ignored", 1, pending(MomentumWidget.PENDING_VIRTUE_KEY).length());
+    }
+
+    @Test
+    public void theNewRowsDrawWhenTheSnapshotHasThem() throws Exception {
+        long now = System.currentTimeMillis();
+        long endedTenMinutesAgo = now - 10 * 60_000L;
+        String extra = "\"week\":[3,2,0,3,2,-1,1],"
+                + "\"virtue\":{\"name\":\"Patience\",\"line\":\"Patience \u00B7 Breathe first\",\"ask\":true,\"askFromMin\":0},"
+                + "\"spend\":{\"today\":23,\"chips\":[{\"label\":\"Coffee 3\",\"amount\":3,\"catId\":\"dining\",\"payee\":\"Coffee\"},"
+                + "{\"label\":\"Lunch 12\",\"amount\":12,\"catId\":\"dining\",\"payee\":\"Lunch\"}]}";
+        String quitting = "[{\"id\":\"q1\",\"text\":\"Doomscrolling\",\"state\":\"open\",\"lastSlipAt\":" + (now - 3 * DAY)
+                + ",\"lastUrgeAt\":null,\"limit\":0,\"count\":0,\"everSlipped\":true,"
+                + "\"zoneEnds\":[{\"key\":\"z1@" + MomentumWidget.dateOf(now) + "\",\"endAt\":" + endedTenMinutesAgo + "}]}]";
+        snapshot(todaysSnapshot(now, extra).replace("\"quitting\":[]", "\"quitting\":" + quitting));
+        placeWidget();
+        waitFor("the week and the virtue to appear", () -> hostView.findViewById(R.id.week_strip).getVisibility() == View.VISIBLE
+                && hostView.findViewById(R.id.virtue_row).getVisibility() == View.VISIBLE);
+        final String[] seen = new String[8];
+        inst.runOnMainSync(() -> {
+            seen[0] = String.valueOf(hostView.findViewById(R.id.virtue_buttons).getVisibility());
+            seen[1] = text(R.id.virtue_line);
+            seen[2] = String.valueOf(hostView.findViewById(R.id.spend_row).getVisibility());
+            seen[3] = text(R.id.spend_total);
+            seen[4] = text(R.id.spend_chip_0);
+            seen[5] = text(R.id.spend_chip_1);
+            seen[6] = String.valueOf(hostView.findViewById(R.id.spend_chip_2).getVisibility());
+            seen[7] = String.valueOf(hostView.findViewById(R.id.quit_0_held).getVisibility());
+        });
+        assertEquals("the evening question's answers show", String.valueOf(View.VISIBLE), seen[0]);
+        assertEquals("Patience \u00B7 Breathe first", seen[1]);
+        assertEquals(String.valueOf(View.VISIBLE), seen[2]);
+        assertEquals("the day's spending", "Spent 23", seen[3]);
+        assertEquals("Coffee 3", seen[4]);
+        assertEquals("Lunch 12", seen[5]);
+        assertEquals("a third chip is not drawn when there are two", String.valueOf(View.GONE), seen[6]);
+        assertEquals("a red zone ended ten minutes ago, so 'I held it' is there beside Urge", String.valueOf(View.VISIBLE), seen[7]);
+    }
+
+    @Test
+    public void theQuestionWaitsUntilTheEveningAndTheHeldButtonGoesOnceAnswered() throws Exception {
+        long now = System.currentTimeMillis();
+        String zoneKey = "z1@" + MomentumWidget.dateOf(now);
+        String quitting = "[{\"id\":\"q1\",\"text\":\"Doomscrolling\",\"state\":\"open\",\"lastSlipAt\":" + (now - DAY)
+                + ",\"limit\":0,\"count\":0,\"everSlipped\":true,\"zoneEnds\":[{\"key\":\"" + zoneKey + "\",\"endAt\":" + (now - 5 * 60_000L) + "}]}]";
+        // The window opens at 11:59pm, so it is not yet time to ask, whenever this runs short of that.
+        String extra = "\"virtue\":{\"name\":\"Patience\",\"line\":\"Patience \u00B7 Breathe first\",\"ask\":true,\"askFromMin\":1439}";
+        snapshot(todaysSnapshot(now, extra).replace("\"quitting\":[]", "\"quitting\":" + quitting));
+        if (MomentumWidget.minuteOfDay(now) < 1439) {
+            placeWidget();
+            waitFor("the virtue line", () -> hostView.findViewById(R.id.virtue_row).getVisibility() == View.VISIBLE);
+            final int[] buttons = new int[1];
+            inst.runOnMainSync(() -> buttons[0] = hostView.findViewById(R.id.virtue_buttons).getVisibility());
+            assertEquals("before the evening there is a line but no question", View.GONE, buttons[0]);
+        }
+        android.content.Intent held = new android.content.Intent().putExtra("taskId", "q1").putExtra("zone", zoneKey);
+        MomentumWidget.handleHeld(context, held);
+        JSONArray rows = pending(MomentumShade.PENDING_HOLD_KEY);
+        assertEquals("the hold is kept for the app, as the notification keeps it", 1, rows.length());
+        assertEquals("q1", rows.getJSONObject(0).getString("taskId"));
+        assertEquals(zoneKey, rows.getJSONObject(0).getString("zone"));
+        assertNull("answered, so the question is not offered again", MomentumShade.heldKey(context, savedSnapshot().getJSONArray("quitting").getJSONObject(0), now));
+    }
+
+    @Test
+    public void theSmallWidgetsDrawWithTheSameSnapshot() throws Exception {
+        long now = System.currentTimeMillis();
+        String quitting = "[{\"id\":\"q1\",\"text\":\"Doomscrolling\",\"state\":\"open\",\"lastSlipAt\":" + (now - (4 * DAY + 6 * HOUR + 10 * 60_000L))
+                + ",\"lastUrgeAt\":null,\"limit\":0,\"count\":0,\"everSlipped\":true}]";
+        snapshot(todaysSnapshot(now, "").replace("\"quitting\":[]", "\"quitting\":" + quitting));
+        final String[] seen = new String[5];
+        inst.runOnMainSync(() -> {
+            View urge = MomentumUrgeWidget.buildViews(context, now).apply(context, new android.widget.FrameLayout(context));
+            seen[0] = ((TextView) urge.findViewById(R.id.urge_widget_time)).getText().toString();
+            seen[1] = ((TextView) urge.findViewById(R.id.urge_widget_label)).getText().toString();
+            View clean = MomentumCleanWidget.buildViews(context, now).apply(context, new android.widget.FrameLayout(context));
+            seen[2] = ((TextView) clean.findViewById(R.id.clean_widget_time)).getText().toString();
+            seen[3] = ((TextView) clean.findViewById(R.id.clean_widget_name)).getText().toString();
+            seen[4] = ((TextView) clean.findViewById(R.id.clean_widget_detail)).getText().toString();
+        });
+        assertEquals("4d 6h", seen[0]);
+        assertEquals("Urge", seen[1]);
+        assertEquals("4d 6h", seen[2]);
+        assertEquals("Doomscrolling", seen[3]);
+        assertTrue(seen[4], seen[4].startsWith("since the last slip"));
+    }
+
+    @Test
+    public void theSmallWidgetsDrawWithNothingBeingQuit() throws Exception {
+        snapshot(todaysSnapshot(System.currentTimeMillis(), ""));
+        final String[] seen = new String[2];
+        inst.runOnMainSync(() -> {
+            View urge = MomentumUrgeWidget.buildViews(context, System.currentTimeMillis()).apply(context, new android.widget.FrameLayout(context));
+            seen[0] = ((TextView) urge.findViewById(R.id.urge_widget_label)).getText().toString();
+            View clean = MomentumCleanWidget.buildViews(context, System.currentTimeMillis()).apply(context, new android.widget.FrameLayout(context));
+            seen[1] = ((TextView) clean.findViewById(R.id.clean_widget_name)).getText().toString();
+        });
+        assertEquals("Open", seen[0]);
+        assertEquals("No habit being quit yet", seen[1]);
     }
 }

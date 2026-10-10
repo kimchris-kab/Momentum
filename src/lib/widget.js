@@ -1,5 +1,5 @@
 import { todayStr } from "./date.js";
-import { agendaForDate, isDone, occursOn } from "./tasks.js";
+import { agendaForDate, isDone, occursOn, toggleDoneReducer } from "./tasks.js";
 import { dayState, lapsesOn, lastSlipAt, lastUrgeAt, limitOf, slipsOf } from "./urges.js";
 
 // The home-screen widget reads a small snapshot rather than the app's state, so a schema
@@ -17,11 +17,15 @@ export const PENDING_URGE_KEY = "momentum:pendingUrge";
 // The same, for the I-slipped button on the notification-shade counter. Must match PENDING_LAPSE_KEY in
 // MainActivity.java.
 export const PENDING_LAPSE_KEY = "momentum:pendingLapse";
+// What was tapped on the widget while the app was closed: a task ticked or unticked, and the evening virtue question answered.
+// Must match PENDING_TICK_KEY and PENDING_VIRTUE_KEY in MomentumWidget.java.
+export const PENDING_TICK_KEY = "momentum:pendingTick";
+export const PENDING_VIRTUE_KEY = "momentum:pendingVirtue";
 const MAX_ITEMS = 50;
 // Two, not four: the rows carry a button each, and the widget is already a 3×2.
 const MAX_QUITTING = 2;
 
-export function widgetSnapshot(state, date = todayStr(), { usualWindow, widgetNotes, widgetZones } = {}) {
+export function widgetSnapshot(state, date = todayStr(), { usualWindow, widgetNotes, widgetZones, extras } = {}) {
   const { tasks = [], dayLog = {} } = state;
   const agenda = [
     ...agendaForDate(tasks, date, dayLog, "build"),
@@ -69,9 +73,15 @@ export function widgetSnapshot(state, date = todayStr(), { usualWindow, widgetNo
         zones: widgetZones && t.redZoneNudges !== false ? widgetZones(t) : [],
         limit: limitOf(t),
         count: limitOf(t) ? lapsesOn(state.urgeLog, t.id, date).length : 0,
+        // Red zones that have just ended and not been answered, for "I held it" to appear beside Urge.
+        ...(extras?.zoneEndsOf ? { zoneEnds: extras.zoneEndsOf(t) } : {}),
       })),
     // Your own words, for the widget to turn through. Empty until there are some.
     pep: widgetNotes ? widgetNotes(state) : [],
+    // How the week went, what is usually spent, today's virtue: each only when there is something to say.
+    ...(extras?.week ? { week: extras.week } : {}),
+    ...(extras?.spend ? { spend: extras.spend } : {}),
+    ...(extras?.virtue ? { virtue: extras.virtue } : {}),
     updatedAt: Date.now(),
   };
 }
@@ -113,6 +123,27 @@ async function takeList(key) {
     return Array.isArray(rows) ? rows : [];
   } catch { return []; }
 }
+export const takePendingTicks = async () => (await takeList(PENDING_TICK_KEY))
+  .filter((r) => r && typeof r.taskId === "string" && typeof r.done === "boolean" && /^\d{4}-\d{2}-\d{2}$/.test(r.date || ""));
+export const takePendingVirtue = async () => (await takeList(PENDING_VIRTUE_KEY))
+  .filter((r) => r && [0, 1, 2].includes(r.score) && /^\d{4}-\d{2}-\d{2}$/.test(r.date || ""));
+
+/**
+ * The state after the widget's ticks are applied. Each row says what the widget wanted the task to be, so a row seen twice, or
+ * for something already in that state, changes nothing; a task that has gone since is skipped.
+ */
+export function applyWidgetTicks(state, rows) {
+  let { tasks, dayLog } = state;
+  for (const r of rows || []) {
+    const task = tasks.find((t) => t.id === r.taskId);
+    if (!task || isDone(task, r.date, dayLog) === r.done) continue;
+    const next = toggleDoneReducer(task, r.date, tasks, dayLog);
+    tasks = next.tasks;
+    dayLog = next.dayLog;
+  }
+  return tasks === state.tasks && dayLog === state.dayLog ? state : { ...state, tasks, dayLog };
+}
+
 export const takePendingHolds = async () => (await takeList("momentum:pendingHold"))
   .filter((r) => r && typeof r.taskId === "string" && typeof r.zone === "string" && r.zone.includes("@"));
 export const takePendingNotes = async () => (await takeList("momentum:pendingNote"))
@@ -132,7 +163,9 @@ export async function publishWidget(state, date = todayStr()) {
   if (state.tasks?.some((t) => t.redZones?.length)) {
     try { widgetZones = (await import("./redzone.js")).widgetZones; } catch { /* ...or without its red zones */ }
   }
-  const snapshot = widgetSnapshot(state, date, { usualWindow, widgetNotes, widgetZones });
+  let extras;
+  try { extras = (await import("./widgetExtras.js")).widgetExtras(state, date); } catch { /* ...or without its week, spending and virtue */ }
+  const snapshot = widgetSnapshot(state, date, { usualWindow, widgetNotes, widgetZones, extras });
   try {
     await p.set({ key: WIDGET_KEY, value: JSON.stringify(snapshot) });
     // Optional bridge: if the native side exposes a refresh, use it so the widget updates
